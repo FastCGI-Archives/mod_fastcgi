@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_buf.c,v 1.2 1999/02/11 02:15:33 roberts Exp $
+ * $Id: fcgi_buf.c,v 1.3 1999/09/24 02:25:00 roberts Exp $
  */
 
 #include "fcgi.h"
@@ -58,7 +58,7 @@ Buffer *fcgi_buf_new(pool *p, int size)
  */
 int fcgi_buf_add_fd(Buffer *buf, int fd)
 {
-    int len;
+    size_t len;
 
     fcgi_buf_check(buf);
 
@@ -167,7 +167,7 @@ int fcgi_buf_add_fd(Buffer *buf, int fd)
  */
 int fcgi_buf_get_to_fd(Buffer *buf, int fd)
 {
-    int len;
+    size_t len;
 
     fcgi_buf_check(buf);
 
@@ -284,7 +284,7 @@ void fcgi_buf_get_block_info(Buffer *buf, char **beginPtr, int *countPtr)
 /*******************************************************************************
  * Throw away bytes from buffer.
  */
-void fcgi_buf_toss(Buffer *buf, int count)
+void fcgi_buf_toss(Buffer *buf, size_t count)
 {
     fcgi_buf_check(buf);
     ap_assert(count >= 0 && count <= buf->length);
@@ -310,7 +310,7 @@ void fcgi_buf_get_free_block_info(Buffer *buf, char **endPtr, int *countPtr)
 /*******************************************************************************
  * Updates the buf to reflect recently added data.
  */
-void fcgi_buf_add_update(Buffer *buf, int count)
+void fcgi_buf_add_update(Buffer *buf, size_t count)
 {
     fcgi_buf_check(buf);
     ap_assert(count >= 0 && count <= BufferFree(buf));
@@ -327,11 +327,11 @@ void fcgi_buf_add_update(Buffer *buf, int count)
 /*******************************************************************************
  * Adds a block of data to a buffer, returning the number of bytes added.
  */
-int fcgi_buf_add_block(Buffer *buf, char *data, int datalen)
+int fcgi_buf_add_block(Buffer *buf, char *data, size_t datalen)
 {
     char *end;
     int copied = 0;     /* Number of bytes actually copied. */
-    int canCopy;                /* Number of bytes to copy in a given op. */
+    size_t canCopy;     /* Number of bytes to copy in a given op. */
 
     ap_assert(data != NULL);
     if(datalen == 0) {
@@ -386,7 +386,7 @@ int fcgi_buf_get_to_block(Buffer *buf, char *data, int datalen)
 {
     char *end;
     int copied = 0;                /* Number of bytes actually copied. */
-    int canCopy;                   /* Number of bytes to copy in a given op. */
+    size_t canCopy;                /* Number of bytes to copy in a given op. */
 
     ap_assert(data != NULL);
     ap_assert(datalen > 0);
@@ -431,7 +431,7 @@ int fcgi_buf_get_to_block(Buffer *buf, char *data, int datalen)
 void fcgi_buf_get_to_buf(Buffer *dest, Buffer *src, int len)
 {
     char *dest_end, *src_begin;
-    int dest_len, src_len, move_len;
+    size_t dest_len, src_len, move_len;
 
     ap_assert(len > 0);
     ap_assert(BufferLength(src) >= len);
@@ -460,7 +460,7 @@ void fcgi_buf_get_to_buf(Buffer *dest, Buffer *src, int len)
     }
 }
 
-static void array_grow(array_header *arr, int n)
+static void array_grow(array_header *arr, size_t n)
 {
     if (n <= 0)
         return;
@@ -477,7 +477,7 @@ static void array_grow(array_header *arr, int n)
     }
 }
 
-static void array_cat_block(array_header *arr, void *block, int n)
+static void array_cat_block(array_header *arr, void *block, size_t n)
 {
     array_grow(arr, n);
     memcpy(arr->elts + arr->nelts * arr->elt_size, block, n * arr->elt_size);
@@ -488,7 +488,7 @@ static void array_cat_block(array_header *arr, void *block, int n)
  * Append "len" bytes from "buf" into "arr".  Apache arrays are used
  * whenever the data being handled is binary (may contain null chars).
  */
-void fcgi_buf_get_to_array(Buffer *buf, array_header *arr,  int len)
+void fcgi_buf_get_to_array(Buffer *buf, array_header *arr, size_t len)
 {
     int len1 = min(buf->length, buf->data + buf->size - buf->begin);
 

@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi.h,v 1.17 1999/09/22 05:03:44 roberts Exp $
+ * $Id: fcgi.h,v 1.18 1999/09/24 02:25:00 roberts Exp $
  */
 
 #ifndef FCGI_H
@@ -277,14 +277,14 @@ void BufferDelete(Buffer *bufPtr);
 int fcgi_buf_add_fd(Buffer *bufPtr, int fd);
 int fcgi_buf_get_to_fd(Buffer *bufPtr, int fd);
 void fcgi_buf_get_block_info(Buffer *bufPtr, char **beginPtr, int *countPtr);
-void fcgi_buf_toss(Buffer *bufPtr, int count);
+void fcgi_buf_toss(Buffer *bufPtr, size_t count);
 void fcgi_buf_get_free_block_info(Buffer *bufPtr, char **endPtr, int *countPtr);
-void fcgi_buf_add_update(Buffer *bufPtr, int count);
-int fcgi_buf_add_block(Buffer *bufPtr, char *data, int datalen);
+void fcgi_buf_add_update(Buffer *bufPtr, size_t count);
+int fcgi_buf_add_block(Buffer *bufPtr, char *data, size_t datalen);
 int fcgi_buf_add_string(Buffer *bufPtr, char *str);
 int fcgi_buf_get_to_block(Buffer *bufPtr, char *data, int datalen);
 void fcgi_buf_get_to_buf(Buffer *toPtr, Buffer *fromPtr, int len);
-void fcgi_buf_get_to_array(Buffer *buf,array_header *arr, int len);
+void fcgi_buf_get_to_array(Buffer *buf,array_header *arr, size_t len);
 
 /*
  * fcgi_util.c
