@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_pm.c,v 1.4 1999/04/24 03:37:20 roberts Exp $
+ * $Id: fcgi_pm.c,v 1.5 1999/04/25 02:29:09 roberts Exp $
  */
 
 #include "fcgi.h"
@@ -1087,66 +1087,62 @@ int fcgi_pm_main(void *dummy, child_info *info)
             continue;
         }
 
-        /*
-         * We've caught SIGCHLD, so poll for signal notifications
-         * using waitpid.  If a child has died, write a log message
-         * and update the data structure so we'll restart the child.
-         *
-         * If the last instance of the dynamic AppClass has terminated,
-         * free up any memory that was associated with it.
-         */
+        /* We've caught SIGCHLD, so find out who it was using waitpid,  
+         * write a log message and update its data structure. */
+         
         for (;;) {
-            if(caught_sigterm()) {
+            if (caught_sigterm())
                 goto ProcessSigTerm;
-            }
+
             childPid = waitpid(-1, &waitStatus, WNOHANG);
-            if(childPid == -1 || childPid == 0) {
+            if (childPid == -1 || childPid == 0)
                 break;
-            }
-            for(s = fcgi_servers; s != NULL; s = s->next) {
-                if(s->directive == APP_CLASS_EXTERNAL) {
+
+            for (s = fcgi_servers; s != NULL; s = s->next) {
+                if (s->directive == APP_CLASS_EXTERNAL)
                     continue;
-                }
-                if(s->directive == APP_CLASS_DYNAMIC) {
+
+                if (s->directive == APP_CLASS_DYNAMIC)
                     numChildren = dynamicMaxClassProcs;
-                } else {
+                else
                     numChildren = s->numProcesses;
-                }
-                for(i = 0; i < numChildren; i++) {
-                    if(s->procs[i].pid == childPid) {
+
+                for (i = 0; i < numChildren; i++) {
+                    if (s->procs[i].pid == childPid)
                         goto ChildFound;
-                    }
                 }
             }
-            /*
+            
+            /* @@@ This (comment) needs to go away when dynamic gets cleaned up.
              * If we get to this point, we have detected the
              * termination of the process that was spawned off by
-             * the process manager to do a blocking kill above.
-             */
+             * the process manager to do a blocking kill above. */
             continue;
+            
 ChildFound:
             s->procs[i].pid = -1;
 
-            /* restart static apps */
-            if(s->directive == APP_CLASS_STANDARD) {
+            if (s->directive == APP_CLASS_STANDARD) {
+                /* Always restart static apps */
                 s->procs[i].state = STATE_NEEDS_STARTING;
                 s->numFailures++;
-            } else {
+            } 
+            else {
                 s->numProcesses--;
                 fcgi_dynamic_total_proc_count--;
-                if(s->procs[i].state == STATE_VICTIM) {
+                
+                if (s->procs[i].state == STATE_VICTIM) {
                     s->procs[i].state = STATE_KILLED;
                     continue;
-                } else {
-                    /*
-                     * dynamic app shouldn't have died or dynamicAutoUpdate killed it
-                     */
+                } 
+                else {
+                    /* A dynamic app died or exited without provacation from the PM */
                     s->numFailures++;
-                    if (dynamicAutoRestart) {
+                    
+                    if (dynamicAutoRestart || s->numProcesses <= 0)
                         s->procs[i].state = STATE_NEEDS_STARTING;
-                    } else {
+                    else
                         s->procs[i].state = STATE_READY;
-                    }
                 }
             }
 
@@ -1173,8 +1169,8 @@ ChildFound:
                     (s->directive == APP_CLASS_DYNAMIC) ? " (dynamic)" : "",
                     s->fs_path, (int)childPid, WTERMSIG(waitStatus), SYS_SIGLIST[WTERMSIG(waitStatus)]);
             } 
-        } /* for (;;) */
-    } /* for (;;) */
+        } /* for (;;), waitpid() */
+    } /* for (;;), the whole shoot'n match */
 
 ProcessSigTerm:
     /*

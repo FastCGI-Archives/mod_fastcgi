@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.68 1999/04/22 03:28:06 roberts Exp $
+ *  $Id: mod_fastcgi.c,v 1.69 1999/04/25 02:29:07 roberts Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -724,21 +724,27 @@ static const char *open_connection_to_fs(fcgi_request *fr)
                         (stat(fr->fs_path, &bstbuf) == 0) &&
                         (lstbuf.st_mtime < bstbuf.st_mtime)) 
                 {
+                    struct timeval tv = {1, 0};
+                    
                     /* Its already running, but there's a newer one,
                      * ask the process manager to start it.
                      * it will notice that the binary is newer,
                      * and do a restart instead.
                      */
-                    send_to_pm(rp, PLEASE_START,
-                        fr->fs_path, fr->user, fr->group, 0, 0, 0);
-                    sleep(1);
+                    send_to_pm(rp, PLEASE_START, fr->fs_path, fr->user, fr->group, 0, 0, 0);
+                    
+                    /* Avoid sleep/alarm interactions */
+                    ap_select(0, NULL, NULL, NULL, &tv);
                 }
                 fr->lockFd = ap_popenf(rp, lockFileName, O_APPEND, 0);
                 result = (fr->lockFd < 0) ? (0) : (1);
             } else {
-                send_to_pm(rp, PLEASE_START,
-                    fr->fs_path, fr->user, fr->group, 0, 0, 0);
-                sleep(1);
+                struct timeval tv = {1, 0};
+                
+                send_to_pm(rp, PLEASE_START, fr->fs_path, fr->user, fr->group, 0, 0, 0);
+    
+                /* Avoid sleep/alarm interactions */
+                ap_select(0, NULL, NULL, NULL, &tv);
             }
         } while (result != 1);
 
@@ -768,8 +774,18 @@ static const char *open_connection_to_fs(fcgi_request *fr)
         return "gettimeofday() failed";
 
     /* Connect */
-    if (connect(fr->fd, (struct sockaddr *)socket_addr, socket_addr_len) >= 0)
+    if (connect(fr->fd, (struct sockaddr *)socket_addr, socket_addr_len) == 0)
         goto ConnectionComplete;
+        
+    /* ECONNREFUSED means the listen queue is full (or there isn't one).
+     * With dynamic I can at least make sure the PM knows this is occuring */ 
+    if (fr->dynamic && errno == ECONNREFUSED) {       
+        /* @@@ This might be better as some other "kind" of message */
+        send_to_pm(rp, PLEASE_START, fr->fs_path, fr->user, fr->group, 0, 0, 0);
+        
+        errno = ECONNREFUSED;
+    }
+        
     if (errno != EINPROGRESS)
         return "connect() failed";
 
@@ -1127,7 +1143,7 @@ static fcgi_request *create_fcgi_request(request_rec * const r, const char *fs_p
             fcgi_util_fs_is_path_ok(p, fs_path, my_finfo, r->server->server_uid, r->server->server_gid);
  
         if (err) {
-            ap_log_rerror(FCGI_LOG_ERR_NOERRNO, r, "FastCGI: invalid server \"%s\": %s", fs_path, err);
+            ap_log_rerror(FCGI_LOG_ERR_NOERRNO, r, "FastCGI: invalid (dynamic) server \"%s\": %s", fs_path, err);
             return NULL;
         }
     }

@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_util.c,v 1.2 1999/02/11 04:11:17 roberts Exp $
+ * $Id: fcgi_util.c,v 1.3 1999/04/25 02:29:08 roberts Exp $
  */
 
 #include "fcgi.h"
@@ -255,6 +255,17 @@ fcgi_util_fs_is_path_ok(pool * const p, const char * const fs_path,
             return ap_psprintf(p, "stat() failed: %s", strerror(errno));
     }
 
+    /* No Parse Header scripts aren't allowed.
+     * @@@ Well... we really could quite easily */ 
+    if (strncmp(strrchr(fs_path, '/'), "/nph-", 5) == 0)
+        return ap_psprintf(p, "NPH scripts cannot be run as FastCGI");
+    
+    if (finfo->st_mode == 0) 
+        return ap_psprintf(p, "script not found or unable to stat()");
+
+    if (S_ISDIR(finfo->st_mode)) 
+        return ap_psprintf(p, "script is a directory!");
+    
     if (fcgi_suexec != NULL) {
         err = fcgi_util_check_access(p, fs_path, finfo, X_OK, uid, gid);
         if (err) {
@@ -272,17 +283,6 @@ fcgi_util_fs_is_path_ok(pool * const p, const char * const fs_path,
         }
     }
 
-    /* No Parse Header scripts aren't allowed.
-     * @@@ Well... we really could quite easily */ 
-    if (strncmp(strrchr(fs_path, '/'), "/nph-", 5) == 0)
-        return ap_psprintf(p, "NPH scripts cannot be run as FastCGI");
-    
-    if (finfo->st_mode == 0) 
-        return ap_psprintf(p, "script not found or unable to stat()");
-
-    if (S_ISDIR(finfo->st_mode)) 
-        return ap_psprintf(p, "script is a directory!");
-    
     return NULL;
 }
 

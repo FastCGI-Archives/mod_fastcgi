@@ -1,5 +1,20 @@
 Changes with mod_fastcgi 2.2.2
 
+ *) Dynamic updates: 
+ 
+    Always restart a failed dynamic application if it is the last instance.
+    This means there once started there will always be at least one process
+    instance of a dynamic application.  
+    
+    Send PLEASE_START to the PM when a connect() results in an ECONNREFUSED.
+    ECONNREFUSED means the listen queue is full (or there isn't one).  Asking
+    the PM to start (another) application instance may help empty it faster.
+    
+    Change two sleep() calls to select() based snoozes because alarm() is in
+    effect and sleep() and alarm() don't always play nice together.
+    
+    Fixed a couple of error messages.
+
  *) Fix -listen-queue-depth arg on FastCgiConfig (dynamic).  Previously it
     was ignored and the default was always used.
 
@@ -17,7 +32,7 @@ Changes with mod_fastcgi 2.2.2
     updates to the INSTALL doc.
 
  *) Changed the default listen-queue-depth (FCGI_DEFAULT_LISTEN_Q) from
-    5 to 100.  Its still configurable with the --listen-queue-depth option.
+    5 to 100.  Its still configurable with the -listen-queue-depth option.
     This should help eliminate the FAQ - Why do I see "Connection Refused"
     messages in the log?
 
