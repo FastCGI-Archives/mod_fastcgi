@@ -119,8 +119,9 @@ typedef gid_t long;
 #include "http_conf_globals.h"
 #include "md5.h"
 
-/* Can't include "util_md5.h" here without compiler errors... */
-char *ap_md5(pool *a, unsigned char *string);
+#if APACHE_RELEASE < 1030000
+#define ap_md5(a,b) md5(a,b)
+#endif
 
 #include "mod_fastcgi.h"
 #include "fastcgi.h"
@@ -451,7 +452,7 @@ int ResolveHostname(char *hostname, struct in_addr *addr)
     int count;
 
     addr->s_addr = inet_addr(hostname);
-    if(addr->s_addr == (unsigned int) -1) {
+    if(addr->s_addr == INADDR_NONE) {
         if((hp = gethostbyname(hostname)) == NULL) {
             return -1;
         }
@@ -4935,8 +4936,10 @@ static int FastCgiHandler(WS_Request *reqPtr)
             status = REDIRECT;
             break;
     }
-    Unlock(lockFd);
-    close(lockFd);
+    if (dynamic==TRUE) {
+        Unlock(lockFd);
+        close(lockFd);
+    }
     goto CleanupReturn;
 
 ConnectionErrorReturn:
@@ -4957,9 +4960,9 @@ ErrorReturn:
     FcgiCleanUp(infoPtr);
     if(dynamic==TRUE) {
         OS_FreeIpcAddr(ipcAddrPtr);
+        Unlock(lockFd);
+        close(lockFd);
     }
-    Unlock(lockFd);
-    close(lockFd);
     return SERVER_ERROR;
 
 CleanupReturn:
