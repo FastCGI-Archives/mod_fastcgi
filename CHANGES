@@ -1,5 +1,7 @@
 2.2.13
 
+ *) Fix 'FastCgiConfig -autoUpdate'.
+
  *) Fix 'FastCgiConfig -flush'.
 
  *) Prevent silly maxProcesses and processSlack combinations.

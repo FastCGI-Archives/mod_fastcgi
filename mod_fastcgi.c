@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.121 2002/02/12 03:20:53 robs Exp $
+ *  $Id: mod_fastcgi.c,v 1.122 2002/02/12 03:46:52 robs Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -165,6 +165,7 @@ static void send_to_pm(const char id, const char * const fs_path,
     switch(id) {
 
     case FCGI_SERVER_START_JOB:
+    case FCGI_SERVER_RESTART_JOB:
 #ifdef WIN32
         job->id = id;
         job->fs_path = strdup(fs_path);
