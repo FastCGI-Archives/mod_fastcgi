@@ -1,5 +1,8 @@
 Changes with mod_fastcgi 2.2.3
 
+ *) Initialize the default (empty) environment in a more socially acceptable
+    way.
+
  *) Miscellaneous doc improvements based on notes I've collected up over the
     last few months.
 

@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_config.c,v 1.7 1999/04/22 04:45:17 roberts Exp $
+ * $Id: fcgi_config.c,v 1.8 1999/06/18 02:59:15 roberts Exp $
  */
 
 #include "fcgi.h"
@@ -166,7 +166,7 @@ void fcgi_config_reset_globals(void* dummy)
     dynamicThreshholdN = FCGI_DEFAULT_THRESHHOLD_N;
     dynamicPleaseStartDelay = FCGI_DEFAULT_START_PROCESS_DELAY;
     dynamicAppConnectTimeout = FCGI_DEFAULT_APP_CONN_TIMEOUT;
-    dynamicEnvp = NULL;
+    dynamicEnvp = (const char **)"";
     dynamicProcessSlack = FCGI_DEFAULT_PROCESS_SLACK;
     dynamicAutoRestart = FCGI_DEFAULT_RESTART_DYNAMIC;
     dynamicAutoUpdate = FCGI_DEFAULT_AUTOUPDATE;
