@@ -7,8 +7,6 @@
 #ifndef _FCGIBUF_H_
 #define _FCGIBUF_H_
 
-#include <assert.h>
-
 /*
  * This structure implements ring buffers, used to buffer data between
  * various processes and connections in the server.

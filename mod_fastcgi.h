@@ -10,6 +10,7 @@
 #define _MOD_FASTCGI_H_
 
 #include "fcgivers.h"
+#include <assert.h>
 
 /* general defines */
 #define TRUE  (1)
