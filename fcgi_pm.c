@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_pm.c,v 1.65 2002/01/30 20:40:14 robs Exp $
+ * $Id: fcgi_pm.c,v 1.66 2002/02/05 14:13:55 robs Exp $
  */
 
 
@@ -1231,7 +1231,7 @@ static void dynamic_kill_idle_fs_procs(void)
             {
                 if (procs[i].state == FCGI_RUNNING_STATE) 
                 {
-                    if (youngest == -1 || procs[i].start_time <= procs[youngest].start_time)
+                    if (youngest == -1 || procs[i].start_time >= procs[youngest].start_time)
                     {
                         youngest = i;
                     }
