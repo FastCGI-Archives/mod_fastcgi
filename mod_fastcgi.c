@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.31 1998/05/05 22:20:05 roberts Exp $
+ *  $Id: mod_fastcgi.c,v 1.32 1998/05/05 22:38:19 roberts Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -4629,12 +4629,6 @@ static int FastCgiHandler(WS_Request *reqPtr)
         log_reason("Attempt to invoke directory as FastCGI script",
                 reqPtr->filename, reqPtr);
         return FORBIDDEN;
-    }
-
-    if (reqPtr->finfo.st_mode == 0) {
-        log_reason("Script is not found or unable to stat",
-                reqPtr->filename, reqPtr);
-        return NOT_FOUND;
     }
 
     serverInfoPtr = LookupFcgiServerInfo(reqPtr->filename);
