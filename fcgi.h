@@ -1,5 +1,5 @@
 /* 
- * $Id: fcgi.h,v 1.5 1999/02/21 01:19:54 roberts Exp $
+ * $Id: fcgi.h,v 1.6 1999/02/24 04:38:02 roberts Exp $
  */
 
 #ifndef FCGI_H
@@ -132,7 +132,9 @@ typedef struct {
     Buffer *serverOutputBuffer;  /* output buffer to FastCgi server */
     Buffer *clientInputBuffer;   /* client input buffer */
     Buffer *clientOutputBuffer;  /* client output buffer */
-    table *authHeaders;
+    table *authHeaders;			 /* headers received from an auth fs */
+	int auth_compat;			 /* whether the auth request is spec compat */
+	table *saved_subprocess_env; /* subprocess_env before auth handling */
     void (*apache_sigpipe_handler)(int);
     int expectingClientContent;     /* >0 => more content, <=0 => no more */
     array_header *header;
@@ -169,14 +171,23 @@ typedef struct {
 #define CONN_TIMEOUT 50        /* start another copy of application */
 #define REQ_COMPLETE 51        /* do some data analysis */
 
+/* Authorizer types, for auth directives handling */
+#define FCGI_AUTH_TYPE_AUTHENTICATOR  0
+#define FCGI_AUTH_TYPE_AUTHORIZER     1
+#define FCGI_AUTH_TYPE_ACCESS_CHECKER 2
+
+/* Bits for auth_options */
+#define FCGI_AUTHORITATIVE 1
+#define FCGI_COMPAT 2
+
 typedef struct
 {
 	const char *authorizer;
-	int authorizer_authoritative;
+	u_char authorizer_options;
 	const char *authenticator;
-	int authenticator_authoritative;
+	u_char authenticator_options;
 	const char *access_checker;
-	int access_checker_authoritative;
+	u_char access_checker_options;
 } fcgi_dir_config;
 
 #define	FCGI_LOG_EMERG    __FILE__,__LINE__,APLOG_EMERG		/* system is unusable */
@@ -221,7 +232,10 @@ const char *fcgi_config_new_static_server(cmd_parms *cmd, void *dummy, const cha
 const char *fcgi_config_new_external_server(cmd_parms *cmd, void *dummy, const char *arg);
 const char *fcgi_config_set_config(cmd_parms *cmd, void *dummy, const char *arg);
 const char *fcgi_config_set_fcgi_uid_n_gid(int set);
-const char *fcgi_config_set_fs_path_slot(cmd_parms *cmd, char *mconfig, char *f);
+const char *fcgi_config_new_auth_server(cmd_parms *cmd, fcgi_dir_config *dir_config, 
+					const char *fs_path, const char *compat);
+const char *fcgi_config_set_authoritative_slot(const cmd_parms *cmd, 
+					       fcgi_dir_config *dir_config, int arg);
 const char *fcgi_config_set_socket_dir(cmd_parms *cmd, void *dummy, char *arg);
 const char *fcgi_config_set_suexec(cmd_parms *cmd, void *dummy, const char *arg);
 void fcgi_config_reset_globals(void* dummy);

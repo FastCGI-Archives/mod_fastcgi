@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_config.c,v 1.3 1999/02/19 02:21:43 roberts Exp $
+ * $Id: fcgi_config.c,v 1.4 1999/02/24 04:38:04 roberts Exp $
  */
 
 #include "fcgi.h"
@@ -812,33 +812,61 @@ void *fcgi_config_create_dir_config(pool *p, char *dummy)
 {
     fcgi_dir_config *dir_config = ap_pcalloc(p, sizeof(fcgi_dir_config));
     
-    dir_config->authenticator_authoritative = 1;
-    dir_config->authorizer_authoritative = 1;
-    dir_config->access_checker_authoritative = 1;
+    dir_config->authenticator_options = FCGI_AUTHORITATIVE;
+    dir_config->authorizer_options = FCGI_AUTHORITATIVE;
+    dir_config->access_checker_options = FCGI_AUTHORITATIVE;
+    
     return dir_config;
 }
 
-/*******************************************************************************
- * Config a FastCGI server as an Authorizer.  This will typically be a static 
- * server, but dynamic should be supported too.  So the authorizer value must
- * be a path, not a server.
- */
-const char *fcgi_config_set_fs_path_slot(cmd_parms *cmd, char *mconfig, char *f) 
+
+const char *fcgi_config_new_auth_server(cmd_parms * const cmd, 
+    fcgi_dir_config *dir_config, const char *fs_path, const char * const compat)
 {
     pool * const tp = cmd->temp_pool;
     const uid_t uid = cmd->server->server_uid;
     const gid_t gid = cmd->server->server_gid;
-    const char * const * const fs_path = (const char * const *)(mconfig + (int)(long)cmd->info);
-    
-    ap_set_file_slot(cmd, mconfig, f);
-        
+   
+    if (!ap_os_is_path_absolute(fs_path))
+        fs_path = ap_make_full_path(cmd->pool, ap_server_root, fs_path);
+
     /* Make sure its already configured or at least a candidate for dynamic */
-    if (fcgi_util_fs_get_by_id(*fs_path, uid, gid) == NULL) {
-        const char *err = fcgi_util_fs_is_path_ok(tp, *fs_path, NULL, uid, gid);
-        if (err != NULL)
-            return ap_psprintf(tp, "%s: \"%s\" %s", cmd->cmd->name, *fs_path, err);
+    if (fcgi_util_fs_get_by_id(fs_path, uid, gid) == NULL) {
+        const char *err = fcgi_util_fs_is_path_ok(tp, fs_path, NULL, uid, gid);
+        if (err)
+            return ap_psprintf(tp, "%s: \"%s\" %s", cmd->cmd->name, fs_path, err);
     }
     
+    if (compat && strcasecmp(compat, "-compat"))
+        return ap_psprintf(cmd->temp_pool, "%s: unknown option: \"%s\"", cmd->cmd->name, compat);
+    
+    switch((int)cmd->info) {
+        case FCGI_AUTH_TYPE_AUTHENTICATOR:
+            dir_config->authenticator = fs_path;
+            dir_config->authenticator_options |= (compat) ? FCGI_COMPAT : 0;
+            break;
+        case FCGI_AUTH_TYPE_AUTHORIZER:
+            dir_config->authorizer = fs_path;
+            dir_config->authorizer_options |= (compat) ? FCGI_COMPAT : 0;
+            break;        
+        case FCGI_AUTH_TYPE_ACCESS_CHECKER:
+            dir_config->access_checker = fs_path;
+            dir_config->access_checker_options |= (compat) ? FCGI_COMPAT : 0;
+            break;
+    }                
+                 
     return NULL;
 }
 
+const char *fcgi_config_set_authoritative_slot(const cmd_parms * const cmd, 
+    fcgi_dir_config * const dir_config, int arg)
+{
+    int offset = (int)(long)cmd->info;
+    
+    if (arg)
+        *(int *)(dir_config + offset) |= FCGI_AUTHORITATIVE;
+    else
+        *(int *)(dir_config + offset) &= ~FCGI_AUTHORITATIVE;
+    
+    return NULL;
+}    

@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_protocol.c,v 1.3 1999/02/20 05:24:37 roberts Exp $
+ * $Id: fcgi_protocol.c,v 1.4 1999/02/24 04:38:03 roberts Exp $
  */
  
 
@@ -120,7 +120,7 @@ static char *apache_original_uri(request_rec *r)
  * Apache's spins in sub_req_lookup_uri() trying to setup PATH_TRANSLATED,
  * so we just don't do that part.
  */
-static void add_auth_cgi_vars(request_rec *r)
+static void add_auth_cgi_vars(request_rec *r, const int compat)
 {
     table *e = r->subprocess_env;
 
@@ -130,11 +130,19 @@ static void add_auth_cgi_vars(request_rec *r)
     ap_table_setn(e, "QUERY_STRING", r->args ? r->args : "");
     ap_table_setn(e, "REQUEST_URI", apache_original_uri(r));
 
+    /* The FastCGI spec precludes sending of CONTENT_LENGTH, PATH_INFO,
+     * PATH_TRANSLATED, and SCRIPT_NAME (for some reason?).  PATH_TRANSLATED we
+     * don't have, its the variable that causes Apache to break trying to set
+     * up (and thus the reason this fn exists vs. using ap_add_cgi_vars()). */
+    if (compat) {
+        ap_table_unset(e, "CONTENT_LENGTH");
+        return;
+    }
+        
     /* Note that the code below special-cases scripts run from includes,
      * because it "knows" that the sub_request has been hacked to have the
      * args and path_info of the original request, and not any that may have
      * come with the script URI in the include command.  Ugh. */
-
     if (!strcmp(r->protocol, "INCLUDED")) {
         ap_table_setn(e, "SCRIPT_NAME", r->uri);
         if (r->path_info && *r->path_info)
@@ -165,12 +173,12 @@ int fcgi_protocol_queue_env(request_rec *r, fcgi_request *fr, char ***envp)
 
     if (*envp == NULL) {
         ap_add_common_vars(r);
-        
+            
         if (fr->role == FCGI_RESPONDER)
 	        ap_add_cgi_vars(r);
         else 
-            add_auth_cgi_vars(r);
-            
+            add_auth_cgi_vars(r, fr->auth_compat);
+        
         *envp = ap_create_environment(r->pool, r->subprocess_env);
         pass = prep;
     }

@@ -1,5 +1,10 @@
 Changes with mod_fastcgi 2.2.1
 
+ *) Added a FastCGI Authorizer Role compatibility mode which implements the 
+    specification to the tee.  Use -compat arg with any of the Auth server
+    directives.  This is intended for new and existing FastCGI authorizer
+    applications that require compatibility with other server implementations.
+    
  *) Fix logging from the process manager.  Previously, all calls to the 
     logging routines used NULL for the server_rec.  This works fine in a dev
     environment, but results in most of these messages being tossed by

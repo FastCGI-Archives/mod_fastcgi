@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.65 1999/02/21 01:19:56 roberts Exp $
+ *  $Id: mod_fastcgi.c,v 1.66 1999/02/24 04:38:00 roberts Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -1265,6 +1265,14 @@ static int post_process_auth_passed_header(table *t, const char *key, const char
     ap_table_setn(t, key, val);
     return 1;    
 }
+
+static int post_process_auth_passed_compat_header(table *t, const char *key, const char * const val)
+{
+	if (strncasecmp(key, "Variable-", 9) == 0)
+        ap_table_setn(t, key + 9, val);
+
+    return 1;    
+}
     
 static int post_process_auth_failed_header(table * const t, const char * const key, const char * const val)
 {
@@ -1272,18 +1280,28 @@ static int post_process_auth_failed_header(table * const t, const char * const k
     return 1;
 }
 
-static void post_process_auth_headers(table *auth_headers, request_rec *r, const int passed)
-{    
-    
+static void post_process_auth(fcgi_request * const fr, const int passed)
+{   
+    request_rec * const r = fr->r;
+ 
+    /* Restore the saved subprocess_env because we muddied ours up */
+    r->subprocess_env = fr->saved_subprocess_env;
+
     if (passed) {
-        ap_table_do((int (*)(void *, const char *, const char *))post_process_auth_passed_header,
-             (void *)r->subprocess_env, auth_headers, NULL);
+        if (fr->auth_compat) {
+            ap_table_do((int (*)(void *, const char *, const char *))post_process_auth_passed_compat_header,
+                 (void *)r->subprocess_env, fr->authHeaders, NULL);
+        }
+        else {
+            ap_table_do((int (*)(void *, const char *, const char *))post_process_auth_passed_header,
+                 (void *)r->subprocess_env, fr->authHeaders, NULL);
+        }
     }
     else {
         ap_table_do((int (*)(void *, const char *, const char *))post_process_auth_failed_header,
-             (void *)r->err_headers_out, auth_headers, NULL);
+             (void *)r->err_headers_out, fr->authHeaders, NULL);
     }
-        
+
     /* @@@ Restore these.. its a hack until I rewrite the header handling */ 
     r->status = HTTP_OK;
     r->status_line = NULL;
@@ -1300,23 +1318,30 @@ static int check_user_authentication(request_rec *r)
     if (dir_config->authenticator == NULL)
 	    return DECLINED;
     
-    /* Get the user password, put it in the env to send to the fcgi_server */
+    /* Get the user password */
     if ((res = ap_get_basic_auth_pw(r, &password)) != OK)
         return res;
-    ap_table_setn(r->subprocess_env, "REMOTE_PASSWD", password);
-    ap_table_setn(r->subprocess_env, "FCGI_APACHE_ROLE", "AUTHENTICATOR");
    
     if ((fr = create_fcgi_request(r, dir_config->authenticator)) == NULL)
         return SERVER_ERROR;
     
+    /* Save the existing subprocess_env, because we're gonna muddy it up */
+    fr->saved_subprocess_env = ap_copy_table(r->pool, r->subprocess_env);
+    
+    ap_table_setn(r->subprocess_env, "REMOTE_PASSWD", password);
+    ap_table_setn(r->subprocess_env, "FCGI_APACHE_ROLE", "AUTHENTICATOR");
+    
     /* The FastCGI Protocol doesn't differentiate authentication */    
     fr->role = FCGI_AUTHORIZER;
-  
+    
+    /* Do we need compatibility mode? */
+    fr->auth_compat = (dir_config->authenticator_options & FCGI_COMPAT);
+    
     if ((res = do_work(r, fr)) != OK)
         goto AuthenticationFailed;
 
     authenticated = (r->status == 200);
-    post_process_auth_headers(fr->authHeaders, r, authenticated);
+    post_process_auth(fr, authenticated);
 
     /* A redirect shouldn't be allowed during the authentication phase */
     if (ap_table_get(r->headers_out, "Location") != NULL) {
@@ -1330,7 +1355,7 @@ static int check_user_authentication(request_rec *r)
         return OK;
     
 AuthenticationFailed:
-    if (!dir_config->authenticator_authoritative)
+    if (!(dir_config->authenticator_options & FCGI_AUTHORITATIVE))
         return DECLINED;
         
     /* @@@ Probably should support custom_responses */
@@ -1355,17 +1380,24 @@ static int check_user_authorization(request_rec *r)
      * FastCGI server and pass the rest of the directive line), but for now keep
      * it simple. */
     
-    ap_table_setn(r->subprocess_env, "FCGI_APACHE_ROLE", "AUTHORIZER");
-       
     if ((fr = create_fcgi_request(r, dir_config->authorizer)) == NULL)
         return SERVER_ERROR;
+    
+    /* Save the existing subprocess_env, because we're gonna muddy it up */
+    fr->saved_subprocess_env = ap_copy_table(r->pool, r->subprocess_env);
+    
+    ap_table_setn(r->subprocess_env, "FCGI_APACHE_ROLE", "AUTHORIZER");
+       
     fr->role = FCGI_AUTHORIZER;
+    
+    /* Do we need compatibility mode? */
+    fr->auth_compat = (dir_config->authenticator_options & FCGI_COMPAT);
   
     if ((res = do_work(r, fr)) != OK)
         goto AuthorizationFailed;
 
     authorized = (r->status == 200);
-    post_process_auth_headers(fr->authHeaders, r, authorized);
+    post_process_auth(fr, authorized);
 
     /* A redirect shouldn't be allowed during the authorization phase */
     if (ap_table_get(r->headers_out, "Location") != NULL) {
@@ -1379,7 +1411,7 @@ static int check_user_authorization(request_rec *r)
         return OK;
     
 AuthorizationFailed:
-    if (!dir_config->authorizer_authoritative)
+    if (!(dir_config->authorizer_options & FCGI_AUTHORITATIVE))
         return DECLINED;
     
     /* @@@ Probably should support custom_responses */
@@ -1399,19 +1431,25 @@ static int check_access(request_rec *r)
     if (dir_config == NULL || dir_config->access_checker == NULL)
 		return DECLINED; 
            
-    ap_table_setn(r->subprocess_env, "FCGI_APACHE_ROLE", "ACCESS_CHECKER");
-    
     if ((fr = create_fcgi_request(r, dir_config->access_checker)) == NULL)
         return SERVER_ERROR;
+    
+    /* Save the existing subprocess_env, because we're gonna muddy it up */
+    fr->saved_subprocess_env = ap_copy_table(r->pool, r->subprocess_env);
+    
+    ap_table_setn(r->subprocess_env, "FCGI_APACHE_ROLE", "ACCESS_CHECKER");
     
     /* The FastCGI Protocol doesn't differentiate access control */    
     fr->role = FCGI_AUTHORIZER;
   
+    /* Do we need compatibility mode? */
+    fr->auth_compat = (dir_config->authenticator_options & FCGI_COMPAT);
+    
     if ((res = do_work(r, fr)) != OK)
         goto AccessFailed;
 
     access_allowed = (r->status == 200);
-    post_process_auth_headers(fr->authHeaders, r, access_allowed);
+    post_process_auth(fr, access_allowed);
 
     /* A redirect shouldn't be allowed during the access check phase */
     if (ap_table_get(r->headers_out, "Location") != NULL) {
@@ -1425,7 +1463,7 @@ static int check_access(request_rec *r)
         return OK;
     
 AccessFailed:
-    if (!dir_config->access_checker_authoritative)
+    if (!(dir_config->access_checker_options & FCGI_AUTHORITATIVE))
         return DECLINED;
     
     /* @@@ Probably should support custom_responses */
@@ -1449,25 +1487,25 @@ command_rec fastcgi_cmds[] = {
     { "FCGIConfig",    fcgi_config_set_config, NULL, RSRC_CONF, RAW_ARGS, NULL },
     { "FastCgiConfig", fcgi_config_set_config, NULL, RSRC_CONF, RAW_ARGS, NULL },
     
-    { "FastCgiAuthenticator", fcgi_config_set_fs_path_slot,
-        (void*)XtOffsetOf(fcgi_dir_config, authenticator), ACCESS_CONF, TAKE1, 
-        "a fastcgi-script path (absolute or relative to ServerRoot)" },
-    { "FastCgiAuthenticatorAuthoritative", ap_set_flag_slot, 
-        (void*)XtOffsetOf(fcgi_dir_config, authenticator_authoritative), ACCESS_CONF, FLAG, 
+    { "FastCgiAuthenticator", fcgi_config_new_auth_server,
+        (void *)FCGI_AUTH_TYPE_AUTHENTICATOR, ACCESS_CONF, TAKE12, 
+        "a fastcgi-script path (absolute or relative to ServerRoot) followed by an optional -compat" },
+    { "FastCgiAuthenticatorAuthoritative", fcgi_config_set_authoritative_slot, 
+        (void *)XtOffsetOf(fcgi_dir_config, authenticator_options), ACCESS_CONF, FLAG, 
         "Set to 'off' to allow authentication to be passed along to lower modules upon failure" },
         
-    { "FastCgiAuthorizer", fcgi_config_set_fs_path_slot, 
-        (void*)XtOffsetOf(fcgi_dir_config, authorizer), ACCESS_CONF, TAKE1, 
-        "a fastcgi-script path (absolute or relative to ServerRoot)" },
-    { "FastCgiAuthorizerAuthoritative", ap_set_flag_slot, 
-        (void*)XtOffsetOf(fcgi_dir_config, authorizer_authoritative), ACCESS_CONF, FLAG, 
+    { "FastCgiAuthorizer", fcgi_config_new_auth_server, 
+        (void *)FCGI_AUTH_TYPE_AUTHORIZER, ACCESS_CONF, TAKE12, 
+        "a fastcgi-script path (absolute or relative to ServerRoot) followed by an optional -compat" },
+    { "FastCgiAuthorizerAuthoritative", fcgi_config_set_authoritative_slot, 
+        (void *)XtOffsetOf(fcgi_dir_config, authorizer_options), ACCESS_CONF, FLAG, 
         "Set to 'off' to allow authorization to be passed along to lower modules upon failure" },
         
-    { "FastCgiAccessChecker", fcgi_config_set_fs_path_slot,
-        (void*)XtOffsetOf(fcgi_dir_config, access_checker), ACCESS_CONF, TAKE1, 
-        "a fastcgi-script path (absolute or relative to ServerRoot)" },
-    { "FastCgiAccessCheckerAuthoritative", ap_set_flag_slot, 
-        (void*)XtOffsetOf(fcgi_dir_config, access_checker_authoritative), ACCESS_CONF, FLAG, 
+    { "FastCgiAccessChecker", fcgi_config_new_auth_server,
+        (void *)FCGI_AUTH_TYPE_ACCESS_CHECKER, ACCESS_CONF, TAKE12, 
+        "a fastcgi-script path (absolute or relative to ServerRoot) followed by an optional -compat" },
+    { "FastCgiAccessCheckerAuthoritative", fcgi_config_set_authoritative_slot, 
+        (void *)XtOffsetOf(fcgi_dir_config, access_checker_options), ACCESS_CONF, FLAG, 
         "Set to 'off' to allow access control to be passed along to lower modules upon failure" },
     { NULL }
 };

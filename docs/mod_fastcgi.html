@@ -1,6 +1,6 @@
 <!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">
 <html>
-<!-- $Id: mod_fastcgi.html,v 1.6 1999/02/19 02:19:55 roberts Exp $ -->
+<!-- $Id: mod_fastcgi.html,v 1.7 1999/02/24 04:38:05 roberts Exp $ -->
 
 <head>
 <title>Apache module mod_fastcgi</title>
@@ -125,10 +125,12 @@ the specified extension(s) as FastCGI applications:</p>
   a successful response (Status: 200) are passed to subprocesses (CGI/FastCGI invocations)
   as environment variables rather than just those prefixed by &quot;<code>Variable-</code>&quot;
   as the FastCGI specification calls for; I didn't see the point in leaving them out
-  either.&nbsp; Custom responses from FastCGI authentication applications for authentication
-  failures are not (yet?) supported.&nbsp; <code>mod_fastcgi</code> sets up the (Apache
-  specific) environment variable &quot;FCGI_APACHE_ROLE&quot; to indicate which Apache
-  authorizer phase is being performed.</p>
+  either.&nbsp; FastCGI specification compliant behaviour can be obtained by using the
+  &quot;<code>-compat</code>&quot; option to the Auth server directives.</p>
+  <p>Custom responses from FastCGI authentication applications for authentication failures
+  are not (yet?) supported.&nbsp; <code>mod_fastcgi</code> sets up the (Apache specific)
+  environment variable &quot;FCGI_APACHE_ROLE&quot; to indicate which Apache authorizer
+  phase is being performed.</p>
   <h2><a name="directives">Directives</a></h2>
   <ul>
     <li><a HREF="#FastCgiServer"><code>FastCgiServer</code></a></li>
@@ -451,7 +453,7 @@ the specified extension(s) as FastCGI applications:</p>
   <table border="0">
     <tr>
       <td><a HREF="http://www.apache.org/docs/mod/directive-dict.html#Syntax" REL="Help"><strong>Syntax:</strong></a></td>
-      <td><code>FastCgiAuthenticator <em>filename</em></code></td>
+      <td><code>FastCgiAuthenticator <em>filename [-compat]</em></code></td>
     </tr>
     <tr>
       <td><a HREF="http://www.apache.org/docs/mod/directive-dict.html#Context" REL="Help"><strong>Context:</strong></a></td>
@@ -492,9 +494,13 @@ the specified extension(s) as FastCGI applications:</p>
 typically available to CGI/FastCGI request handlers.&nbsp; All headers returned by a
 FastCGI authentication application in a successful response (Status: 200) are passed to
 subprocesses (CGI/FastCGI invocations) as environment variables.&nbsp; All headers
-returned in an unsuccessful response are passed on to the client.&nbsp; <code>mod_fastcgi</code>
-sets the environment variable &quot;FCGI_APACHE_ROLE&quot; to &quot;AUTHENTICATOR&quot; to
-indicate which (Apache specific) authorizer phase is being performed.</p>
+returned in an unsuccessful response are passed on to the client.&nbsp; FastCGI
+specification compliant behaviour can be obtained by using the &quot;<code>-compat</code>&quot;
+option.</p>
+
+<p><code>mod_fastcgi</code> sets the environment variable &quot;FCGI_APACHE_ROLE&quot; to
+&quot;AUTHENTICATOR&quot; to indicate which (Apache specific) authorizer phase is being
+performed.</p>
 
 <hr>
 
@@ -536,7 +542,7 @@ Authorization Required reply.&nbsp; Disabling the default should be carefully co
 <table border="0">
   <tr>
     <td><a HREF="http://www.apache.org/docs/mod/directive-dict.html#Syntax" REL="Help"><strong>Syntax:</strong></a></td>
-    <td><code>FastCgiAuthorizer<em> filename</em></code></td>
+    <td><code>FastCgiAuthorizer<em> filename [-compat]</em></code></td>
   </tr>
   <tr>
     <td><a HREF="http://www.apache.org/docs/mod/directive-dict.html#Context" REL="Help"><strong>Context:</strong></a></td>
@@ -580,9 +586,13 @@ Authorization Required reply.&nbsp; Disabling the default should be carefully co
 typically available to CGI/FastCGI request handlers.&nbsp; All headers returned by a
 FastCGI authorizer application in a successful response (Status: 200) are passed to
 subprocesses (CGI/FastCGI invocations) as environment variables.&nbsp; All headers
-returned in an unsuccessful response are passed on to the client.&nbsp; <code>mod_fastcgi</code>
-sets the environment variable &quot;FCGI_APACHE_ROLE&quot; to &quot;AUTHORIZER&quot; to
-indicate which (Apache specific) authorizer phase is being performed.</p>
+returned in an unsuccessful response are passed on to the client.&nbsp; FastCGI
+specification compliant behaviour can be obtained by using the &quot;<code>-compat</code>&quot;
+option.</p>
+
+<p><code>mod_fastcgi</code> sets the environment variable &quot;FCGI_APACHE_ROLE&quot; to
+&quot;AUTHORIZER&quot; to indicate which (Apache specific) authorizer phase is being
+performed.</p>
 
 <hr>
 
@@ -619,7 +629,7 @@ Authorization Required reply.&nbsp; Disabling the default should be carefully co
 <table border="0">
   <tr>
     <td><a HREF="http://www.apache.org/docs/mod/directive-dict.html#Syntax" REL="Help"><strong>Syntax:</strong></a></td>
-    <td><code>FastCgiAccessChecker<em> filename</em></code></td>
+    <td><code>FastCgiAccessChecker<em> filename [-compat]</em></code></td>
   </tr>
   <tr>
     <td><a HREF="http://www.apache.org/docs/mod/directive-dict.html#Context" REL="Help"><strong>Context:</strong></a></td>
@@ -655,9 +665,13 @@ Authorization Required reply.&nbsp; Disabling the default should be carefully co
 typically available to CGI/FastCGI request handlers.&nbsp; All headers returned by a
 FastCGI access-checker application in a successful response (Status: 200) are passed to
 subprocesses (CGI/FastCGI invocations) as environment variables.&nbsp; All headers
-returned in an unsuccessful response are passed on to the client.&nbsp; <code>mod_fastcgi</code>
-sets the environment variable &quot;FCGI_APACHE_ROLE&quot; to &quot;ACCESS_CHECKER&quot;
-to indicate which (Apache specific) authorizer phase is being performed.</p>
+returned in an unsuccessful response are passed on to the client.&nbsp; FastCGI
+specification compliant behaviour can be obtained by using the &quot;<code>-compat</code>&quot;
+option.</p>
+
+<p><code>mod_fastcgi</code> sets the environment variable &quot;FCGI_APACHE_ROLE&quot; to
+&quot;ACCESS_CHECKER&quot; to indicate which (Apache specific) authorizer phase is being
+performed.</p>
 
 <hr>
 
