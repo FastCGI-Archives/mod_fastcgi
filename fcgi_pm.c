@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_pm.c,v 1.64 2001/11/20 03:13:29 robs Exp $
+ * $Id: fcgi_pm.c,v 1.65 2002/01/30 20:40:14 robs Exp $
  */
 
 
@@ -1169,20 +1169,27 @@ static void dynamic_kill_idle_fs_procs(void)
          * percentage, 0-100, of totalTime that the processes actually used 
          */
         int loadFactor;        
-
+        
         int i;
+        int really_running = 0;
         
         if (s->directive != APP_CLASS_DYNAMIC || s->numProcesses == 0)
         {
             continue;
         }
 
+        /* s->numProcesses includes pending kills so get the "active" count */
+        for (i = 0; i < dynamicMaxClassProcs; ++i)
+        {
+            if (s->procs[i].state == FCGI_RUNNING_STATE) ++really_running;
+        }
+                
         connTime = s->smoothConnTime ? s->smoothConnTime : s->totalConnTime;
-        totalTime = s->numProcesses * (now - fcgi_dynamic_epoch) * 1000000 + 1;
+        totalTime = really_running * (now - fcgi_dynamic_epoch) * 1000000 + 1;
 
         loadFactor = 100 * connTime / totalTime;
 
-        if (s->numProcesses == 1)
+        if (really_running == 1)
         {
             if (loadFactor >= dynamicThreshold1)
             {
@@ -1191,7 +1198,7 @@ static void dynamic_kill_idle_fs_procs(void)
         }
         else
         {
-            int load = s->numProcesses / (s->numProcesses - 1) * loadFactor;
+            int load = really_running / ( really_running - 1) * loadFactor;
             
             if (load >= dynamicThresholdN)
             {
@@ -1215,36 +1222,42 @@ static void dynamic_kill_idle_fs_procs(void)
             }
         }
 
-        if (i < dynamicMaxClassProcs)
+        if (i >= dynamicMaxClassProcs)
         {
-            continue;
-        }
+            ServerProcess * procs = s->procs;
+            int youngest = -1;
 
-        for (i = 0; i < dynamicMaxClassProcs; ++i) 
-        {
-            if (s->procs[i].state != FCGI_RUNNING_STATE) 
+            for (i = 0; i < dynamicMaxClassProcs; ++i) 
             {
-                continue;
+                if (procs[i].state == FCGI_RUNNING_STATE) 
+                {
+                    if (youngest == -1 || procs[i].start_time <= procs[youngest].start_time)
+                    {
+                        youngest = i;
+                    }
+                }
             }
 
-            ap_log_error(FCGI_LOG_WARN_NOERRNO, fcgi_apache_main_server,
-                "FastCGI: (dynamic) server \"%s\" (pid %ld) termination signaled",
-                s->fs_path, (long) s->procs[i].pid);
+            if (youngest != -1)
+            {
+                ap_log_error(FCGI_LOG_WARN_NOERRNO, fcgi_apache_main_server,
+                    "FastCGI: (dynamic) server \"%s\" (pid %ld) termination signaled",
+                    s->fs_path, (long) s->procs[youngest].pid);
 
-            fcgi_kill(&s->procs[i], SIGTERM);
-            
-            victims++;
-            break;
-        }
+                fcgi_kill(&s->procs[youngest], SIGTERM);
+                
+                victims++;
+            }
 
-        /* 
-         * If the number of non-victims is less than or equal to
-         * the minimum that may be running without being killed off,
-         * don't select any more victims. 
-         */
-        if (fcgi_dynamic_total_proc_count - victims <= dynamicMinProcs) 
-        {
-            break;
+            /* 
+             * If the number of non-victims is less than or equal to
+             * the minimum that may be running without being killed off,
+             * don't select any more victims. 
+             */
+            if (fcgi_dynamic_total_proc_count - victims <= dynamicMinProcs) 
+            {
+                break;
+            }
         }
     }
 }
@@ -1520,6 +1533,7 @@ void fcgi_pm_main(void *dummy)
                             break;
                         }
 
+                        s->procs[i].start_time = now;
                         s->restartTime = now;
                         
                         if (s->directive == APP_CLASS_DYNAMIC) {

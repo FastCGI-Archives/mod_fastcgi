@@ -1,3 +1,12 @@
+2.2.13
+                                                               
+ *) Properly handle the killing of idle processes when one takes a long time
+    to exit once signaled down (or the config is funky).
+    Dmitry Dorofeev [dima@yasp.com]
+
+ *) Always kill the youngest instance of an application.  Suggested by 
+    Dmitry Dorofeev [dima@yasp.com]
+
 2.2.12
 
  *) Delay the logging of write errors to the pm to account for shutdown/restart.

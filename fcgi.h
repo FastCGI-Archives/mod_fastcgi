@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi.h,v 1.33 2001/11/20 01:51:27 robs Exp $
+ * $Id: fcgi.h,v 1.34 2002/01/30 20:40:14 robs Exp $
  */
 
 #ifndef FCGI_H
@@ -88,6 +88,7 @@ typedef struct _FcgiProcessInfo {
 #endif
     pid_t pid;                       /* pid of associated process */
     enum process_state state;        /* state of the process */
+    time_t start_time;               /* time the process was started */
 } ServerProcess;
 
 /*
