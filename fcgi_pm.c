@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_pm.c,v 1.34 2000/07/20 19:41:13 robs Exp $
+ * $Id: fcgi_pm.c,v 1.35 2000/07/31 00:33:42 robs Exp $
  */
 
 
@@ -726,6 +726,11 @@ static void dynamic_read_msgs(int read_ready)
         if (!caughtSigTerm) {
             ap_log_error(FCGI_LOG_ALERT, fcgi_apache_main_server, 
                 "FastCGI: read() from pipe failed (%d)", rc);
+            if (rc == 0) {
+                ap_log_error(FCGI_LOG_ALERT, fcgi_apache_main_server, 
+                    "FastCGI: the PM is shutting down, Apache seems to have disappeared - bye");
+                caughtSigTerm = TRUE;
+            }
         }
         return;
     }

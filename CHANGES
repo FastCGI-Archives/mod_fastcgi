@@ -1,5 +1,7 @@
 Changes with mod_fastcgi 2.2.5
 
+ *) Shutdown the PM when Apache appears to have disappeared.
+
  *) seteuid() tweak for HP-UX 11.  Milton L. Hankins [mlh@swl.msd.ray.com]
 
  *) (Win32) More dynamic fixes.

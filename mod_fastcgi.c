@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.95 2000/07/20 21:11:42 robs Exp $
+ *  $Id: mod_fastcgi.c,v 1.96 2000/07/31 00:33:42 robs Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -300,8 +300,6 @@ static void init_module(server_rec *s, pool *p)
 static void fcgi_child_init(server_rec *server_conf, pool *p)
 {
 #ifdef WIN32
-	DWORD tid;
-
     /* Create the Event Handlers */
     fcgi_event_handles[0] = CreateEvent(NULL, FALSE, FALSE, NULL);
     fcgi_event_handles[1] = CreateEvent(NULL, FALSE, FALSE, NULL);
@@ -309,7 +307,7 @@ static void fcgi_child_init(server_rec *server_conf, pool *p)
 	fcgi_dynamic_mbox_mutex = ap_create_mutex("fcgi_dynamic_mbox_mutex");
 
     /* Spawn of the process manager thread */
-    fcgi_pm_thread = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)fcgi_pm_main, NULL, 0, &tid);
+    fcgi_pm_thread = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)fcgi_pm_main, NULL, 0, NULL);
 #endif
     return;
 }
