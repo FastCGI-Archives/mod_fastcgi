@@ -1,5 +1,8 @@
 Changes with mod_fastcgi 2.2.3
 
+ *) Fix a bug in the stderr handling introduced in 2.2.2.  There were conditions
+    that resulted in not or improperly terminated strings.
+
  *) Fix the call to setsockopt() to disable Nagle.  [based on a bug report by
     Johannes Plassmann <johannes.plassmann@pdb.siemens.de>]
 

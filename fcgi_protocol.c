@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_protocol.c,v 1.5 1999/04/22 03:28:04 roberts Exp $
+ * $Id: fcgi_protocol.c,v 1.6 1999/06/17 03:12:27 roberts Exp $
  */
  
 
@@ -352,8 +352,10 @@ int fcgi_protocol_dequeue(pool *p, fcgi_request *fr)
                     
                     while ((max_len = min(len, FCGI_SERVER_MAX_STDERR_LINE_LEN - strlen(fr->fs_stderr)))) {
                         /* Put as much as we can in the block */
+                        int cur_stderr_len = strlen(fr->fs_stderr);
                         fcgi_buf_get_to_block(fr->serverInputBuffer, 
-                            fr->fs_stderr + strlen(fr->fs_stderr), max_len);
+                            fr->fs_stderr + cur_stderr_len, max_len);
+                        *(fr->fs_stderr + cur_stderr_len + max_len) = '\0';         
                         len -= max_len;            
                         
                         /* Print as much as we can */
