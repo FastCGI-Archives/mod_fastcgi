@@ -2724,7 +2724,7 @@ NothingToDo:
 		   * restart them.
 		   */
 		  struct stat stbuf;
-		  int i;
+		  int i, numChildren;
 		  if ((stat(execName, &stbuf)>=0) &&
 		      (stbuf.st_mtime > s->restartTime)) {
 		    /* kill old server(s) */
