@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_buf.c,v 1.13 2001/12/15 14:30:47 robs Exp $
+ * $Id: fcgi_buf.c,v 1.14 2002/03/04 22:20:57 robs Exp $
  */
 
 #include "fcgi.h"
@@ -73,7 +73,7 @@ static int fd_read(SOCKET fd, char *buf, int len)
         {
             // Then it must be a real socket
 
-            SetLastError(ERROR_SUCCESS);
+            WSASetLastError(ERROR_SUCCESS);
 
             rv = recv(fd, buf, len, 0);
             if (rv == SOCKET_ERROR) 
