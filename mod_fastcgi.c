@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.79 1999/09/10 04:37:42 roberts Exp $
+ *  $Id: mod_fastcgi.c,v 1.80 1999/09/13 03:19:33 roberts Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -251,12 +251,22 @@ static void send_to_pm(pool * const rp, const char id,
         const char * const fs_path, const char * const user, const char *group,
         const unsigned long qsecs, const unsigned long start_time, const unsigned long now)
 {
+    int i;
+
     if (write_to_mbox(rp, id, fs_path, user, group, qsecs, start_time, now) == 0) {
         if (id != REQ_COMPLETE) {
-            if (kill(fcgi_pm_pid, SIGUSR2)) {
-                ap_log_error(FCGI_LOG_ALERT, fcgi_apache_main_server,
-                    "FastCGI: can't notify process manager (is it running?), kill(SIGUSR2) failed");
+	    for (i = 0; i < 1000; ++i) {
+                if (kill(fcgi_pm_pid, SIGUSR2) == 0)
+		    return;
+
+                if (errno != EPERM) {
+		    ap_log_error(FCGI_LOG_ALERT, fcgi_apache_main_server,
+                        "FastCGI: can't notify process manager (is it running?), kill(SIGUSR2) failed");
+	 	    return;
+		}
             }
+	    ap_log_error(FCGI_LOG_WARN, fcgi_apache_main_server, 
+		"FastCGI: can't notify process manager, kill(SIGUSR2) failed 1000 times!");
         }
     }
 }

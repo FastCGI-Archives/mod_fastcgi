@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_pm.c,v 1.11 1999/09/10 04:37:40 roberts Exp $
+ * $Id: fcgi_pm.c,v 1.12 1999/09/13 03:19:31 roberts Exp $
  */
 
 #include "fcgi.h"
@@ -15,6 +15,39 @@ struct FuncData {
     const char *lockFileName;    /* name of the lock file to lock */
     pid_t pid;                   /* process to issue SIGTERM to   */
 };
+
+static int seteuid_root(void)
+{
+    int rc = seteuid((uid_t)0);
+    if (rc == -1) {
+        ap_log_error(FCGI_LOG_ALERT, fcgi_apache_main_server, 
+            "FastCGI: seteuid(0) failed");
+    }
+    return rc;
+}
+
+static int seteuid_user(void)
+{
+    int rc = seteuid(ap_user_id);
+    if (rc == -1) {
+        ap_log_error(FCGI_LOG_ALERT, fcgi_apache_main_server,
+            "FastCGI: seteuid(%u) failed", (unsigned)ap_user_id);
+    }
+    return rc;
+}
+
+static int fcgi_kill(pid_t pid, int sig)
+{
+    int rc;
+    if (fcgi_suexec) {
+        seteuid_root();
+    }
+    rc = kill(pid, sig);
+    if (fcgi_suexec) {
+        seteuid_user();
+    }
+    return rc;
+}
 
 /*******************************************************************************
  * Send SIGTERM to each process in the server class, remove socket and lock
@@ -33,7 +66,7 @@ static void kill_fs_procs(pool *p, fcgi_server *s)
 
     for (i = 0; i < numChildren; i++, proc++) {
         if (proc->pid > 0) {
-            kill(proc->pid, SIGTERM);
+            fcgi_kill(proc->pid, SIGTERM);
             proc->pid = -1;
         }
     }
@@ -135,7 +168,7 @@ static void dynamic_blocking_kill(void *data)
         if (fcgi_wait_for_shared_write_lock(lockFd) < 0) {
             /* This is a major problem */
         } else {
-            kill(funcData->pid, SIGTERM);
+            fcgi_kill(funcData->pid, SIGTERM);
         }
     }
     /* exit() may flush stdio buffers inherited from the parent. */
@@ -294,10 +327,15 @@ static int spawn_fs_process(
     if (fcgi_suexec != NULL) {
         char *shortName = strrchr(programName, '/') + 1;
 
+        /* Relinquish our root real uid powers */
+        seteuid_root();
+        setuid(ap_user_id);
+
         do {
             execle(fcgi_suexec, fcgi_suexec, user, group, shortName, NULL, envPtr);
         } while (errno == EINTR);
-    } else {
+    } 
+    else {
         do {
             execle(programName, programName, NULL, envPtr);
         } while (errno == EINTR);
@@ -363,9 +401,9 @@ static void reduce_priveleges(void)
 
     /* Change User */
     if (fcgi_suexec) {
-        if (seteuid(ap_user_id) == -1) {
-            ap_log_error(FCGI_LOG_ALERT, fcgi_apache_main_server,
-                "FastCGI: process manager exiting, seteuid(%u) failed", (unsigned)ap_group_id);
+        if (seteuid_user() == -1) {
+            ap_log_error(FCGI_LOG_ALERT_NOERRNO, fcgi_apache_main_server,
+                "FastCGI: process manager exiting, failed to reduce priveleges");
             exit(1);
         }
     }
@@ -619,7 +657,7 @@ NothingToDo:
                             numChildren = s->numProcesses;
                         }
                         for (i = 0; i < s->numProcesses; i++) {
-                            kill(s->procs[i].pid, SIGTERM);
+                            fcgi_kill(s->procs[i].pid, SIGTERM);
                         }
                         ap_log_error(FCGI_LOG_WARN_NOERRNO, fcgi_apache_main_server,
                             "FastCGI: restarting server \"%s\" processes, newer version found", execName);
@@ -840,7 +878,7 @@ static void dynamic_kill_idle_fs_procs(void)
                         ap_pclosef(tp, lockFd);
                     }
                 } else {
-                    kill(s->procs[i].pid, SIGTERM);
+                    fcgi_kill(s->procs[i].pid, SIGTERM);
                     ap_pclosef(tp, lockFd);
                     break;
                 }

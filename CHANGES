@@ -1,5 +1,8 @@
 Changes with mod_fastcgi 2.2.3
 
+ *) When suexec is enabled, allow the process manager to become root again in
+    order to signal applications it spawned.
+
  *) Change the "server started" log message level from INFO to WARN.
 
  *) Fix dynamic server "Connection Refused" handling.
