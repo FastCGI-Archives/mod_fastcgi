@@ -1,13 +1,9 @@
 /* 
- * fastcgi.h
- *
- * This is a header file that defines FastCGI protocol.
- *
- * $Id: fastcgi.h,v 1.2 1998/02/24 17:11:39 roy Exp $
+ * $Id: fcgi_protocol.h,v 1.1 1999/02/09 03:08:02 roberts Exp $
  */
 
-#ifndef _FASTCGI_H_
-#define _FASTCGI_H_
+#ifndef FCGI_PROTOCOL_H
+#define FCGI_PROTOCOL_H
 
 /*
  * Listening socket file number
@@ -131,5 +127,5 @@ typedef struct {
     FCGI_UnknownTypeBody body;
 } FCGI_UnknownTypeRecord;
 
-#endif	
+#endif  /* FCGI_PROTOCOL_H */
 
