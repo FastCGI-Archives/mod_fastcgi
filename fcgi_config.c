@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_config.c,v 1.39 2002/09/22 23:41:20 robs Exp $
+ * $Id: fcgi_config.c,v 1.40 2002/10/04 04:33:20 robs Exp $
  */
 
 #define CORE_PRIVATE
@@ -264,7 +264,7 @@ apcb_t fcgi_config_reset_globals(void* dummy)
     fcgi_servers = NULL;
     fcgi_config_set_fcgi_uid_n_gid(0);
     fcgi_wrapper = NULL;
-    fcgi_socket_dir = DEFAULT_SOCK_DIR;
+    fcgi_socket_dir = NULL;
     
     fcgi_dynamic_total_proc_count = 0;
     fcgi_dynamic_epoch = 0;
@@ -457,7 +457,7 @@ const char *fcgi_config_set_socket_dir(cmd_parms *cmd, void *dummy, const char *
     const char *err;
     char * arg_nc;
 
-    if (strcmp(fcgi_socket_dir, DEFAULT_SOCK_DIR) != 0) {
+    if (fcgi_socket_dir) {
         return ap_psprintf(tp, "%s %s: already defined as \"%s\"",
                         name, arg, fcgi_socket_dir);
     }

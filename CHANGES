@@ -1,5 +1,9 @@
 2.2.13
 
+ *) [*nix] Change the default socket directory from /tmp/fcgi to:
+    Apache  - logs/fastcgi
+    Apache2 - RUNTIMEDIR/fastcgi
+
  *) Add -user & -group args to FastCgiServer and FastCgiExternalServer
     for use with wrappers (in lieu of finding the user/group associated
     with a virtual host - under Apache2 this isn't accomodated).

@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.139 2002/09/21 13:55:35 robs Exp $
+ *  $Id: mod_fastcgi.c,v 1.140 2002/10/04 04:33:20 robs Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -94,9 +94,9 @@ const char *fcgi_wrapper = NULL;          /* wrapper path */
 uid_t fcgi_user_id;                       /* the run uid of Apache & PM */
 gid_t fcgi_group_id;                      /* the run gid of Apache & PM */
 
-fcgi_server *fcgi_servers = NULL; 		 /* AppClasses */
+fcgi_server *fcgi_servers = NULL;         /* AppClasses */
 
-char *fcgi_socket_dir = DEFAULT_SOCK_DIR; /* default FastCgiIpcDir */
+char *fcgi_socket_dir = NULL;             /* default FastCgiIpcDir */
 
 char *fcgi_dynamic_dir = NULL;            /* directory for the dynamic
                                                   * fastcgi apps' sockets */
@@ -267,6 +267,10 @@ static apcb_t init_module(server_rec *s, pool *p)
     fcgi_apache_main_server = s;
 
 #ifndef WIN32
+
+    if (fcgi_socket_dir == NULL)
+        fcgi_socket_dir = ap_server_root_relative(p, DEFAULT_SOCK_DIR);
+
     /* Create Unix/Domain socket directory */
     if ((err = fcgi_config_make_dir(p, fcgi_socket_dir)))
         ap_log_error(FCGI_LOG_ERR, s, "FastCGI: %s", err);

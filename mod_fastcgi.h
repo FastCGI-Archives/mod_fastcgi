@@ -1,5 +1,5 @@
 /*
- * $Id: mod_fastcgi.h,v 1.42 2002/07/29 00:06:39 robs Exp $
+ * $Id: mod_fastcgi.h,v 1.43 2002/10/04 04:33:20 robs Exp $
  */
 
 #ifndef MOD_FASTCGI_H
@@ -130,11 +130,17 @@
 
 #define DEFAULT_SOCK_DIR "\\\\.\\pipe\\FastCGI\\"
 
-#else /* ! WIN32 */
+#elif defined(APACHE2)
 
-#define DEFAULT_SOCK_DIR "/tmp/fcgi"       /* Default dir for Unix/Domain sockets */
+/* Default dir for Unix/Domain sockets */
+#define DEFAULT_SOCK_DIR  DEFAULT_REL_RUNTIMEDIR "/fastcgi"
 
-#endif /* ! WIN32 */
+#else /* !WIN32 && !APACHE2 */
+
+/* Default dir for Unix/Domain sockets */
+#define DEFAULT_SOCK_DIR "logs/fastcgi"
+
+#endif
 
 #define FCGI_MAGIC_TYPE "application/x-httpd-fcgi"
 
