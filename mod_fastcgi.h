@@ -1,11 +1,11 @@
 /*
- * $Id: mod_fastcgi.h,v 1.45 2003/01/19 16:36:49 robs Exp $
+ * $Id: mod_fastcgi.h,v 1.46 2003/06/19 02:19:40 robs Exp $
  */
 
 #ifndef MOD_FASTCGI_H
 #define MOD_FASTCGI_H
 
-#define MOD_FASTCGI_VERSION "2.4.0"
+#define MOD_FASTCGI_VERSION "2.4.1"
 
 #define FASTCGI_HANDLER_NAME "fastcgi-script"
 
