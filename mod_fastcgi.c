@@ -1077,6 +1077,20 @@ static time_t lastAnalyze = 0;                   /* last time calculation was
 static char *mbox = "/tmp/mbox";                 /* file through which the fcgi
 						  * procs communicate with WS */
 
+static int maxProcs = FCGI_DEFAULT_MAX_PROCS;
+static int minProcs = FCGI_DEFAULT_MIN_PROCS;
+static int maxClassProcs = FCGI_DEFAULT_MAX_CLASS_PROCS;
+static int killInterval = FCGI_DEFAULT_KILL_INTERVAL;
+static int updateInterval = FCGI_DEFAULT_UPDATE_INTERVAL;
+static float gain = FCGI_DEFAULT_GAIN;
+static int threshhold1 = FCGI_DEFAULT_THRESHHOLD_1;
+static int threshholdN = FCGI_DEFAULT_THRESHHOLD_N;
+static int startProcessDelay = FCGI_DEFAULT_START_PROCESS_DELAY;
+static int appConnTimeout = FCGI_DEFAULT_APP_CONN_TIMEOUT;
+static int processSlack = FCGI_DEFAULT_PROCESS_SLACK;
+static int restartDynamic = FCGI_DEFAULT_RESTART_DYNAMIC;
+static int autoUpdate = FCGI_DEFAULT_AUTOUPDATE;
+
 /*
  *----------------------------------------------------------------------
  *
@@ -2240,20 +2254,6 @@ ErrorReturn:
  *
  *----------------------------------------------------------------------
  */
-static int maxProcs = FCGI_DEFAULT_MAX_PROCS;
-static int minProcs = FCGI_DEFAULT_MIN_PROCS;
-static int maxClassProcs = FCGI_DEFAULT_MAX_CLASS_PROCS;
-static int killInterval = FCGI_DEFAULT_KILL_INTERVAL;
-static int updateInterval = FCGI_DEFAULT_UPDATE_INTERVAL;
-static float gain = FCGI_DEFAULT_GAIN;
-static int threshhold1 = FCGI_DEFAULT_THRESHHOLD_1;
-static int threshholdN = FCGI_DEFAULT_THRESHHOLD_N;
-static int startProcessDelay = FCGI_DEFAULT_START_PROCESS_DELAY;
-static int appConnTimeout = FCGI_DEFAULT_APP_CONN_TIMEOUT;
-static int processSlack = FCGI_DEFAULT_PROCESS_SLACK;
-static int restartDynamic = FCGI_DEFAULT_RESTART_DYNAMIC;
-static int autoUpdate = FCGI_DEFAULT_AUTOUPDATE;
-
 const char *FCGIConfigCmd(cmd_parms *cmd, void *dummy, char *arg)
 {
     int argc;
