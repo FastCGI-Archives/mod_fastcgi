@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.106 2001/03/05 15:45:49 robs Exp $
+ *  $Id: mod_fastcgi.c,v 1.107 2001/03/05 18:19:59 robs Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -259,7 +259,7 @@ static void init_module(server_rec *s, pool *p)
 #ifndef WIN32
     /* Create the pipe for comm with the PM */
     if (pipe(fcgi_pm_pipe) < 0) {
-    ap_log_error(FCGI_LOG_ERR, s, "FastCGI: pipe() failed");
+        ap_log_error(FCGI_LOG_ERR, s, "FastCGI: pipe() failed");
     }
 
     /* Spawn the PM only once.  Under Unix, Apache calls init() routines
@@ -651,13 +651,13 @@ static int write_to_client(fcgi_request *fr)
      * for the transmission to the client to complete. */
 #ifdef RUSSIAN_APACHE
     if (ap_rwrite(begin, count, fr->r) != count) {
-        ap_log_rerror(FCGI_LOG_INFO, fr->r,
+        ap_log_rerror(FCGI_LOG_INFO_NOERRNO, fr->r,
             "FastCGI: client stopped connection before send body completed");
         return -1;
     }
 #else
     if (ap_bwrite(fr->r->connection->client, begin, count) != (int) count) {
-        ap_log_rerror(FCGI_LOG_INFO, fr->r,
+        ap_log_rerror(FCGI_LOG_INFO_NOERRNO, fr->r,
             "FastCGI: client stopped connection before send body completed");
         return -1;
     }
@@ -676,13 +676,13 @@ static int write_to_client(fcgi_request *fr)
     if (fr->fs && fr->fs->flush) {
 #ifdef RUSSIAN_APACHE
        if (ap_rflush(fr->r)) {
-            ap_log_rerror(FCGI_LOG_INFO, fr->r,
+            ap_log_rerror(FCGI_LOG_INFO_NOERRNO, fr->r,
                 "FastCGI: client stopped connection before send body completed");
             return -1;
         }
 #else
        if (ap_bflush(fr->r->connection->client)) {
-            ap_log_rerror(FCGI_LOG_INFO, fr->r,
+            ap_log_rerror(FCGI_LOG_INFO_NOERRNO, fr->r,
                 "FastCGI: client stopped connection before send body completed");
             return -1;
         }
@@ -756,7 +756,7 @@ static void close_connection_to_fs(fcgi_request *fr)
              */
             if (fcgi_util_gettimeofday(&fr->completeTime) < 0) {
                 /* there's no point to aborting the request, just log it */
-                ap_log_error(FCGI_LOG_ERR, fr->r->server, "FastCGI: gettimeofday() failed");
+                ap_log_error(FCGI_LOG_ERR, fr->r->server, "FastCGI: can't get time of day");
             } else {
                 struct timeval qtime, rtime;
 
@@ -1331,9 +1331,15 @@ static int do_work(request_rec *r, fcgi_request *fr)
 
     /* The socket is writeable, so get the first write out of the way */
     if (fcgi_buf_get_to_fd(fr->serverOutputBuffer, fr->fd) < 0) {
-            ap_log_rerror(FCGI_LOG_ERR, r,
+#ifdef WIN32
+        if (! fr->using_npipe_io)
+            ap_log_rerror(FCGI_LOG_ERR_ERRNO, r,
                 "FastCGI: comm with server \"%s\" aborted: write failed", fr->fs_path);
-            return server_error(fr);
+        else
+#endif
+        ap_log_rerror(FCGI_LOG_ERR, r,
+            "FastCGI: comm with server \"%s\" aborted: write failed", fr->fs_path);
+        return server_error(fr);
     }
 
     while (fr->keepReadingFromFcgiApp
@@ -1394,7 +1400,7 @@ static int do_work(request_rec *r, fcgi_request *fr)
                 struct timeval qwait;
 
                 if (fcgi_util_gettimeofday(&fr->queueTime) < 0) {
-                    ap_log_rerror(FCGI_LOG_ERR, r, "FastCGI: gettimeofday() failed");
+                    ap_log_rerror(FCGI_LOG_ERR, r, "FastCGI: can't get time of day");
                     return server_error(fr);
                 }
 
@@ -1440,7 +1446,10 @@ static int do_work(request_rec *r, fcgi_request *fr)
             if (!fr->using_npipe_io) {
 #endif
             if ((status = ap_select(numFDs, &read_set, &write_set, NULL, &timeOut)) < 0) {
-                ap_log_rerror(FCGI_LOG_ERR, r,
+#ifdef WIN32
+                errno = WSAGetLastError();
+#endif
+                ap_log_rerror(FCGI_LOG_ERR_ERRNO, r,
                     "FastCGI: comm with server \"%s\" aborted: select() failed", fr->fs_path);
                 return server_error(fr);
             }
@@ -1476,7 +1485,7 @@ static int do_work(request_rec *r, fcgi_request *fr)
                     struct timeval qwait;
 
                     if (fcgi_util_gettimeofday(&fr->queueTime) < 0) {
-                    	ap_log_rerror(FCGI_LOG_ERR, r, "FastCGI: gettimeofday() failed");
+                    	ap_log_rerror(FCGI_LOG_ERR, r, "FastCGI: can't get time of day");
                     	return server_error(fr);
                     }
 
@@ -1512,12 +1521,18 @@ static int do_work(request_rec *r, fcgi_request *fr)
                 if (dynamic_first_read) {
                     dynamic_first_read = 0;
                     if (fcgi_util_gettimeofday(&fr->queueTime) < 0) {
-                        ap_log_rerror(FCGI_LOG_ERR, r, "FastCGI: gettimeofday() failed");
+                        ap_log_rerror(FCGI_LOG_ERR, r, "FastCGI: can't get time of day");
                         return server_error(fr);
                     }
                 }
 
                 if ((status = fcgi_buf_add_fd(fr->serverInputBuffer, fr->fd)) < 0) {
+#ifdef WIN32
+                    if (! fr->using_npipe_io)
+                        ap_log_rerror(FCGI_LOG_ERR_ERRNO, r,
+                            "FastCGI: comm with server \"%s\" aborted: read failed", fr->fs_path);
+                    else
+#endif
                     ap_log_rerror(FCGI_LOG_ERR, r,
                         "FastCGI: comm with server \"%s\" aborted: read failed", fr->fs_path);
                     return server_error(fr);
@@ -1538,6 +1553,12 @@ static int do_work(request_rec *r, fcgi_request *fr)
 #endif
 
                 if (fcgi_buf_get_to_fd(fr->serverOutputBuffer, fr->fd) < 0) {
+#ifdef WIN32
+                    if (! fr->using_npipe_io)
+                        ap_log_rerror(FCGI_LOG_ERR_ERRNO, r,
+                            "FastCGI: comm with server \"%s\" aborted: write failed", fr->fs_path);
+                    else
+#endif
                     ap_log_rerror(FCGI_LOG_ERR, r,
                         "FastCGI: comm with server \"%s\" aborted: write failed", fr->fs_path);
                     return server_error(fr);
@@ -1578,7 +1599,7 @@ static int do_work(request_rec *r, fcgi_request *fr)
 
         if (fr->parseHeader == SCAN_CGI_READING_HEADERS) {
             if ((err = process_headers(r, fr))) {
-                ap_log_rerror(FCGI_LOG_ERR, r,
+                ap_log_rerror(FCGI_LOG_ERR_NOERRNO, r,
                     "FastCGI: comm with server \"%s\" aborted: error parsing headers: %s", fr->fs_path, err);
                 return server_error(fr);
             }
@@ -1600,7 +1621,7 @@ static int do_work(request_rec *r, fcgi_request *fr)
             break;
 
         case SCAN_CGI_READING_HEADERS:
-            ap_log_rerror(FCGI_LOG_ERR, r,
+            ap_log_rerror(FCGI_LOG_ERR_NOERRNO, r,
                 "FastCGI: incomplete headers (%d bytes) received from server \"%s\"",
                 fr->header->nelts, fr->fs_path);
             return server_error(fr);
@@ -1637,7 +1658,8 @@ static fcgi_request *create_fcgi_request(request_rec * const r, const char *fs_p
     if (fs_path) {
         my_finfo = (struct stat *)ap_palloc(p, sizeof(struct stat));
         if (stat(fs_path, my_finfo) < 0) {
-            ap_log_rerror(FCGI_LOG_ERR, r, "FastCGI: stat() of \"%s\" failed", fs_path);
+            ap_log_rerror(FCGI_LOG_ERR_ERRNO, r, 
+                "FastCGI: stat() of \"%s\" failed", fs_path);
             return NULL;
         }
     }

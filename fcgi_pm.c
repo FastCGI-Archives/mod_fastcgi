@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_pm.c,v 1.50 2001/03/05 14:20:20 robs Exp $
+ * $Id: fcgi_pm.c,v 1.51 2001/03/05 18:16:48 robs Exp $
  */
 
 
@@ -148,7 +148,10 @@ static int init_listen_sock(fcgi_server * fs)
     /* Create the socket */
     if ((fs->listenFd = ap_psocket(fcgi_config_pool, fs->socket_addr->sa_family, SOCK_STREAM, 0)) < 0) 
     {
-        ap_log_error(FCGI_LOG_CRIT, fcgi_apache_main_server,
+#ifdef WIN32
+        errno = WSAGetLastError();  // Not sure if this will work as expected
+#endif
+        ap_log_error(FCGI_LOG_CRIT_ERRNO, fcgi_apache_main_server,
             "FastCGI: can't create %sserver \"%s\": socket() failed", 
             (fs->directive == APP_CLASS_DYNAMIC) ? "(dynamic) " : "",
             fs->fs_path);
@@ -173,10 +176,13 @@ static int init_listen_sock(fcgi_server * fs)
     {
         char port[11];
 
+#ifdef WIN32
+        errno = WSAGetLastError();
+#endif
         ap_snprintf(port, sizeof(port), "port=%d", 
             ((struct sockaddr_in *)fs->socket_addr)->sin_port);
 
-        ap_log_error(FCGI_LOG_CRIT, fcgi_apache_main_server,
+        ap_log_error(FCGI_LOG_CRIT_ERRNO, fcgi_apache_main_server,
             "FastCGI: can't create %sserver \"%s\": bind() failed [%s]", 
             (fs->directive == APP_CLASS_DYNAMIC) ? "(dynamic) " : "",
             fs->fs_path,
@@ -202,7 +208,10 @@ static int init_listen_sock(fcgi_server * fs)
     /* Set to listen */
     else if (listen(fs->listenFd, fs->listenQueueDepth))
     {
-        ap_log_error(FCGI_LOG_CRIT, fcgi_apache_main_server,
+#ifdef WIN32
+        errno = WSAGetLastError();
+#endif
+        ap_log_error(FCGI_LOG_CRIT_ERRNO, fcgi_apache_main_server,
             "FastCGI: can't create %sserver \"%s\": listen() failed", 
             (fs->directive == APP_CLASS_DYNAMIC) ? "(dynamic) " : "",
             fs->fs_path);
@@ -505,10 +514,10 @@ FailedSystemCallExit:
     fileType = ap_get_win32_interpreter(&r, &interpreter);
 
     if (fileType == eFileTypeUNKNOWN) {
-        ap_log_error(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, fcgi_apache_main_server,
-                      "FastCGI: %s is not executable; ensure interpreted scripts have "
-                      "\"#!\" as their first line", 
-                      fs->fs_path);
+        ap_log_error(FCGI_LOG_ERR_NOERRNO, fcgi_apache_main_server,
+            "FastCGI: %s is not executable; ensure interpreted scripts have "
+            "\"#!\" as their first line", 
+            fs->fs_path);
         ap_destroy_pool(tp);
         return (pid);
     }
@@ -1743,10 +1752,10 @@ ChildFound:
         dwRet = WaitForMultipleObjects(3, (HANDLE *) fcgi_event_handles, FALSE, sleepSeconds * 1000);
 
         if (dwRet == WAIT_FAILED) {
-           /* There is something seriously wrong here */
-           ap_log_error(APLOG_MARK,APLOG_CRIT|APLOG_WIN32ERROR, fcgi_apache_main_server,
-                        "FastDGI: WaitForMultipleObjects on event handles -- pm is shuting down");
-           bTimeToDie = TRUE;
+            /* There is something seriously wrong here */
+            ap_log_error(FCGI_LOG_CRIT, fcgi_apache_main_server,
+                "FastCGI: WaitForMultipleObjects() failed on event handles -- pm is shuting down");
+                bTimeToDie = TRUE;
         }
 
         if (dwRet != WAIT_TIMEOUT) {
@@ -1792,8 +1801,8 @@ ChildFound:
         }
         else {
             // Have an received an unknown event - should not happen
-            ap_log_error(APLOG_MARK,APLOG_CRIT|APLOG_WIN32ERROR, fcgi_apache_main_server,
-                         "FastCGI: WaitForMultipleobjects return an unrecognized event");
+            ap_log_error(FCGI_LOG_CRIT, fcgi_apache_main_server,
+                "FastCGI: WaitForMultipleobjects() return an unrecognized event");
             bTimeToDie = TRUE;
             dwRet = WaitForSingleObject(wait_thread, INFINITE);
             goto ProcessSigTerm;
