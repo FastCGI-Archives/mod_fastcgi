@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_protocol.c,v 1.7 1999/08/02 12:53:05 roberts Exp $
+ * $Id: fcgi_protocol.c,v 1.8 1999/08/15 20:45:34 roberts Exp $
  */
 
 
@@ -158,6 +158,23 @@ static void add_auth_cgi_vars(request_rec *r, const int compat)
     }
 }
 
+static void add_pass_header_vars(fcgi_request *fr)
+{
+    const array_header *ph = fr->dynamic ? dynamic_pass_headers : fr->fs->pass_headers;
+
+    if (ph) {
+        const char **elt = (const char **)ph->elts;
+        int i = ph->nelts;
+
+        for ( ; i; --i, ++elt) {
+            const char *val = ap_table_get(fr->r->headers_in, *elt);
+            if (val) {
+                ap_table_setn(fr->r->subprocess_env, *elt, val);
+            }
+        }
+    }
+}
+
 /*******************************************************************************
  * Build and queue the environment name-value pairs.  Returns TRUE if the
  * complete ENV was buffered, FALSE otherwise.  Note: envp is updated to
@@ -173,6 +190,7 @@ int fcgi_protocol_queue_env(request_rec *r, fcgi_request *fr, char ***envp)
 
     if (*envp == NULL) {
         ap_add_common_vars(r);
+        add_pass_header_vars(fr);
 
         if (fr->role == FCGI_RESPONDER)
 	        ap_add_cgi_vars(r);

@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.74 1999/06/10 02:49:19 roberts Exp $
+ *  $Id: mod_fastcgi.c,v 1.75 1999/08/15 20:45:35 roberts Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -55,29 +55,29 @@
  *
  * 2. Request timeouts.
  *
- *   The Apache Timeout directive allows per-server configuration of 
+ *   The Apache Timeout directive allows per-server configuration of
  *   the timeout associated with a request.  This is typically used to
- *   detect dead clients.  The timer is reset for every successful 
+ *   detect dead clients.  The timer is reset for every successful
  *   read/write.  The default value is 5min.  Thats way too long to tie
  *   up a FastCGI server.  For now this dropdead timer is used a little
- *   differently in FastCGI.  All of the FastCGI server I/O AND the 
- *   client I/O must complete within Timeout seconds.  This isn't 
- *   exactly what we want.. it should be revisited.  See http_main.h. 
+ *   differently in FastCGI.  All of the FastCGI server I/O AND the
+ *   client I/O must complete within Timeout seconds.  This isn't
+ *   exactly what we want.. it should be revisited.  See http_main.h.
  *
  *   We need a way to configurably control the timeout associated with
  *   FastCGI server exchanges AND one for client exchanges.  This could
- *   be done with the select() in doWork() (which should be rewritten 
- *   anyway).  This will allow us to free up the FastCGI as soon as 
+ *   be done with the select() in doWork() (which should be rewritten
+ *   anyway).  This will allow us to free up the FastCGI as soon as
  *   possible.
  *
  *   Earlier versions of this module used ap_soft_timeout() rather than
  *   ap_hard_timeout() and ate FastCGI server output until it completed.
- *   This precluded the FastCGI server from having to implement a 
- *   SIGPIPE handler, but meant hanging the application longer than 
- *   necessary.  SIGPIPE handler now must be installed in ALL FastCGI 
+ *   This precluded the FastCGI server from having to implement a
+ *   SIGPIPE handler, but meant hanging the application longer than
+ *   necessary.  SIGPIPE handler now must be installed in ALL FastCGI
  *   applications.  The handler should abort further processing and go
  *   back into the accept() loop.
- * 
+ *
  *   Although using ap_soft_timeout() is better than ap_hard_timeout()
  *   we have to be more careful about SIGINT handling and subsequent
  *   processing, so, for now, make it hard.
@@ -125,12 +125,13 @@ int dynamicAutoUpdate = FCGI_DEFAULT_AUTOUPDATE;
 u_int dynamicListenQueueDepth = FCGI_DEFAULT_LISTEN_Q;
 u_int dynamicInitStartDelay = DEFAULT_INIT_START_DELAY;
 u_int dynamicRestartDelay = FCGI_DEFAULT_RESTART_DELAY;
+array_header *dynamic_pass_headers = NULL;
 
 
 /*******************************************************************************
  * Construct a message and append it to the fcgi_dynamic_mbox.
  */
-static int write_to_mbox(pool * const p, const char id, const char * const fs_path, 
+static int write_to_mbox(pool * const p, const char id, const char * const fs_path,
 	 const char *user, const char * const group, const unsigned long qsecs,
      const unsigned long start_time, const unsigned long now)
 {
@@ -202,7 +203,7 @@ static void init_module(server_rec *s, pool *p)
     /* keep these handy */
     fcgi_config_pool = p;
     fcgi_apache_main_server = s;
-    
+
     /* Create Unix/Domain socket directory */
     if ((err = fcgi_config_make_dir(p, fcgi_socket_dir)))
         ap_log_error(FCGI_LOG_ERR, s, "FastCGI: %s", err);
@@ -213,10 +214,10 @@ static void init_module(server_rec *s, pool *p)
 
     /* Spawn the PM only once.  Under Unix, Apache calls init() routines
      * twice, once before detach() and once after.  Win32 doesn't detach.
-     * Under DSO, DSO modules are unloaded between the two init() calls. 
+     * Under DSO, DSO modules are unloaded between the two init() calls.
      * Under Unix, the -X switch causes two calls to init() but no detach
      * (but all subprocesses are wacked so the PM is toasted anyway)! */
-#ifndef WIN32    
+#ifndef WIN32
     if (ap_standalone && getppid() != 1)
         return;
 #endif
@@ -224,27 +225,27 @@ static void init_module(server_rec *s, pool *p)
     /* Start the Process Manager */
     fcgi_pm_pid = ap_spawn_child(p, fcgi_pm_main, NULL, kill_only_once, NULL, NULL, NULL);
     if (fcgi_pm_pid <= 0) {
-        ap_log_error(FCGI_LOG_ALERT, s, 
+        ap_log_error(FCGI_LOG_ALERT, s,
             "FastCGI: can't start the process manager, spawn_child() failed");
-    }                
+    }
 }
 
 /*******************************************************************************
  * Send a message to the process manager via the "mbox" and signal the PM if
  * the message is important.
  */
-static void send_to_pm(pool * const rp, const char id, 
+static void send_to_pm(pool * const rp, const char id,
         const char * const fs_path, const char * const user, const char *group,
         const unsigned long qsecs, const unsigned long start_time, const unsigned long now)
 {
     if (write_to_mbox(rp, id, fs_path, user, group, qsecs, start_time, now) == 0) {
         if (id != REQ_COMPLETE) {
             if (kill(fcgi_pm_pid, SIGUSR2)) {
-                ap_log_error(FCGI_LOG_ALERT, fcgi_apache_main_server, 
+                ap_log_error(FCGI_LOG_ALERT, fcgi_apache_main_server,
                     "FastCGI: can't notify process manager (is it running?), kill(SIGUSR2) failed");
             }
-        } 
-    }       
+        }
+    }
 }
 /*
  *----------------------------------------------------------------------
@@ -417,7 +418,7 @@ static const char *process_headers(request_rec *r, fcgi_request *fr)
 
         if (strcasecmp(name, "Status") == 0) {
             int statusValue = strtol(value, NULL, 10);
-        
+
             if (hasStatus) {
                 goto DuplicateNotAllowed;
             }
@@ -439,8 +440,8 @@ static const char *process_headers(request_rec *r, fcgi_request *fr)
                 hasContentType = TRUE;
                 r->content_type = ap_pstrdup(r->pool, value);
                 continue;
-            } 
-            
+            }
+
             if (strcasecmp(name, "Location") == 0) {
                 if (hasLocation) {
                     goto DuplicateNotAllowed;
@@ -449,7 +450,7 @@ static const char *process_headers(request_rec *r, fcgi_request *fr)
                 ap_table_set(r->headers_out, "Location", value);
                 continue;
             }
-            
+
             /* If the script wants them merged, it can do it */
             ap_table_add(r->err_headers_out, name, value);
             continue;
@@ -458,10 +459,10 @@ static const char *process_headers(request_rec *r, fcgi_request *fr)
             ap_table_add(fr->authHeaders, name, value);
         }
     }
-    
+
     if (fr->role != FCGI_RESPONDER)
         return NULL;
-    
+
     /*
      * Who responds, this handler or Apache?
      */
@@ -505,7 +506,7 @@ static const char *process_headers(request_rec *r, fcgi_request *fr)
 
     if (r->header_only)
         return NULL;
-    
+
     len = fr->header->nelts - (next - fr->header->elts);
     ap_assert(len >= 0);
     ap_assert(BufferLength(fr->clientOutputBuffer) == 0);
@@ -532,9 +533,9 @@ DuplicateNotAllowed:
 }
 
 /*
- * Read from the client filling both the FastCGI server buffer and the 
+ * Read from the client filling both the FastCGI server buffer and the
  * client buffer with the hopes of buffering the client data before
- * making the connect() to the FastCGI server.  This prevents slow 
+ * making the connect() to the FastCGI server.  This prevents slow
  * clients from keeping the FastCGI server in processing longer than is
  * necessary.
  */
@@ -543,10 +544,10 @@ static int read_from_client_n_queue(fcgi_request *fr)
     char *end;
     int count;
     long int countRead;
-    
+
     while (BufferFree(fr->clientInputBuffer) > 0 || BufferFree(fr->serverOutputBuffer) > 0) {
         fcgi_protocol_queue_client_buffer(fr);
-        
+
         if (fr->expectingClientContent <= 0)
             return OK;
 
@@ -556,12 +557,12 @@ static int read_from_client_n_queue(fcgi_request *fr)
 
         if ((countRead = ap_get_client_block(fr->r, end, count)) < 0)
             return -1;
-        
+
         if (countRead == 0)
             fr->expectingClientContent = 0;
         else
             fcgi_buf_add_update(fr->clientInputBuffer, countRead);
-    
+
     }
     return OK;
 }
@@ -574,7 +575,7 @@ static int write_to_client(fcgi_request *fr)
     fcgi_buf_get_block_info(fr->clientOutputBuffer, &begin, &count);
     if (count == 0)
         return OK;
-    
+
     /* If fewer than count bytes are written, an error occured.
      * ap_bwrite() typically forces a flushed write to the client, this
      * effectively results in a block (and short packets) - it should
@@ -585,34 +586,34 @@ static int write_to_client(fcgi_request *fr)
      * for the transmission to the client to complete. */
 #ifdef RUSSIAN_APACHE
     if (ap_rwrite(begin, count, fr->r) != count) {
-        ap_log_rerror(FCGI_LOG_INFO, fr->r, 
+        ap_log_rerror(FCGI_LOG_INFO, fr->r,
             "FastCGI: comm with server \"%s\" aborted: rwrite() to client failed (client aborted?)",
 #else
     if (ap_bwrite(fr->r->connection->client, begin, count) != count) {
-        ap_log_rerror(FCGI_LOG_INFO, fr->r, 
+        ap_log_rerror(FCGI_LOG_INFO, fr->r,
             "FastCGI: comm with server \"%s\" aborted: bwrite() to client failed (client aborted?)",
 #endif
             fr->fs_path);
-        
+
         return -1;
     }
 
     /* Don't bother with a wrapped buffer, limiting exposure to slow
      * clients.  The BUFF routines don't allow a writev from above,
      * and don't always memcpy to minimize small write()s, this should
-     * be fixed, but I didn't win much support for the idea on 
+     * be fixed, but I didn't win much support for the idea on
      * new-httpd - I'll have to _prove_ its a problem first.. */
-     
+
     /* The default behaviour used to be to flush with every write, but this
      * can tie up the FastCGI server longer than is necessary so its an option now */
     if (fr->fs && fr->fs->flush) {
 #ifdef RUSSIAN_APACHE
        if (ap_rflush(fr->r)) {
-            ap_log_rerror(FCGI_LOG_INFO, fr->r, 
+            ap_log_rerror(FCGI_LOG_INFO, fr->r,
                 "FastCGI: comm with server \"%s\" aborted: rflush() failed (client aborted?)",
 #else
        if (ap_bflush(fr->r->connection->client)) {
-            ap_log_rerror(FCGI_LOG_INFO, fr->r, 
+            ap_log_rerror(FCGI_LOG_INFO, fr->r,
                 "FastCGI: comm with server \"%s\" aborted: bflush() failed (client aborted?)",
 #endif
                 fr->fs_path);
@@ -653,7 +654,7 @@ static void set_uid_n_gid(request_rec *r, const char **user, const char **group)
 }
 
 /*******************************************************************************
- * Close the connection to the FastCGI server.  This is normally called by 
+ * Close the connection to the FastCGI server.  This is normally called by
  * do_work(), but may also be called as in request pool cleanup.
  */
 static void close_connection_to_fs(fcgi_request *fr)
@@ -735,17 +736,17 @@ static const char *open_connection_to_fs(fcgi_request *fr)
             if (stat(lockFileName, &lstbuf) == 0 && S_ISREG(lstbuf.st_mode)) {
                 if (dynamicAutoUpdate &&
                         (stat(fr->fs_path, &bstbuf) == 0) &&
-                        (lstbuf.st_mtime < bstbuf.st_mtime)) 
+                        (lstbuf.st_mtime < bstbuf.st_mtime))
                 {
                     struct timeval tv = {1, 0};
-                    
+
                     /* Its already running, but there's a newer one,
                      * ask the process manager to start it.
                      * it will notice that the binary is newer,
                      * and do a restart instead.
                      */
                     send_to_pm(rp, PLEASE_START, fr->fs_path, fr->user, fr->group, 0, 0, 0);
-                    
+
                     /* Avoid sleep/alarm interactions */
                     ap_select(0, NULL, NULL, NULL, &tv);
                 }
@@ -753,9 +754,9 @@ static const char *open_connection_to_fs(fcgi_request *fr)
                 result = (fr->lockFd < 0) ? (0) : (1);
             } else {
                 struct timeval tv = {1, 0};
-                
+
                 send_to_pm(rp, PLEASE_START, fr->fs_path, fr->user, fr->group, 0, 0, 0);
-    
+
                 /* Avoid sleep/alarm interactions */
                 ap_select(0, NULL, NULL, NULL, &tv);
             }
@@ -776,36 +777,36 @@ static const char *open_connection_to_fs(fcgi_request *fr)
             "FD_SETSIZE (%u), you probably need to rebuild Apache with a "
             "larger FD_SETSIZE", fr->fd, FD_SETSIZE);
     }
-    
+
     /* If appConnectTimeout is non-zero, setup do a non-blocking connect */
     if ((fr->dynamic && dynamicAppConnectTimeout) || (!fr->dynamic && fr->fs->appConnectTimeout)) {
         if ((fd_flags = fcntl(fr->fd, F_GETFL, 0)) < 0)
             return "fcntl(F_GETFL) failed";
         if (fcntl(fr->fd, F_SETFL, fd_flags | O_NONBLOCK) < 0)
             return "fcntl(F_SETFL) failed";
-    }    
-                                                                          
+    }
+
     if (fr->dynamic && gettimeofday(&fr->startTime, NULL) < 0)
         return "gettimeofday() failed";
 
     /* Connect */
     if (connect(fr->fd, (struct sockaddr *)socket_addr, socket_addr_len) == 0)
         goto ConnectionComplete;
-        
+
     /* ECONNREFUSED means the listen queue is full (or there isn't one).
-     * With dynamic I can at least make sure the PM knows this is occuring */ 
-    if (fr->dynamic && errno == ECONNREFUSED) {       
+     * With dynamic I can at least make sure the PM knows this is occuring */
+    if (fr->dynamic && errno == ECONNREFUSED) {
         /* @@@ This might be better as some other "kind" of message */
         send_to_pm(rp, PLEASE_START, fr->fs_path, fr->user, fr->group, 0, 0, 0);
-        
+
         errno = ECONNREFUSED;
     }
-        
+
     if (errno != EINPROGRESS)
         return "connect() failed";
 
     /* The connect() is non-blocking */
-    
+
     errno = 0;
 
     if (fr->dynamic) {
@@ -824,7 +825,7 @@ static const char *open_connection_to_fs(fcgi_request *fr)
                 return "gettimeofday() failed";
             if (status > 0)
                 break;
-                
+
             /* select() timed out */
             send_to_pm(rp, CONN_TIMEOUT, fr->fs_path, fr->user, fr->group,
                 (unsigned long)dynamicPleaseStartDelay*1000000, 0, 0);
@@ -834,9 +835,9 @@ static const char *open_connection_to_fs(fcgi_request *fr)
         if (status == 0) {
             return ap_psprintf(rp, "connect() timed out (appConnTimeout=%dsec)",
                 dynamicAppConnectTimeout);
-        }        
+        }
     }  /* dynamic */
-    else { 
+    else {
         tval.tv_sec = fr->fs->appConnectTimeout;
         tval.tv_usec = 0;
         FD_ZERO(&write_fds);
@@ -856,11 +857,11 @@ static const char *open_connection_to_fs(fcgi_request *fr)
     if (FD_ISSET(fr->fd, &write_fds) || FD_ISSET(fr->fd, &read_fds)) {
         int error = 0;
         NET_SIZE_T len = sizeof(error);
-        
+
         if (getsockopt(fr->fd, SOL_SOCKET, SO_ERROR, (char *)&error, &len) < 0)
             /* Solaris pending error */
             return "select() failed (Solaris pending error)";
-            
+
         if (error != 0) {
             /* Berkeley-derived pending error */
             errno = error;
@@ -874,21 +875,21 @@ ConnectionComplete:
     if ((fr->dynamic && dynamicAppConnectTimeout) || (!fr->dynamic && fr->fs->appConnectTimeout)) {
         if ((fcntl(fr->fd, F_SETFL, fd_flags)) < 0)
             return "fcntl(F_SETFL) failed";
-    }    
-        
+    }
+
 #ifdef TCP_NODELAY
     if (socket_addr->sa_family == AF_INET) {
         /* We shouldn't be sending small packets and there's no application
          * level ack of the data we send, so disable Nagle */
         int set = 1;
         setsockopt(fr->fd, IPPROTO_TCP, TCP_NODELAY, (char *)&set, sizeof(set));
-    }       
-#endif            
-    
+    }
+#endif
+
     if (fr->dynamic) {
         if (gettimeofday(&(fr->queueTime),NULL) < 0)
             return "gettimeofday() failed";
-        
+
         /* Improvise the non-blocking connect() CONN_TIMEOUT handling */
         if (dynamicAppConnectTimeout == 0) {
             int queue_wait_sec = fr->queueTime.tv_sec - fr->startTime.tv_sec;
@@ -898,17 +899,17 @@ ConnectionComplete:
             }
         }
     }
-    
+
     return NULL;
 }
 
-static int server_error(fcgi_request *fr) 
+static int server_error(fcgi_request *fr)
 {
 #if defined(SIGPIPE) && MODULE_MAGIC_NUMBER < 19990320
     /* Make sure we leave with Apache's sigpipe_handler in place */
     if (fr->apache_sigpipe_handler != NULL)
         signal(SIGPIPE, fr->apache_sigpipe_handler);
-#endif    
+#endif
     close_connection_to_fs(fr);
     ap_kill_timeout(fr->r);
     return SERVER_ERROR;
@@ -922,9 +923,9 @@ static void log_fcgi_server_stderr(void *data)
         return ;
 
     if (fr->fs_stderr && *fr->fs_stderr) {
-        ap_log_rerror(FCGI_LOG_ERR_NOERRNO, fr->r, 
+        ap_log_rerror(FCGI_LOG_ERR_NOERRNO, fr->r,
             "FastCGI: server \"%s\" stderr: %s", fr->fs_path, fr->fs_stderr);
-    }        
+    }
 }
 
 /*----------------------------------------------------------------------
@@ -953,7 +954,7 @@ static int do_work(request_rec *r, fcgi_request *fr)
 
     /* Start the Apache dropdead timer.  See comments at top of file. */
     ap_hard_timeout("buffering of FastCGI client data", r);
-    
+
     /* Read as much as possible from the client. */
     if (fr->role == FCGI_RESPONDER) {
         status = ap_setup_client_block(r, REQUEST_CHUNKED_ERROR);
@@ -962,27 +963,27 @@ static int do_work(request_rec *r, fcgi_request *fr)
             return status;
         }
         fr->expectingClientContent = (ap_should_client_block(r) != 0);
-    
+
         if (read_from_client_n_queue(fr) != OK)
             return server_error(fr);
     }
-    
+
     /* Connect to the FastCGI Application */
     ap_hard_timeout("connect() to FastCGI server", r);
     if ((err = open_connection_to_fs(fr))) {
-        ap_log_rerror(FCGI_LOG_ERR, r, 
+        ap_log_rerror(FCGI_LOG_ERR, r,
             "FastCGI: failed to connect to server \"%s\": %s", fr->fs_path, err);
         return server_error(fr);
     }
-        
+
     numFDs = fr->fd + 1;
 
-    /* @@@ We never reset the timer in this loop, most folks don't mess w/ 
+    /* @@@ We never reset the timer in this loop, most folks don't mess w/
      * Timeout directive which means we've got the 5 min default which is way
      * to long to tie up a fs.  We need a better/configurable solution that
      * uses the select */
     ap_hard_timeout("FastCGI request processing", r);
-    
+
     /* Register to get the script's stderr logged at the end of the request */
     ap_block_alarms();
     ap_register_cleanup(rp, (void *)fr, log_fcgi_server_stderr, ap_null_cleanup);
@@ -995,7 +996,7 @@ static int do_work(request_rec *r, fcgi_request *fr)
         /* If we didn't buffer all of the environment yet, buffer some more */
         if (!envSent)
             envSent = fcgi_protocol_queue_env(r, fr, &envp);
-        
+
         /* Read as much as possible from the client. */
         if (fr->role == FCGI_RESPONDER && !fr->eofSent && envSent) {
             if (read_from_client_n_queue(fr) != OK)
@@ -1037,44 +1038,44 @@ static int do_work(request_rec *r, fcgi_request *fr)
             }
 
             if ((status = ap_select(numFDs, &read_set, &write_set, NULL, timeOutPtr)) < 0) {
-                ap_log_rerror(FCGI_LOG_ERR, r, 
+                ap_log_rerror(FCGI_LOG_ERR, r,
                     "FastCGI: comm with server \"%s\" aborted: select() failed", fr->fs_path);
                 return server_error(fr);
             }
-            
+
             if (status == 0) {
                 /* select() timed out, go ahead and write to client */
                 doClientWrite = TRUE;
             }
-            
+
 #if defined(SIGPIPE) && MODULE_MAGIC_NUMBER < 19990320
             /* Disable Apache's SIGPIPE handler */
             fr->apache_sigpipe_handler = signal(SIGPIPE, SIG_IGN);
 #endif
-            
+
             /* Read from the FastCGI server */
             if (FD_ISSET(fr->fd, &read_set)) {
                 if ((status = fcgi_buf_add_fd(fr->serverInputBuffer, fr->fd)) < 0) {
-                    ap_log_rerror(FCGI_LOG_ERR, r, 
+                    ap_log_rerror(FCGI_LOG_ERR, r,
                         "FastCGI: comm with server \"%s\" aborted: read failed", fr->fs_path);
                     return server_error(fr);
                 }
-                
+
                 if (status == 0) {
                     fr->keepReadingFromFcgiApp = FALSE;
                     close_connection_to_fs(fr);
                 }
             }
-            
+
             /* Write to the FastCGI server */
             if (FD_ISSET(fr->fd, &write_set)) {
                 if (fcgi_buf_get_to_fd(fr->serverOutputBuffer, fr->fd) < 0) {
-                    ap_log_rerror(FCGI_LOG_ERR, r, 
+                    ap_log_rerror(FCGI_LOG_ERR, r,
                         "FastCGI: comm with server \"%s\" aborted: write failed", fr->fs_path);
                     return server_error(fr);
                 }
             }
-            
+
 #if defined(SIGPIPE) && MODULE_MAGIC_NUMBER < 19990320
             /* Reinstall Apache's SIGPIPE handler */
             signal(SIGPIPE, fr->apache_sigpipe_handler);
@@ -1083,33 +1084,33 @@ static int do_work(request_rec *r, fcgi_request *fr)
         } else {
             doClientWrite = TRUE;
         }
-        
+
         if (fr->role == FCGI_RESPONDER && doClientWrite) {
             if (write_to_client(fr) != OK)
                 return server_error(fr);
         }
-        
+
         if (fcgi_protocol_dequeue(rp, fr) != OK)
             return server_error(fr);
-        
+
         if (fr->keepReadingFromFcgiApp && fr->exitStatusSet) {
             /* we're done talking to the fcgi app */
             fr->keepReadingFromFcgiApp = FALSE;
             close_connection_to_fs(fr);
         }
-        
+
         if (fr->parseHeader == SCAN_CGI_READING_HEADERS) {
             if ((err = process_headers(r, fr))) {
-                ap_log_rerror(FCGI_LOG_ERR, r, 
+                ap_log_rerror(FCGI_LOG_ERR, r,
                     "FastCGI: comm with server \"%s\" aborted: error parsing headers: %s", fr->fs_path, err);
                 return server_error(fr);
             }
-        }    
-            
+        }
+
     } /* while */
 
     switch (fr->parseHeader) {
-    
+
         case SCAN_CGI_FINISHED:
             if (fr->role == FCGI_RESPONDER) {
 #ifdef RUSSIAN_APACHE
@@ -1118,18 +1119,18 @@ static int do_work(request_rec *r, fcgi_request *fr)
                 ap_bflush(r->connection->client);
 #endif
                 ap_bgetopt(r->connection->client, BO_BYTECT, &r->bytes_sent);
-            }        
+            }
             break;
-            
+
         case SCAN_CGI_READING_HEADERS:
-            ap_log_rerror(FCGI_LOG_ERR, r, 
+            ap_log_rerror(FCGI_LOG_ERR, r,
                 "FastCGI: incomplete headers (%d bytes) received from server \"%s\"",
                 fr->header->nelts, fr->fs_path);
             return server_error(fr);
-            
+
         case SCAN_CGI_BAD_HEADER:
             return server_error(fr);
-            
+
         case SCAN_CGI_INT_REDIRECT:
         case SCAN_CGI_SRV_REDIRECT:
             /*
@@ -1139,11 +1140,11 @@ static int do_work(request_rec *r, fcgi_request *fr)
              * This has to be revisited.
              */
             break;
-            
+
         default:
             ap_assert(FALSE);
     }
-    
+
     ap_kill_timeout(r);
     return OK;
 }
@@ -1155,9 +1156,9 @@ static fcgi_request *create_fcgi_request(request_rec * const r, const char *fs_p
     pool * const p = r->pool;
     fcgi_server *fs;
     fcgi_request * const fr = (fcgi_request *)ap_pcalloc(p, sizeof(fcgi_request));
-    
+
     if (fs_path) {
-        my_finfo = (struct stat *)ap_palloc(p, sizeof(struct stat));	        
+        my_finfo = (struct stat *)ap_palloc(p, sizeof(struct stat));
         if (stat(fs_path, my_finfo) < 0) {
             ap_log_rerror(FCGI_LOG_ERR, r, "FastCGI: stat() of \"%s\" failed", fs_path);
             return NULL;
@@ -1171,9 +1172,9 @@ static fcgi_request *create_fcgi_request(request_rec * const r, const char *fs_p
     fs = fcgi_util_fs_get_by_id(fs_path, r->server->server_uid, r->server->server_gid);
     if (fs == NULL) {
         /* Its a request for a dynamic FastCGI application */
-        const char * const err = 
+        const char * const err =
             fcgi_util_fs_is_path_ok(p, fs_path, my_finfo, r->server->server_uid, r->server->server_gid);
- 
+
         if (err) {
             ap_log_rerror(FCGI_LOG_ERR_NOERRNO, r, "FastCGI: invalid (dynamic) server \"%s\": %s", fs_path, err);
             return NULL;
@@ -1201,11 +1202,11 @@ static fcgi_request *create_fcgi_request(request_rec * const r, const char *fs_p
     fr->keepReadingFromFcgiApp = TRUE;
     fr->fs = fs;
     fr->fs_path = fs_path;
-    fr->authHeaders = ap_make_table(p, 10); 
+    fr->authHeaders = ap_make_table(p, 10);
     fr->dynamic = (fs == NULL) ? TRUE : FALSE;
-    
+
     set_uid_n_gid(r, &fr->user, &fr->group);
-    
+
     return fr;
 }
 
@@ -1242,7 +1243,7 @@ static int apache_is_scriptaliased(request_rec *r)
  * has to explicitly *say* "Status: 302".  If it wants to use
  * Apache redirects say "Status: 200".  See process_headers().
  */
-static int post_process_for_redirects(request_rec * const r, 
+static int post_process_for_redirects(request_rec * const r,
     const fcgi_request * const fr)
 {
     switch(fr->parseHeader) {
@@ -1264,7 +1265,7 @@ static int post_process_for_redirects(request_rec * const r,
 
         case SCAN_CGI_SRV_REDIRECT:
             return REDIRECT;
-            
+
         default:
             return OK;
     }
@@ -1277,21 +1278,21 @@ static int content_handler(request_rec *r)
 {
     fcgi_request *fr = NULL;
     int ret;
-    
+
     /* We don't do anything but GET and POST */
     if (r->method_number == M_OPTIONS) {
         r->allowed |= (1 << M_GET);
         r->allowed |= (1 << M_POST);
         return DECLINED;
     }
-    
+
     /* Setup a new FastCGI request */
     if ((fr = create_fcgi_request(r, NULL)) == NULL)
         return SERVER_ERROR;
 
     /* If its a dynamic invocation, make sure scripts are OK here */
     if (fr->dynamic && !(ap_allow_options(r) & OPT_EXECCGI) && !apache_is_scriptaliased(r)) {
-        ap_log_rerror(FCGI_LOG_ERR_NOERRNO, r, 
+        ap_log_rerror(FCGI_LOG_ERR_NOERRNO, r,
             "FastCGI: \"ExecCGI Option\" is off in this directory: %s", r->uri);
         return SERVER_ERROR;
     }
@@ -1304,14 +1305,14 @@ static int content_handler(request_rec *r)
     return post_process_for_redirects(r, fr);
 }
 
- 
+
 static int post_process_auth_passed_header(table *t, const char *key, const char * const val)
 {
 	if (strncasecmp(key, "Variable-", 9) == 0)
         key += 9;
-        
+
     ap_table_setn(t, key, val);
-    return 1;    
+    return 1;
 }
 
 static int post_process_auth_passed_compat_header(table *t, const char *key, const char * const val)
@@ -1319,9 +1320,9 @@ static int post_process_auth_passed_compat_header(table *t, const char *key, con
 	if (strncasecmp(key, "Variable-", 9) == 0)
         ap_table_setn(t, key + 9, val);
 
-    return 1;    
+    return 1;
 }
-    
+
 static int post_process_auth_failed_header(table * const t, const char * const key, const char * const val)
 {
     ap_table_setn(t, key, val);
@@ -1329,9 +1330,9 @@ static int post_process_auth_failed_header(table * const t, const char * const k
 }
 
 static void post_process_auth(fcgi_request * const fr, const int passed)
-{   
+{
     request_rec * const r = fr->r;
- 
+
     /* Restore the saved subprocess_env because we muddied ours up */
     r->subprocess_env = fr->saved_subprocess_env;
 
@@ -1350,7 +1351,7 @@ static void post_process_auth(fcgi_request * const fr, const int passed)
              (void *)r->err_headers_out, fr->authHeaders, NULL);
     }
 
-    /* @@@ Restore these.. its a hack until I rewrite the header handling */ 
+    /* @@@ Restore these.. its a hack until I rewrite the header handling */
     r->status = HTTP_OK;
     r->status_line = NULL;
 }
@@ -1365,26 +1366,26 @@ static int check_user_authentication(request_rec *r)
 
     if (dir_config->authenticator == NULL)
 	    return DECLINED;
-    
+
     /* Get the user password */
     if ((res = ap_get_basic_auth_pw(r, &password)) != OK)
         return res;
-   
+
     if ((fr = create_fcgi_request(r, dir_config->authenticator)) == NULL)
         return SERVER_ERROR;
-    
+
     /* Save the existing subprocess_env, because we're gonna muddy it up */
     fr->saved_subprocess_env = ap_copy_table(r->pool, r->subprocess_env);
-    
+
     ap_table_setn(r->subprocess_env, "REMOTE_PASSWD", password);
     ap_table_setn(r->subprocess_env, "FCGI_APACHE_ROLE", "AUTHENTICATOR");
-    
-    /* The FastCGI Protocol doesn't differentiate authentication */    
+
+    /* The FastCGI Protocol doesn't differentiate authentication */
     fr->role = FCGI_AUTHORIZER;
-    
+
     /* Do we need compatibility mode? */
     fr->auth_compat = (dir_config->authenticator_options & FCGI_COMPAT);
-    
+
     if ((res = do_work(r, fr)) != OK)
         goto AuthenticationFailed;
 
@@ -1393,22 +1394,22 @@ static int check_user_authentication(request_rec *r)
 
     /* A redirect shouldn't be allowed during the authentication phase */
     if (ap_table_get(r->headers_out, "Location") != NULL) {
-        ap_log_rerror(FCGI_LOG_ERR_NOERRNO, r, 
+        ap_log_rerror(FCGI_LOG_ERR_NOERRNO, r,
             "FastCGI: FastCgiAuthenticator \"%s\" redirected (not allowed)",
             dir_config->authenticator);
         goto AuthenticationFailed;
     }
-            
-    if (authenticated) 
+
+    if (authenticated)
         return OK;
-    
+
 AuthenticationFailed:
     if (!(dir_config->authenticator_options & FCGI_AUTHORITATIVE))
         return DECLINED;
-        
+
     /* @@@ Probably should support custom_responses */
     ap_note_basic_auth_failure(r);
-    ap_log_rerror(FCGI_LOG_ERR_NOERRNO, r, 
+    ap_log_rerror(FCGI_LOG_ERR_NOERRNO, r,
         "FastCGI: authentication failed for user \"%s\": %s", r->connection->user, r->uri);
     return (res == OK) ? AUTH_REQUIRED : res;
 }
@@ -1422,25 +1423,25 @@ static int check_user_authorization(request_rec *r)
 
     if (dir_config->authorizer == NULL)
 	    return DECLINED;
-    
+
     /* @@@ We should probably honor the existing parameters to the require directive
-     * as well as allow the definition of new ones (or use the basename of the 
+     * as well as allow the definition of new ones (or use the basename of the
      * FastCGI server and pass the rest of the directive line), but for now keep
      * it simple. */
-    
+
     if ((fr = create_fcgi_request(r, dir_config->authorizer)) == NULL)
         return SERVER_ERROR;
-    
+
     /* Save the existing subprocess_env, because we're gonna muddy it up */
     fr->saved_subprocess_env = ap_copy_table(r->pool, r->subprocess_env);
-    
+
     ap_table_setn(r->subprocess_env, "FCGI_APACHE_ROLE", "AUTHORIZER");
-       
+
     fr->role = FCGI_AUTHORIZER;
-    
+
     /* Do we need compatibility mode? */
     fr->auth_compat = (dir_config->authenticator_options & FCGI_COMPAT);
-  
+
     if ((res = do_work(r, fr)) != OK)
         goto AuthorizationFailed;
 
@@ -1449,22 +1450,22 @@ static int check_user_authorization(request_rec *r)
 
     /* A redirect shouldn't be allowed during the authorization phase */
     if (ap_table_get(r->headers_out, "Location") != NULL) {
-        ap_log_rerror(FCGI_LOG_ERR_NOERRNO, r, 
+        ap_log_rerror(FCGI_LOG_ERR_NOERRNO, r,
             "FastCGI: FastCgiAuthorizer \"%s\" redirected (not allowed)",
             dir_config->authorizer);
         goto AuthorizationFailed;
     }
-            
-    if (authorized) 
+
+    if (authorized)
         return OK;
-    
+
 AuthorizationFailed:
     if (!(dir_config->authorizer_options & FCGI_AUTHORITATIVE))
         return DECLINED;
-    
+
     /* @@@ Probably should support custom_responses */
     ap_note_basic_auth_failure(r);
-    ap_log_rerror(FCGI_LOG_ERR_NOERRNO, r, 
+    ap_log_rerror(FCGI_LOG_ERR_NOERRNO, r,
         "FastCGI: authorization failed for user \"%s\": %s", r->connection->user, r->uri);
     return (res == OK) ? AUTH_REQUIRED : res;
 }
@@ -1477,22 +1478,22 @@ static int check_access(request_rec *r)
         (fcgi_dir_config *)ap_get_module_config(r->per_dir_config, &fastcgi_module);
 
     if (dir_config == NULL || dir_config->access_checker == NULL)
-		return DECLINED; 
-           
+		return DECLINED;
+
     if ((fr = create_fcgi_request(r, dir_config->access_checker)) == NULL)
         return SERVER_ERROR;
-    
+
     /* Save the existing subprocess_env, because we're gonna muddy it up */
     fr->saved_subprocess_env = ap_copy_table(r->pool, r->subprocess_env);
-    
+
     ap_table_setn(r->subprocess_env, "FCGI_APACHE_ROLE", "ACCESS_CHECKER");
-    
-    /* The FastCGI Protocol doesn't differentiate access control */    
+
+    /* The FastCGI Protocol doesn't differentiate access control */
     fr->role = FCGI_AUTHORIZER;
-  
+
     /* Do we need compatibility mode? */
     fr->auth_compat = (dir_config->authenticator_options & FCGI_COMPAT);
-    
+
     if ((res = do_work(r, fr)) != OK)
         goto AccessFailed;
 
@@ -1501,19 +1502,19 @@ static int check_access(request_rec *r)
 
     /* A redirect shouldn't be allowed during the access check phase */
     if (ap_table_get(r->headers_out, "Location") != NULL) {
-        ap_log_rerror(FCGI_LOG_ERR_NOERRNO, r, 
+        ap_log_rerror(FCGI_LOG_ERR_NOERRNO, r,
             "FastCGI: FastCgiAccessChecker \"%s\" redirected (not allowed)",
             dir_config->access_checker);
         goto AccessFailed;
     }
-            
-    if (access_allowed) 
+
+    if (access_allowed)
         return OK;
-    
+
 AccessFailed:
     if (!(dir_config->access_checker_options & FCGI_AUTHORITATIVE))
         return DECLINED;
-    
+
     /* @@@ Probably should support custom_responses */
     ap_log_rerror(FCGI_LOG_ERR_NOERRNO, r, "FastCGI: access denied: %s", r->uri);
     return (res == OK) ? FORBIDDEN : res;
@@ -1524,36 +1525,36 @@ AccessFailed:
 command_rec fastcgi_cmds[] = {
     { "AppClass",      fcgi_config_new_static_server, NULL, RSRC_CONF, RAW_ARGS, NULL },
     { "FastCgiServer", fcgi_config_new_static_server, NULL, RSRC_CONF, RAW_ARGS, NULL },
-    
+
     { "ExternalAppClass",      fcgi_config_new_external_server, NULL, RSRC_CONF, RAW_ARGS, NULL },
     { "FastCgiExternalServer", fcgi_config_new_external_server, NULL, RSRC_CONF, RAW_ARGS, NULL },
 
     { "FastCgiIpcDir", fcgi_config_set_socket_dir, NULL, RSRC_CONF, TAKE1, NULL },
-    
+
     { "FastCgiSuexec", fcgi_config_set_suexec, NULL, RSRC_CONF, TAKE1, NULL },
-    
+
     { "FCGIConfig",    fcgi_config_set_config, NULL, RSRC_CONF, RAW_ARGS, NULL },
     { "FastCgiConfig", fcgi_config_set_config, NULL, RSRC_CONF, RAW_ARGS, NULL },
-    
+
     { "FastCgiAuthenticator", fcgi_config_new_auth_server,
-        (void *)FCGI_AUTH_TYPE_AUTHENTICATOR, ACCESS_CONF, TAKE12, 
+        (void *)FCGI_AUTH_TYPE_AUTHENTICATOR, ACCESS_CONF, TAKE12,
         "a fastcgi-script path (absolute or relative to ServerRoot) followed by an optional -compat" },
-    { "FastCgiAuthenticatorAuthoritative", fcgi_config_set_authoritative_slot, 
-        (void *)XtOffsetOf(fcgi_dir_config, authenticator_options), ACCESS_CONF, FLAG, 
+    { "FastCgiAuthenticatorAuthoritative", fcgi_config_set_authoritative_slot,
+        (void *)XtOffsetOf(fcgi_dir_config, authenticator_options), ACCESS_CONF, FLAG,
         "Set to 'off' to allow authentication to be passed along to lower modules upon failure" },
-        
-    { "FastCgiAuthorizer", fcgi_config_new_auth_server, 
-        (void *)FCGI_AUTH_TYPE_AUTHORIZER, ACCESS_CONF, TAKE12, 
+
+    { "FastCgiAuthorizer", fcgi_config_new_auth_server,
+        (void *)FCGI_AUTH_TYPE_AUTHORIZER, ACCESS_CONF, TAKE12,
         "a fastcgi-script path (absolute or relative to ServerRoot) followed by an optional -compat" },
-    { "FastCgiAuthorizerAuthoritative", fcgi_config_set_authoritative_slot, 
-        (void *)XtOffsetOf(fcgi_dir_config, authorizer_options), ACCESS_CONF, FLAG, 
+    { "FastCgiAuthorizerAuthoritative", fcgi_config_set_authoritative_slot,
+        (void *)XtOffsetOf(fcgi_dir_config, authorizer_options), ACCESS_CONF, FLAG,
         "Set to 'off' to allow authorization to be passed along to lower modules upon failure" },
-        
+
     { "FastCgiAccessChecker", fcgi_config_new_auth_server,
-        (void *)FCGI_AUTH_TYPE_ACCESS_CHECKER, ACCESS_CONF, TAKE12, 
+        (void *)FCGI_AUTH_TYPE_ACCESS_CHECKER, ACCESS_CONF, TAKE12,
         "a fastcgi-script path (absolute or relative to ServerRoot) followed by an optional -compat" },
-    { "FastCgiAccessCheckerAuthoritative", fcgi_config_set_authoritative_slot, 
-        (void *)XtOffsetOf(fcgi_dir_config, access_checker_options), ACCESS_CONF, FLAG, 
+    { "FastCgiAccessCheckerAuthoritative", fcgi_config_set_authoritative_slot,
+        (void *)XtOffsetOf(fcgi_dir_config, access_checker_options), ACCESS_CONF, FLAG,
         "Set to 'off' to allow access control to be passed along to lower modules upon failure" },
     { NULL }
 };

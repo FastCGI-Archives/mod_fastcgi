@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_config.c,v 1.9 1999/07/30 21:15:15 roberts Exp $
+ * $Id: fcgi_config.c,v 1.10 1999/08/15 20:45:33 roberts Exp $
  */
 
 #include "fcgi.h"
@@ -100,6 +100,21 @@ static const char *get_env_var(pool *p, const char **arg, const char **envp, int
     return NULL;
 }
 
+static const char *get_pass_header(pool *p, const char **arg, array_header **array)
+{
+    const char **header;
+
+    if (!*array) {
+        *array = ap_make_array(p, 10, sizeof(char*));
+    }
+
+    header = (const char **)ap_push_array(*array);
+
+    *header = ap_getword_conf(p, arg);
+    if (!*header)
+        return "\"\"";
+}
+
 /*******************************************************************************
  * Return a "standard" message for common configuration errors.
  */
@@ -173,6 +188,7 @@ void fcgi_config_reset_globals(void* dummy)
     dynamicListenQueueDepth = FCGI_DEFAULT_LISTEN_Q;
     dynamicInitStartDelay = DEFAULT_INIT_START_DELAY;
     dynamicRestartDelay = FCGI_DEFAULT_RESTART_DELAY;
+    dynamic_pass_headers = NULL;
 }
 
 /*******************************************************************************
@@ -503,6 +519,10 @@ const char *fcgi_config_new_static_server(cmd_parms *cmd, void *dummy, const cha
             if ((err = get_env_var(p, &arg, envp, &envc)))
                 return invalid_value(tp, name, fs_path, option, err);
         }
+        else if (strcasecmp(option, "-pass-header") == 0) {
+            if ((err = get_pass_header(p, &arg, &s->pass_headers)))
+                return invalid_value(tp, name, fs_path, option, err);
+        }
         else if (strcasecmp(option, "-flush") == 0) {
             s->flush = 1;
         }
@@ -605,6 +625,10 @@ const char *fcgi_config_new_external_server(cmd_parms *cmd, void *dummy, const c
         }
         else if (strcasecmp(option, "-appConnTimeout") == 0) {
             if ((err = get_u_int(tp, &arg, &s->appConnectTimeout, 0)))
+                return invalid_value(tp, name, fs_path, option, err);
+        }
+        else if (strcasecmp(option, "-pass-header") == 0) {
+            if ((err = get_pass_header(p, &arg, &s->pass_headers)))
                 return invalid_value(tp, name, fs_path, option, err);
         }
         else if (strcasecmp(option, "-flush") == 0) {
@@ -711,6 +735,10 @@ const char *fcgi_config_set_config(cmd_parms *cmd, void *dummy, const char *arg)
         }
         else if (strcasecmp(option, "-initial-env") == 0) {
             if ((err = get_env_var(p, &arg, envp, &envc)))
+                return invalid_value(tp, name, NULL, option, err);
+        }
+        else if (strcasecmp(option, "-pass-header") == 0) {
+            if ((err = get_pass_header(p, &arg, &dynamic_pass_headers)))
                 return invalid_value(tp, name, NULL, option, err);
         }
         else if (strcasecmp(option, "-appConnTimeout") == 0) {

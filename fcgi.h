@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi.h,v 1.12 1999/08/04 18:13:18 roberts Exp $
+ * $Id: fcgi.h,v 1.13 1999/08/15 20:45:33 roberts Exp $
  */
 
 #ifndef FCGI_H
@@ -61,6 +61,7 @@ typedef struct _FcgiProcessInfo {
 typedef struct _FastCgiServerInfo {
 	int flush;
     const char *fs_path;            /* pathname of executable */
+	array_header *pass_headers;		/* names of headers to pass in the env */
     const char **envp;              /* if NOT NULL, this is the env to send
                                      * to the fcgi app when starting a server
                                      * managed app. */
@@ -362,6 +363,7 @@ extern int dynamicAutoUpdate;
 extern u_int dynamicListenQueueDepth;
 extern u_int dynamicInitStartDelay;
 extern u_int dynamicRestartDelay;
+extern array_header *dynamic_pass_headers;
 
 extern module MODULE_VAR_EXPORT fastcgi_module;
 
