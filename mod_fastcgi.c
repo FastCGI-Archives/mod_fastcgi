@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.36 1998/05/26 19:05:25 roberts Exp $
+ *  $Id: mod_fastcgi.c,v 1.37 1998/05/27 12:45:09 roberts Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -109,6 +109,9 @@ typedef gid_t long;
  * Apache header files
  */
 #include "httpd.h"
+#if APACHE_RELEASE >= 1030000
+#include "compat.h"
+#endif
 #include "http_config.h"
 #include "http_request.h"
 #include "http_core.h"
@@ -3464,7 +3467,11 @@ ProcessSigTerm:
  *----------------------------------------------------------------------
  */
 static pid_t procMgr = -1;
+#if APACHE_RELEASE < 1030000
 int FCGIProcMgrBoot(void *data)
+#else
+int FCGIProcMgrBoot(void *data, child_info *child_info)
+#endif
 {
     int n;
     char buf[IOBUFSIZE];
@@ -3554,6 +3561,7 @@ void ModFastCgiInit(server_rec *s, pool *p)
     spawn_child(p, (void *)FCGIProcMgrBoot, NULL, 
             kill_always, NULL, &fp);
 #else
+    /* *** Might want to use a different kill_condition here. */
     spawn_child(p, FCGIProcMgrBoot, NULL, 
             kill_always, NULL, &fp);
 #endif
