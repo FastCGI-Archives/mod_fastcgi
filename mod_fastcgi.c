@@ -1493,16 +1493,8 @@ static void FreeFcgiServerInfo(FastCgiServerInfo *serverInfoPtr)
         numChildren = serverInfoPtr->numProcesses;
     }
 
-    for (i = 0; i < numChildren; i++) {
-        if(processInfoPtr->pid != -1) {
-            kill(processInfoPtr->pid, SIGTERM);
-            processInfoPtr->pid = -1;
-        }
-        OS_FreeIpcAddr(processInfoPtr->ipcAddr);
-    }
-
-    for(i = 0; i < serverInfoPtr->numProcesses; i ++, processInfoPtr++) {
-        if(processInfoPtr->pid != -1) {
+    for (i = 0; i < numChildren; i++, processInfoPtr++) {
+        if(processInfoPtr->pid != -1 && processInfoPtr->pid != 0) {
             kill(processInfoPtr->pid, SIGTERM);
             processInfoPtr->pid = -1;
         }
