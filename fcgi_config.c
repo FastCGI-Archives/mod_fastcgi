@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_config.c,v 1.48 2003/06/24 01:31:24 robs Exp $
+ * $Id: fcgi_config.c,v 1.49 2003/10/30 01:08:34 robs Exp $
  */
 
 #define CORE_PRIVATE
@@ -657,8 +657,8 @@ const char *fcgi_config_new_static_server(cmd_parms *cmd, void *dummy, const cha
 
 #ifdef WIN32
 
-    // TCP FastCGI applications require SystemRoot be present in the environment
-    // Put it in both for consistency to the application
+    /* TCP FastCGI applications require SystemRoot be present in the environment
+     * Put it in both for consistency to the application */
     fcgi_config_set_env_var(p, envp, &envc, "SystemRoot");
 
     mutex = CreateMutex(NULL, FALSE, fs_path);

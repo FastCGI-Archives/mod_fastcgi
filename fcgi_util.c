@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_util.c,v 1.29 2002/10/22 02:44:15 robs Exp $
+ * $Id: fcgi_util.c,v 1.30 2003/10/30 01:08:34 robs Exp $
  */
 
 #include "fcgi.h"
@@ -248,9 +248,9 @@ fcgi_util_check_access(pool *tp,
     if (mode & _S_IWRITE && !(statBuf->st_mode & _S_IWRITE))
         return "write not allowed";
     
-    // I don't think this works on FAT, but since I don't know how to check..
-    // if (mode & _S_IEXEC && !(statBuf->st_mode & _S_IEXEC))
-    //     return "execute not allowed";
+    /* I don't think this works on FAT, but since I don't know how to check..
+     * if (mode & _S_IEXEC && !(statBuf->st_mode & _S_IEXEC))
+     *     return "execute not allowed"; */
 #endif
 
 #if  !defined(__EMX__) && !defined(WIN32)
@@ -508,7 +508,7 @@ fcgi_util_fs_create_procs(pool *p, int num)
 int fcgi_util_ticks(struct timeval * tv) 
 {
 #ifdef WIN32
-    // millisecs is sufficent granularity
+    /* millisecs is sufficent granularity */
     DWORD millis = GetTickCount();
 
     tv->tv_sec = millis / 1000;

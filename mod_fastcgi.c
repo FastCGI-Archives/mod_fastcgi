@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.154 2003/10/30 00:59:21 robs Exp $
+ *  $Id: mod_fastcgi.c,v 1.155 2003/10/30 01:08:34 robs Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -1114,7 +1114,7 @@ static int open_connection_to_fs(fcgi_request *fr)
         if (stat(socket_path, &sock_stat) == 0)
 #endif
         {
-            // It exists
+            /* It exists */
             if (dynamicAutoUpdate) 
             {
                 struct stat app_stat;
@@ -1223,7 +1223,7 @@ static int open_connection_to_fs(fcgi_request *fr)
         fcgi_util_ticks(&fr->startTime);
 
         {
-            // xxx this handle should live somewhere (see CloseHandle()s below too)
+            /* xxx this handle should live somewhere (see CloseHandle()s below too) */
             char * wait_npipe_mutex_name, * cp;
             wait_npipe_mutex_name = cp = ap_pstrdup(rp, socket_path);
             while ((cp = strchr(cp, '\\'))) *cp = '/';
@@ -1287,10 +1287,10 @@ static int open_connection_to_fs(fcgi_request *fr)
                 fr->fd = (SOCKET) CreateFile(socket_path, 
                     GENERIC_READ | GENERIC_WRITE, 
                     FILE_SHARE_READ | FILE_SHARE_WRITE, 
-                    NULL,                  // no security attributes
-                    OPEN_EXISTING,         // opens existing pipe 
+                    NULL,                  /* no security attributes */
+                    OPEN_EXISTING,         /* opens existing pipe */
                     FILE_FLAG_OVERLAPPED, 
-                    NULL);                 // no template file 
+                    NULL);                 /* no template file */
 
                 if (fr->fd != (SOCKET) INVALID_HANDLE_VALUE) 
                 {
@@ -1346,7 +1346,7 @@ static int open_connection_to_fs(fcgi_request *fr)
 
 #ifdef WIN32
     if (fr->fd == INVALID_SOCKET) {
-        errno = WSAGetLastError();  // Not sure this is going to work as expected
+        errno = WSAGetLastError();  /* Not sure this is going to work as expected */
 #else    
     if (fr->fd < 0) {
 #endif
@@ -2915,7 +2915,7 @@ static const command_rec fastcgi_cmds[] =
 
 static void register_hooks(apr_pool_t * p)
 {
-    //    ap_hook_pre_config(x_pre_config, NULL, NULL, APR_HOOK_MIDDLE);
+    /* ap_hook_pre_config(x_pre_config, NULL, NULL, APR_HOOK_MIDDLE); */
     ap_hook_post_config(init_module, NULL, NULL, APR_HOOK_MIDDLE);
     ap_hook_child_init(fcgi_child_init, NULL, NULL, APR_HOOK_MIDDLE);
     ap_hook_handler(content_handler, NULL, NULL, APR_HOOK_MIDDLE);

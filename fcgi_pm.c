@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_pm.c,v 1.88 2003/10/28 02:26:12 robs Exp $
+ * $Id: fcgi_pm.c,v 1.89 2003/10/30 01:08:34 robs Exp $
  */
 
 
@@ -195,7 +195,7 @@ static int init_listen_sock(fcgi_server * fs)
     if ((fs->listenFd = socket(fs->socket_addr->sa_family, SOCK_STREAM, 0)) < 0) 
     {
 #ifdef WIN32
-        errno = WSAGetLastError();  // Not sure if this will work as expected
+        errno = WSAGetLastError();  /* Not sure if this will work as expected */
 #endif
         ap_log_error(FCGI_LOG_CRIT_ERRNO, fcgi_apache_main_server,
             "FastCGI: can't create %sserver \"%s\": socket() failed", 
@@ -646,7 +646,7 @@ CLEANUP:
     memset(&pi, 0, sizeof(pi));
     memset(&r,  0, sizeof(r));
 
-    // Can up a fake request to pass to ap_get_win32_interpreter()
+    /* Can up a fake request to pass to ap_get_win32_interpreter() */
     r.per_dir_config = fcgi_apache_main_server->lookup_defaults;
     r.server = fcgi_apache_main_server;
     r.filename = (char *) fs->fs_path;
@@ -685,7 +685,7 @@ CLEANUP:
     si.wShowWindow = SW_HIDE;
     si.hStdInput   = listen_handle;
 
-    // XXX These should be open to the error_log
+    /* XXX These should be open to the error_log */
     si.hStdOutput  = INVALID_HANDLE_VALUE;
     si.hStdError   = INVALID_HANDLE_VALUE;
 
@@ -1495,8 +1495,8 @@ static void dynamic_kill_idle_fs_procs(void)
 
 #ifdef WIN32
 
-// This is a little bogus, there's gotta be a better way to do this
-// Can we use WaitForMultipleObjects()
+/* This is a little bogus, there's gotta be a better way to do this
+ * Can we use WaitForMultipleObjects() */
 #define FCGI_PROC_WAIT_TIME 100
 
 void child_wait_thread_main(void *dummy) {
@@ -1641,7 +1641,7 @@ void fcgi_pm_main(void *dummy)
 #endif
 
 #ifdef WIN32
-    // Add SystemRoot to the dynamic environment
+    /* Add SystemRoot to the dynamic environment */
     char ** envp = dynamicEnvp;
     for (i = 0; *envp; ++i) {
         ++envp;
@@ -2058,7 +2058,7 @@ ChildFound:
             goto ProcessSigTerm;
         }
         else {
-            // Have an received an unknown event - should not happen
+            /* Have an received an unknown event - should not happen */
             ap_log_error(FCGI_LOG_CRIT, fcgi_apache_main_server,
                 "FastCGI: WaitForMultipleobjects() return an unrecognized event");
             
