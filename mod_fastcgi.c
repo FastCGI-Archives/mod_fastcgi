@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.102 2001/02/19 03:29:33 robs Exp $
+ *  $Id: mod_fastcgi.c,v 1.103 2001/02/19 03:43:10 robs Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -789,21 +789,22 @@ static int set_nonblocking(SOCKET fd, int nonblocking)
 
 static int set_nonblocking(int fd, int nonblocking)
 {
+    int nb_flag = 0;
     int fd_flags = fcntl(fd, F_GETFL, 0);
 
     if (fd_flags < 0) return -1;
 
 #if defined(O_NONBLOCK)
-    int nb_flag = O_NONBLOCK;
+    nb_flag = O_NONBLOCK;
 #elif defined(O_NDELAY)
-    int nb_flag = O_NDELAY;
+    nb_flag = O_NDELAY;
 #elif defined(FNDELAY)
-    int nb_flag = FNDELAY;
+    nb_flag = FNDELAY;
 #else
 #error "TODO - don't read from app until all data from client is posted."
 #endif
 
-    fd_flags = (nonblocking) ? (fd_flags | nb_flag) : (fd_flags & ^nb_flag);
+    fd_flags = (nonblocking) ? (fd_flags | nb_flag) : (fd_flags & ~nb_flag);
 
     return fcntl(fd, F_SETFL, fd_flags);
 }
