@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_buf.c,v 1.8 2000/05/10 05:15:47 robs Exp $
+ * $Id: fcgi_buf.c,v 1.9 2001/02/19 03:18:56 robs Exp $
  */
 
 #include "fcgi.h"
@@ -235,17 +235,29 @@ static int fd_write(SOCKET fd, char * buf, int len)
         int rv = GetLastError();
 
         if (rv == ERROR_INVALID_PARAMETER) {
+
+            // Then it must be a real socket..
             bytes_sent = send(fd, buf, len, 0);
             if (bytes_sent == SOCKET_ERROR) {
-                errno = WSAGetLastError();
-                bytes_sent = -1;
+                rv = WSAGetLastError();
+                if (rv == WSAEWOULDBLOCK) {
+                    bytes_sent = 0;
+                }
+                else {
+                    bytes_sent = -1;
+                    errno = rv;
+                }
             }
         }
+        else if (rv == WSAEWOULDBLOCK) {
+            bytes_sent = 0;
+        }
         else {
-            errno = rv;
             bytes_sent = -1;
+            errno = rv;
         }
     }
+
     return bytes_sent;
 }
 
@@ -254,9 +266,17 @@ static int fd_write(SOCKET fd, char * buf, int len)
 static int fd_write(int fd, char * buf, int len)
 {
     int bytes_sent;
+
     do {
         bytes_sent = write(fd, buf, len);
+
+#ifdef EWOULDBLOCK
+        if (bytes_sent == -1 && errno == EWOULDBLOCK) {
+            bytes_sent = 0;
+        }
+#endif
     } while (bytes_sent == -1 && errno == EINTR);
+
     return bytes_sent;
 }
 
@@ -276,13 +296,11 @@ static int fd_write(int fd, char * buf, int len)
  */
 #ifdef WIN32
 int fcgi_buf_get_to_fd(Buffer *buf, SOCKET fd)
-#else
-int fcgi_buf_get_to_fd(Buffer *buf, int fd)
-#endif
 {
-#ifdef WIN32
     DWORD len;
 #else
+int fcgi_buf_get_to_fd(Buffer *buf, int fd)
+{
     size_t len;
 #endif
 
