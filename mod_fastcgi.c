@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.84 1999/09/26 02:15:04 roberts Exp $
+ *  $Id: mod_fastcgi.c,v 1.85 1999/10/05 03:48:53 roberts Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -584,16 +584,17 @@ static int write_to_client(fcgi_request *fr)
 #ifdef RUSSIAN_APACHE
     if (ap_rwrite(begin, count, fr->r) != count) {
         ap_log_rerror(FCGI_LOG_INFO, fr->r,
-            "FastCGI: comm with server \"%s\" aborted: rwrite() to client failed (client aborted?)",
+            "FastCGI: client stopped connection before send body completed");
+        return -1;
+    }
 #else
     if (ap_bwrite(fr->r->connection->client, begin, count) != count) {
         ap_log_rerror(FCGI_LOG_INFO, fr->r,
-            "FastCGI: comm with server \"%s\" aborted: bwrite() to client failed (client aborted?)",
-#endif
-            fr->fs_path);
-
+            "FastCGI: client stopped connection before send body completed");
         return -1;
     }
+#endif
+
 
     /* Don't bother with a wrapped buffer, limiting exposure to slow
      * clients.  The BUFF routines don't allow a writev from above,
@@ -607,15 +608,16 @@ static int write_to_client(fcgi_request *fr)
 #ifdef RUSSIAN_APACHE
        if (ap_rflush(fr->r)) {
             ap_log_rerror(FCGI_LOG_INFO, fr->r,
-                "FastCGI: comm with server \"%s\" aborted: rflush() failed (client aborted?)",
+                "FastCGI: client stopped connection before send body completed");
+            return -1;
+        }
 #else
        if (ap_bflush(fr->r->connection->client)) {
             ap_log_rerror(FCGI_LOG_INFO, fr->r,
-                "FastCGI: comm with server \"%s\" aborted: bflush() failed (client aborted?)",
-#endif
-                fr->fs_path);
+                "FastCGI: client stopped connection before send body completed");
             return -1;
         }
+#endif
     }
 
     fcgi_buf_toss(fr->clientOutputBuffer, count);
@@ -1151,8 +1153,16 @@ static int do_work(request_rec *r, fcgi_request *fr)
         }
 
         if (fr->role == FCGI_RESPONDER && doClientWrite) {
-            if (write_to_client(fr) != OK)
-                return server_error(fr);
+            if (write_to_client(fr) != OK) {
+                #if defined(SIGPIPE) && MODULE_MAGIC_NUMBER < 19990320
+                    /* Make sure we leave with Apache's sigpipe_handler in place */
+                    if (fr->apache_sigpipe_handler != NULL)
+                        signal(SIGPIPE, fr->apache_sigpipe_handler);
+                #endif
+                    close_connection_to_fs(fr);
+                    ap_kill_timeout(fr->r);
+                    return OK;
+            }
         }
 
         if (fcgi_protocol_dequeue(rp, fr) != OK)
