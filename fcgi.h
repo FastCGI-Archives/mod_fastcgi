@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi.h,v 1.16 1999/09/10 04:37:38 roberts Exp $
+ * $Id: fcgi.h,v 1.17 1999/09/22 05:03:44 roberts Exp $
  */
 
 #ifndef FCGI_H
@@ -48,6 +48,7 @@ typedef struct _FcgiProcessInfo {
     pid_t pid;                       /* pid of associated process */
     enum {STATE_STARTED,             /* currently running */
           STATE_NEEDS_STARTING,      /* needs to be started by PM */
+          STATE_KILL,                /* kill() is needed */
           STATE_VICTIM,              /* SIGTERM was sent by PM */
           STATE_KILLED,              /* a wait() collected VICTIM */
           STATE_READY}               /* empty cell, init state */
@@ -176,9 +177,9 @@ typedef struct {
 #define SCAN_CGI_SRV_REDIRECT   -3
 
 /* Opcodes for Server->ProcMgr communication */
-#define PLEASE_START 49        /* start dynamic application */
-#define CONN_TIMEOUT 50        /* start another copy of application */
-#define REQ_COMPLETE 51        /* do some data analysis */
+#define PLEASE_START 83        /* 'S' - start */
+#define CONN_TIMEOUT 84        /* 'T' - timeout */
+#define REQ_COMPLETE 67        /* 'C' - complete */
 
 /* Authorizer types, for auth directives handling */
 #define FCGI_AUTH_TYPE_AUTHENTICATOR  0
@@ -236,7 +237,7 @@ typedef struct
  */
 void *fcgi_config_create_dir_config(pool *p, char *dummy);
 const char *fcgi_config_make_dir(pool *tp, char *path);
-const char *fcgi_config_make_dynamic_dir_n_mbox(pool *p, const int wax);
+const char *fcgi_config_make_dynamic_dir(pool *p, const int wax);
 const char *fcgi_config_new_static_server(cmd_parms *cmd, void *dummy, const char *arg);
 const char *fcgi_config_new_external_server(cmd_parms *cmd, void *dummy, const char *arg);
 const char *fcgi_config_set_config(cmd_parms *cmd, void *dummy, const char *arg);
@@ -341,11 +342,13 @@ extern fcgi_server *fcgi_servers;
 
 extern char *fcgi_socket_dir;             /* default FastCgiIpcDir */
 
+/* pipe used for comm between the request handlers and the PM */
+extern int fcgi_pm_pipe[];
+
 extern pid_t fcgi_pm_pid;
 
 extern char *fcgi_dynamic_dir;            /* directory for the dynamic
                                            * fastcgi apps' sockets */
-extern char *fcgi_dynamic_mbox;           /* file through which the fcgi */
 
 extern char *fcgi_empty_env;
 

@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.81 1999/09/14 15:25:09 roberts Exp $
+ *  $Id: mod_fastcgi.c,v 1.82 1999/09/22 05:03:47 roberts Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -101,6 +101,7 @@ do {                                                        \
 /*
  * Global variables
  */
+
 pool *fcgi_config_pool;            	 /* the config pool */
 server_rec *fcgi_apache_main_server;
 
@@ -112,12 +113,11 @@ fcgi_server *fcgi_servers = NULL; 		 /* AppClasses */
 
 char *fcgi_socket_dir = DEFAULT_SOCK_DIR; /* default FastCgiIpcDir */
 
+int fcgi_pm_pipe[2];
 pid_t fcgi_pm_pid = -1;
 
 char *fcgi_dynamic_dir = NULL;            /* directory for the dynamic
                                                   * fastcgi apps' sockets */
-char *fcgi_dynamic_mbox = NULL;           /* file through which the fcgi
-                                                  * procs communicate with WS */
 
 char *fcgi_empty_env = NULL;
 
@@ -142,47 +142,41 @@ array_header *dynamic_pass_headers = NULL;
 u_int dynamic_idle_timeout = FCGI_DEFAULT_IDLE_TIMEOUT;
 
 /*******************************************************************************
- * Construct a message and append it to the fcgi_dynamic_mbox.
+ * Construct a message and write it to the pm_pipe.
  */
-static int write_to_mbox(pool * const p, const char id, const char * const fs_path,
-	 const char *user, const char * const group, const unsigned long qsecs,
-     const unsigned long start_time, const unsigned long now)
+static void send_to_pm(pool * const p, const char id, const char * const fs_path,
+     const char *user, const char * const group, const unsigned long qsecs,
+     const unsigned long start_time)
 {
-    int fd, size, status;
-    char buf[MAX_PROCMGR_RECORD_LEN];
+    int buflen;
+    char buf[FCGI_MAX_MSG_LEN];
 
-    memset(buf, 0, MAX_PROCMGR_RECORD_LEN);
-    switch(id) {
-        case PLEASE_START:
-                sprintf(buf, "%c %s %s %s\n",
-                id, fs_path, user, group);
-                break;
-        case CONN_TIMEOUT:
-                sprintf(buf, "%c %s %s %s %lu\n",
-                id, fs_path, user, group, qsecs);
-                break;
-        case REQ_COMPLETE:
-                sprintf(buf, "%c %s %s %s %lu %lu %lu\n",
-                id, fs_path, user, group, qsecs, start_time, now);
-                break;
+    if (strlen(fs_path) > FCGI_MAXPATH) {
+        ap_log_error(FCGI_LOG_ERR_NOERRNO, fcgi_apache_main_server, 
+            "FastCGI: the path \"%s\" is too long (>%d) for a dynamic server", fs_path, FCGI_MAXPATH);
+        return;
     }
 
-    /* figure out how big the buffer is */
-    size = (strchr((const char *)buf, '\n') - buf) + 1;
-    ap_assert(size > 0);
+    switch(id) {
+    case PLEASE_START:
+        buflen = sprintf(buf, "%c %s %s %s*", id, fs_path, user, group);
+        break;
+    case CONN_TIMEOUT:
+        buflen = sprintf(buf, "%c %s %s %s %lu*", id, fs_path, user, group, qsecs);
+        break;
+    case REQ_COMPLETE:
+        buflen = sprintf(buf, "%c %s %s %s %lu %lu*", id, fs_path, user, group, qsecs, start_time);
+        break;
+    }
 
-    if ((fd = ap_popenf(p, fcgi_dynamic_mbox, O_WRONLY|O_APPEND, 0))<0)
-        return (-1);
-    fcgi_wait_for_shared_write_lock(fd);
-    if (lseek(fd, 0, SEEK_END) < 0)
-        status = -1;
-    if (write(fd, (const void *)buf, size) < size)
-        status = -1;
-    else
-        status = 0;
-    ap_pclosef(p, fd);
-    return (status);
+    ap_assert(buflen <= FCGI_MAX_MSG_LEN);
+
+    if (write(fcgi_pm_pipe[1], (const void *)buf, buflen) != buflen) {
+	ap_log_error(FCGI_LOG_WARN, fcgi_apache_main_server,
+	    "FastCGI: write() to PM failed");
+    }
 }
+
 
 /*
  *----------------------------------------------------------------------
@@ -221,9 +215,14 @@ static void init_module(server_rec *s, pool *p)
     if ((err = fcgi_config_make_dir(p, fcgi_socket_dir)))
         ap_log_error(FCGI_LOG_ERR, s, "FastCGI: %s", err);
 
-    /* Create Dynamic directory and fcgi_dynamic_mbox file */
-    if ((err = fcgi_config_make_dynamic_dir_n_mbox(p, 1)))
+    /* Create Dynamic directory */
+    if ((err = fcgi_config_make_dynamic_dir(p, 1)))
         ap_log_error(FCGI_LOG_ERR, s, "FastCGI: %s", err);
+
+    /* Create the pipe for comm with the PM */
+    if (pipe(fcgi_pm_pipe) < 0) {
+	ap_log_error(FCGI_LOG_ERR, s, "FastCGI: pipe() failed");
+    }
 
     /* Spawn the PM only once.  Under Unix, Apache calls init() routines
      * twice, once before detach() and once after.  Win32 doesn't detach.
@@ -241,35 +240,10 @@ static void init_module(server_rec *s, pool *p)
         ap_log_error(FCGI_LOG_ALERT, s,
             "FastCGI: can't start the process manager, spawn_child() failed");
     }
+
+    close(fcgi_pm_pipe[0]);
 }
 
-/*******************************************************************************
- * Send a message to the process manager via the "mbox" and signal the PM if
- * the message is important.
- */
-static void send_to_pm(pool * const rp, const char id,
-        const char * const fs_path, const char * const user, const char *group,
-        const unsigned long qsecs, const unsigned long start_time, const unsigned long now)
-{
-    int i;
-
-    if (write_to_mbox(rp, id, fs_path, user, group, qsecs, start_time, now) == 0) {
-        if (id != REQ_COMPLETE) {
-	    for (i = 0; i < 1000; ++i) {
-                if (kill(fcgi_pm_pid, SIGUSR2) == 0)
-		    return;
-
-                if (errno != EPERM) {
-		    ap_log_error(FCGI_LOG_ALERT, fcgi_apache_main_server,
-                        "FastCGI: can't notify process manager (is it running?), kill(SIGUSR2) failed");
-	 	    return;
-		}
-            }
-	    ap_log_error(FCGI_LOG_WARN, fcgi_apache_main_server,
-		"FastCGI: can't notify process manager, kill(SIGUSR2) failed 1000 times!");
-        }
-    }
-}
 /*
  *----------------------------------------------------------------------
  *
@@ -703,17 +677,15 @@ static void close_connection_to_fs(fcgi_request *fr)
                 /* there's no point to aborting the request, just log it */
                 ap_log_error(FCGI_LOG_ERR, fr->r->server, "FastCGI: gettimeofday() failed");
             } else {
+                struct timeval qtime, rtime;
+
+                timersub(&fr->queueTime, &fr->startTime, &qtime);
+                timersub(&fr->completeTime, &fr->queueTime, &rtime);
+                
                 send_to_pm(rp, REQ_COMPLETE, fr->fs_path,
                     fr->user, fr->group,
-                    (unsigned long)((fr->queueTime.tv_sec
-                        - fr->startTime.tv_sec)*1000000
-                        + fr->queueTime.tv_usec
-                        - fr->startTime.tv_usec),
-                    (unsigned long)((fr->completeTime.tv_sec
-                        - fr->queueTime.tv_sec)*1000000
-                        + fr->completeTime.tv_usec
-                        - fr->queueTime.tv_usec),
-                    (unsigned long)fr->completeTime.tv_sec);
+                    qtime.tv_sec * 1000000 + qtime.tv_usec,
+                    rtime.tv_sec * 1000000 + rtime.tv_usec);
             }
         }
     }
@@ -768,7 +740,7 @@ static const char *open_connection_to_fs(fcgi_request *fr)
                      * it will notice that the binary is newer,
                      * and do a restart instead.
                      */
-                    send_to_pm(rp, PLEASE_START, fr->fs_path, fr->user, fr->group, 0, 0, 0);
+                    send_to_pm(rp, PLEASE_START, fr->fs_path, fr->user, fr->group, 0, 0);
 
                     /* Avoid sleep/alarm interactions */
                     ap_select(0, NULL, NULL, NULL, &tv);
@@ -778,7 +750,7 @@ static const char *open_connection_to_fs(fcgi_request *fr)
             } else {
                 struct timeval tv = {1, 0};
 
-                send_to_pm(rp, PLEASE_START, fr->fs_path, fr->user, fr->group, 0, 0, 0);
+                send_to_pm(rp, PLEASE_START, fr->fs_path, fr->user, fr->group, 0, 0);
 
                 /* Avoid sleep/alarm interactions */
                 ap_select(0, NULL, NULL, NULL, &tv);
@@ -820,7 +792,7 @@ static const char *open_connection_to_fs(fcgi_request *fr)
      * With dynamic I can at least make sure the PM knows this is occuring */
     if (fr->dynamic && errno == ECONNREFUSED) {
         /* @@@ This might be better as some other "kind" of message */
-        send_to_pm(rp, CONN_TIMEOUT, fr->fs_path, fr->user, fr->group, 0, 0, 0);
+        send_to_pm(rp, CONN_TIMEOUT, fr->fs_path, fr->user, fr->group, 0, 0);
 
         errno = ECONNREFUSED;
     }
@@ -851,7 +823,7 @@ static const char *open_connection_to_fs(fcgi_request *fr)
 
             /* select() timed out */
             send_to_pm(rp, CONN_TIMEOUT, fr->fs_path, fr->user, fr->group,
-                (unsigned long)dynamicPleaseStartDelay*1000000, 0, 0);
+                (unsigned long)dynamicPleaseStartDelay*1000000, 0);
         } while ((fr->queueTime.tv_sec - fr->startTime.tv_sec) < dynamicAppConnectTimeout);
 
         /* XXX These can be moved down when dynamic vars live is a struct */
@@ -1071,8 +1043,10 @@ static int do_work(request_rec *r, fcgi_request *fr)
                     struct timeval idle_time;
                     timersub(&fr->queueTime, &dynamic_last_activity_time, &idle_time);
                     if (idle_time.tv_sec > idle_timeout) {
+                        send_to_pm(rp, CONN_TIMEOUT, fr->fs_path, fr->user, fr->group,
+                            (unsigned long)(idle_time.tv_sec*1000000 + idle_time.tv_usec), 0);
                         ap_log_rerror(FCGI_LOG_ERR, r,
-                            "FastCGI: comm with server \"%s\" aborted: idle timeout (%d sec)",
+                            "FastCGI: comm with (dynamic) server \"%s\" aborted: (first read) idle timeout (%d sec)",
                             fr->fs_path, idle_timeout);
                         return server_error(fr);
                     }
@@ -1089,7 +1063,7 @@ static int do_work(request_rec *r, fcgi_request *fr)
                 else {
                     /* Killed time somewhere.. client read? */
                     send_to_pm(rp, CONN_TIMEOUT, fr->fs_path, fr->user, fr->group,
-                        (unsigned long)(qwait.tv_sec*1000000 + qwait.tv_usec), 0, 0);
+                        (unsigned long)(qwait.tv_sec*1000000 + qwait.tv_usec), 0);
                     dynamic_first_read = qwait.tv_sec / dynamicPleaseStartDelay + 1;
                     timeOut.tv_sec = dynamic_first_read * dynamicPleaseStartDelay;
                     timeOut.tv_usec = 100000;  /* fudge for select() slop */
@@ -1122,7 +1096,7 @@ static int do_work(request_rec *r, fcgi_request *fr)
                     timersub(&fr->queueTime, &fr->startTime, &qwait);
 
                     send_to_pm(rp, CONN_TIMEOUT, fr->fs_path, fr->user, fr->group,
-                        (unsigned long)(qwait.tv_sec*1000000 + qwait.tv_usec), 0, 0);
+                        (unsigned long)(qwait.tv_sec*1000000 + qwait.tv_usec), 0);
 
                     dynamic_first_read = qwait.tv_sec / dynamicPleaseStartDelay + 1;
                 }

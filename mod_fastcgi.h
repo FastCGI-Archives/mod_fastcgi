@@ -1,5 +1,5 @@
 /*
- * $Id: mod_fastcgi.h,v 1.18 1999/09/19 02:06:58 roberts Exp $
+ * $Id: mod_fastcgi.h,v 1.19 1999/09/22 05:03:49 roberts Exp $
  */
 
 #ifndef MOD_FASTCGI_H
@@ -23,6 +23,9 @@
 
 /* max number of chars in a line of stderr we can handle from a FastCGI Server */
 #define FCGI_SERVER_MAX_STDERR_LINE_LEN 511     
+
+/* size of the buffer the PM uses to read records from the request handlers */
+#define FCGI_MSGS_BUFSIZE  32 * 512
 
 #define SERVER_BUFSIZE 8192
 
@@ -85,10 +88,19 @@
 #elif defined(MAXPATHLEN)
 #define FCGI_MAXPATH  MAXPATHLEN
 #else
-#define FCGI_MAXPATH  1024
+#define FCGI_MAXPATH  512
 #endif
 
-#define MAX_PROCMGR_RECORD_LEN  FCGI_MAXPATH
+/* REQ_COMPLETE is the longest: id, path, user, gid, qtime, start */
+#define FCGI_MSG_CRAP  1 + 2 + MAX_USER_NAME_LEN + 1 + MAX_GID_CHAR_LEN + (2 * 11) + 3
+ 
+#if defined(PIPE_BUF) && PIPE_BUF < FCGI_MAXPATH + FCGI_MSG_CRAP
+#define FCGI_MAX_MSG_LEN  PIPE_BUF
+#undef FCGI_MAXPATH
+#define FCGI_MAXPATH  PIPE_BUF - FCGI_MSG_CRAP
+#else
+#define FCGI_MAX_MSG_LEN  FCGI_MAXPATH + FCGI_MSG_CRAP
+#endif
 
 #ifdef OPEN_MAX
 #define MAX_OPEN_FDS OPEN_MAX

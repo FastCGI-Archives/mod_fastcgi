@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_pm.c,v 1.16 1999/09/19 02:06:57 roberts Exp $
+ * $Id: fcgi_pm.c,v 1.17 1999/09/22 05:03:45 roberts Exp $
  */
 
 #include "fcgi.h"
@@ -202,7 +202,6 @@ static void dynamic_blocking_kill(void *data)
 static int caughtSigTerm = FALSE;
 static int caughtSigChld = FALSE;
 static int caughtSigUsr2 = FALSE;
-static sigset_t signalsToBlock;
 
 static void signal_handler(int signo)
 {
@@ -216,26 +215,9 @@ static void signal_handler(int signo)
         caughtSigTerm = TRUE;
     } else if(signo == SIGCHLD) {
         caughtSigChld = TRUE;
-    } else if(signo == SIGUSR2 || signo == SIGALRM) {
+    } else if(signo == SIGALRM) {
         caughtSigUsr2 = TRUE;
     }
-}
-
-static int caught_sigterm(void)
-{
-    int result;
-
-    /*
-     * Start of critical region for caughtSigTerm
-     */
-    sigprocmask(SIG_BLOCK, &signalsToBlock, NULL);
-    result = caughtSigTerm;
-    sigprocmask(SIG_UNBLOCK, &signalsToBlock, NULL);
-
-    /*
-     * End of critical region for caughtSigTerm
-     */
-    return result;
 }
 
 /*
@@ -438,73 +420,30 @@ static void schedule_start(fcgi_server *s, int proc)
 /*
  *----------------------------------------------------------------------
  *
- * dynamic_read_mbox
+ * dynamic_read_msgs
  *
- *      Removes the records from the fcgi_dynamic_mbox and decodes them.
+ *      Removes the records written by request handlers and decodes them.
  *      We also update the data structures to reflect the changes.
- *
- * Results:
- *      -1 on error, otherwise number of processed records
- *
- * Side effects:
- *      Mbox is truncated.
  *
  *----------------------------------------------------------------------
  */
 
-static int dynamic_read_mbox(void)
+static void dynamic_read_msgs(int read_ready)
 {
     fcgi_server *s;
-    struct stat statbuf;
-    int recs = -1, fd;
-    char *buf=NULL, opcode;
-    char *ptr1=NULL, *ptr2=NULL;
-    char execName[MAX_PROCMGR_RECORD_LEN];
+    int rc;
+    static int buflen = 0;
+    static char buf[FCGI_MSGS_BUFSIZE + 1];
+    char *ptr1, *ptr2, opcode;
+    char execName[FCGI_MAXPATH + 1];
     char user[MAX_USER_NAME_LEN + 2];
     char group[MAX_GID_CHAR_LEN + 1];
     unsigned long qsec = 0, start_time = 0; /* microseconds spent waiting for the
                                              * application, and spent using it */
     time_t now = time(NULL);
-    pool *sp;
-    pool * const tp = ap_make_sub_pool(fcgi_config_pool);
+    pool *sp, *tp;
 
     user[MAX_USER_NAME_LEN + 1] = group[MAX_GID_CHAR_LEN] = '\0';
-
-    /* Obtain the data from the fcgi_dynamic_mbox file */
-    if ((fd = ap_popenf(tp, fcgi_dynamic_mbox, O_RDWR, S_IRUSR | S_IWUSR)) < 0) {
-        ap_log_error(FCGI_LOG_ALERT, fcgi_apache_main_server,
-            "FastCGI: openf() of fcgi_dynamic_mbox \"%s\" failed", fcgi_dynamic_mbox);
-        goto CleanupReturn;
-    }
-    fcgi_wait_for_shared_write_lock(fd);
-    if (fstat(fd, &statbuf) < 0) {
-        ap_log_error(FCGI_LOG_ALERT, fcgi_apache_main_server,
-            "FastCGI: fstat() of fcgi_dynamic_mbox \"%s\" failed", fcgi_dynamic_mbox);
-        goto NothingToDo;
-    }
-    buf = ap_pcalloc(tp, statbuf.st_size + 1);
-    if (statbuf.st_size==0) {
-        recs = 0;
-        goto NothingToDo;
-    }
-    if (read(fd, (void *)buf, statbuf.st_size) < statbuf.st_size) {
-        ap_log_error(FCGI_LOG_ALERT, fcgi_apache_main_server,
-            "FastCGI: read() from fcgi_dynamic_mbox \"%s\" failed", fcgi_dynamic_mbox);
-        goto NothingToDo;
-    }
-    if (ftruncate(fd, 0) < 0) {
-        ap_log_error(FCGI_LOG_ALERT, fcgi_apache_main_server,
-            "FastCGI: ftruncate() of fcgi_dynamic_mbox \"%s\" failed", fcgi_dynamic_mbox);
-        goto NothingToDo;
-    }
-
-    recs = 1;
-
-NothingToDo:
-    ap_pclosef(tp, fd);
-    if (recs<0) {
-        goto CleanupReturn;
-    }
 
     /*
      * To prevent the idle application from running indefinitely, we
@@ -517,43 +456,83 @@ NothingToDo:
     }
     if ((long)(now - fcgi_dynamic_last_analyzed) >= dynamicUpdateInterval) {
         for (s = fcgi_servers; s != NULL; s = s->next) {
+            if (s->directive != APP_CLASS_DYNAMIC)
+                break;
             /* XXX what does this adjustment do? */
             fcgi_dynamic_last_analyzed += (((long)(now-fcgi_dynamic_last_analyzed)/dynamicUpdateInterval)*dynamicUpdateInterval);
             s->smoothConnTime = (1.0-dynamicGain)*s->smoothConnTime + dynamicGain*s->totalConnTime;
-            s->totalConnTime = start_time;
-            s->totalQueueTime = qsec;
+            s->totalConnTime = 0UL;
+            s->totalQueueTime = 0UL;
         }
-    }
-    if (recs==0) {
-        goto CleanupReturn;
     }
 
-    /* Update data structures for processing */
-    for (ptr1 = buf; ptr1 != NULL; ptr1 = ptr2) {
-        if((ptr2 = strchr(ptr1, '\n'))!=NULL) {
-            *(ptr2) = '\0';
-            ptr2++;
+    if (read_ready <= 0) {
+        return;
+    }
+    
+    rc = read(fcgi_pm_pipe[0], (void *)(buf + buflen), FCGI_MSGS_BUFSIZE - buflen);
+    if (rc <= 0) {
+        if (!caughtSigTerm) {
+            ap_log_error(FCGI_LOG_ALERT, fcgi_apache_main_server, 
+                "FastCGI: read() from pipe failed (%d)", rc);
         }
+        return;
+    }
+    buflen += rc;
+    buf[buflen] = '\0';
+    
+    tp = ap_make_sub_pool(fcgi_config_pool);
+
+    for (ptr1 = buf; ptr1; ptr1 = ptr2) {
+        int scan_failed = 0;
+
+        ptr2 = strchr(ptr1, '*');
+        if (ptr2) {
+            *ptr2++ = '\0';
+        }
+        else {
+            break;
+        }
+        
         opcode = *ptr1;
+
         switch (opcode) {
-            case PLEASE_START:
-                sscanf(ptr1, "%c %s %16s %15s\n", &opcode, execName, user, group);
-                break;
-            case CONN_TIMEOUT:
-                sscanf(ptr1, "%c %s %16s %15s %lu\n", &opcode, execName, user, group, &qsec);
-                break;
-            case REQ_COMPLETE:
-                sscanf(ptr1, "%c %s %16s %15s %lu %lu %lu\n", &opcode,
-                       execName, user, group, &qsec, &start_time, &now);
-                break;
-            default:
-                goto CleanupReturn;
-                break;
+        case PLEASE_START:
+            if (sscanf(ptr1, "%c %s %16s %15s",
+                &opcode, execName, user, group) != 4)
+            {
+                scan_failed = 1;
+            }
+            break;
+        case CONN_TIMEOUT:
+            if (sscanf(ptr1, "%c %s %16s %15s %lu",
+                &opcode, execName, user, group, &qsec) != 5)
+            {
+                scan_failed = 1;
+            }
+            break;
+        case REQ_COMPLETE:
+            if (sscanf(ptr1, "%c %s %16s %15s %lu %lu",
+                &opcode, execName, user, group, &qsec, &start_time) != 6)
+            {
+                scan_failed = 1;
+            }
+            break;
+        default:
+            scan_failed = 1;
+            break;
+        }
+
+        if (scan_failed) {
+            ap_log_error(FCGI_LOG_ERR_NOERRNO, fcgi_apache_main_server,
+                "FastCGI: bogus message, sscanf() failed: \"%s\"", ptr1);
+            continue;
         }
 
         s = fcgi_util_fs_get(execName, user, group);
 
         if (s==NULL && opcode != REQ_COMPLETE) {
+            int fd;
             const char *err, *lockPath;
 
             /* Create a perm subpool to hold the new server data,
@@ -763,9 +742,18 @@ BagNewServer:
         ap_destroy_pool(sp);
     }
 
-CleanupReturn:
+    if (ptr1 == buf) {
+        ap_log_error(FCGI_LOG_ERR_NOERRNO, fcgi_apache_main_server,
+            "FastCGI: really bogus message: \"%s\"", ptr1);
+        ptr1 += strlen(buf);
+    }
+            
+    buflen -= ptr1 - buf;
+    if (buflen) {
+        memmove(buf, ptr1, buflen);
+    }
+
     ap_destroy_pool(tp);
-    return (recs);
 }
 
 /*
@@ -818,26 +806,30 @@ static void dynamic_kill_idle_fs_procs(void)
            able to achieve a loadFactor greater than 0.5.  Perhaps this
            should be scaled up by another order of magnitude or two.  */
         loadFactor = connTime/totalTime*100.0;
-        if(((s->numProcesses>1) &&
-                (((s->numProcesses/(s->numProcesses-1))*loadFactor)
-                < dynamicThreshholdN)) ||
-                ((s->numProcesses==1) &&
-                (loadFactor<dynamicThreshhold1))) {
-            for(i=0;i<dynamicMaxClassProcs;i++) {
-                /* if need to kill extra instance and have one that
-                 * is not started yet, do not start it and skip */
-                if(s->procs[i].state == STATE_NEEDS_STARTING) {
+        if ((s->numProcesses > 1
+                && s->numProcesses/(s->numProcesses - 1)*loadFactor < dynamicThreshholdN) 
+            || (s->numProcesses == 1 && loadFactor < dynamicThreshhold1))
+        {
+            int got_one = 0;
+
+            for (i = 0; !got_one && i < dynamicMaxClassProcs; ++i) {
+                if (s->procs[i].state == STATE_NEEDS_STARTING) {
                     s->procs[i].state = STATE_READY;
-                    victims++;
-                    break;
+                    got_one = 1;
                 }
-                if(s->procs[i].state == STATE_STARTED) {
-                    s->procs[i].state = STATE_VICTIM;
+                else if (s->procs[i].state == STATE_VICTIM || s->procs[i].state == STATE_KILL) {
+                    got_one = 1;
+                }
+            }
+
+            for (i = 0; !got_one && i < dynamicMaxClassProcs; ++i) {
+                if (s->procs[i].state == STATE_STARTED) {
+                    s->procs[i].state = STATE_KILL;
                     ap_log_error(FCGI_LOG_WARN_NOERRNO, fcgi_apache_main_server,
                         "FastCGI: (dynamic) server \"%s\" (pid %d) termination scheduled",
                         s->fs_path, s->procs[i].pid);
                     victims++;
-                    break;
+                    got_one = 1;
                 }
             }
         }
@@ -849,7 +841,7 @@ static void dynamic_kill_idle_fs_procs(void)
             continue;
 
         for(i = 0; i < dynamicMaxClassProcs; i++) {
-            if(s->procs[i].state == STATE_VICTIM) {
+            if (s->procs[i].state == STATE_KILL) {
                 lockFileName = fcgi_util_socket_get_lock_filename(tp, s->socket_path);
                 if ((lockFd = ap_popenf(tp, lockFileName, O_RDWR, 0))<0) {
                     /*
@@ -875,17 +867,12 @@ static void dynamic_kill_idle_fs_procs(void)
                     funcData = ap_pcalloc(tp, sizeof(struct FuncData));
                     funcData->lockFileName = lockFileName;
                     funcData->pid = s->procs[i].pid;
-                    /*
-                     * We can not call onto ap_spawn_child() here
-                     * since we are completely disassociated from
-                     * the web server, and must do process management
-                     * directly.
-                     */
+                    
                     if((pid=fork())<0) {
                         /*@@@ this should be logged, but since all the lock
                          * file stuff will be tossed, I'll leave it now */
-                        ap_destroy_pool(tp);
-                        return;
+                        ap_pclosef(tp, lockFd);
+                        continue;
                     } else if(pid==0) {
                         /* child */
 
@@ -895,12 +882,13 @@ static void dynamic_kill_idle_fs_procs(void)
                         dynamic_blocking_kill(funcData);
                     } else {
                         /* parent */
+                        s->procs[i].state = STATE_VICTIM;
                         ap_pclosef(tp, lockFd);
                     }
                 } else {
+                    s->procs[i].state = STATE_VICTIM;
                     fcgi_kill(s->procs[i].pid, SIGTERM);
                     ap_pclosef(tp, lockFd);
-                    break;
                 }
             }
         }
@@ -908,15 +896,21 @@ static void dynamic_kill_idle_fs_procs(void)
     ap_destroy_pool(tp);
 }
 
-static void setup_signals(sigset_t *mask)
+static void setup_signals(void)
 {
+    sigset_t mask;
     struct sigaction sa;
+
+    /* Ignore USR2 */
+    sigemptyset(&mask);
+    sigaddset(&mask, SIGUSR2);
+    sigprocmask(SIG_BLOCK, &mask, NULL);
+    
+    /* Setup handlers */
 
     sa.sa_handler = signal_handler;
     sigemptyset(&sa.sa_mask);
     sa.sa_flags = 0;
-
-    /* Setup handlers */
 
     if (sigaction(SIGTERM, &sa, NULL) < 0) {
 	ap_log_error(FCGI_LOG_ALERT, fcgi_apache_main_server, 
@@ -932,53 +926,31 @@ static void setup_signals(sigset_t *mask)
 	ap_log_error(FCGI_LOG_ALERT, fcgi_apache_main_server, 
 	"sigaction(SIGUSR1) failed");
     }
-    /* read the mbox - kill interval expired */
+    /* read messages from request handlers - kill interval expired */
     if (sigaction(SIGALRM, &sa, NULL) < 0) {
 	ap_log_error(FCGI_LOG_ALERT, fcgi_apache_main_server, 
 	"sigaction(SIGALRM) failed");
-    }
-    /* read the mbox - request handler notification */
-    if (sigaction(SIGUSR2, &sa, NULL) < 0) {
-	ap_log_error(FCGI_LOG_ALERT, fcgi_apache_main_server, 
-	"sigaction(SIGUSR2) failed");
     }
     if (sigaction(SIGCHLD, &sa, NULL) < 0) {
 	ap_log_error(FCGI_LOG_ALERT, fcgi_apache_main_server, 
 	"sigaction(SIGCHLD) failed");
     }
-
-    /* Get the current mask */
-    sigprocmask(0, NULL, mask);
-    
-    /* Don't block these */
-    sigdelset(mask, SIGTERM);
-    sigdelset(mask, SIGCHLD);
-    sigdelset(mask, SIGALRM);
-    sigdelset(mask, SIGUSR2);
-    sigdelset(mask, SIGUSR1);
-    sigdelset(mask, SIGHUP);
-
-    sigemptyset(&signalsToBlock);
-    sigaddset(&signalsToBlock, SIGTERM);
-    sigaddset(&signalsToBlock, SIGCHLD);
-    sigaddset(&signalsToBlock, SIGALRM);
-    sigaddset(&signalsToBlock, SIGUSR2);
 }
 
 int fcgi_pm_main(void *dummy, child_info *info)
 {
     fcgi_server *s;
-    int i;
+    int i, read_ready;
     int status, callWaitPid, callDynamicProcs;
-    sigset_t sigMask;
     int alarmLeft = 0;
     pool *tp;
     const char *err;
 
     reduce_priveleges();
 
+    close(fcgi_pm_pipe[1]);
     change_process_name("fcgi-pm");
-    setup_signals(&sigMask);
+    setup_signals();
 
     if (fcgi_suexec) {
         ap_log_error(FCGI_LOG_INFO_NOERRNO, fcgi_apache_main_server,
@@ -1077,7 +1049,7 @@ int fcgi_pm_main(void *dummy, child_info *info)
                         int restart = (s->procs[i].pid < 0);
 
                         s->restartTime = now;
-                        if(caught_sigterm()) {
+                        if (caughtSigTerm) {
                             goto ProcessSigTerm;
                         }
                         status = spawn_fs_process(
@@ -1092,14 +1064,9 @@ int fcgi_pm_main(void *dummy, child_info *info)
                                 (s->directive == APP_CLASS_DYNAMIC) ? " (dynamic)" : "",
                                 s->fs_path);
 
-                            /* do not restart failed dynamic apps */
-                            if (s->directive != APP_CLASS_DYNAMIC) {
-                                sleepSeconds = min(sleepSeconds,
-                                        max(s->restartDelay,
-                                        FCGI_MIN_EXEC_RETRY_DELAY));
-                            } else {
-                                s->procs[i].state = STATE_READY;
-                            }
+                            sleepSeconds = min(sleepSeconds,
+                                max(s->restartDelay, FCGI_MIN_EXEC_RETRY_DELAY));
+
                             ap_assert(s->procs[i].pid < 0);
                             break;
                         }
@@ -1133,29 +1100,24 @@ int fcgi_pm_main(void *dummy, child_info *info)
             }
         }
 
-        /*
-         * Start of critical region for caughtSigChld and caughtSigTerm.
-         */
-        sigprocmask(SIG_BLOCK, &signalsToBlock, NULL);
         if(caughtSigTerm) {
             goto ProcessSigTerm;
         }
         if((!caughtSigChld) && (!caughtSigUsr2)) {
-            /*
-             * Enable signals and wait.  The call to sigsuspend
-             * breaks the critical region into two, so caughtSigChld
-             * may have a new value after the wait.
-             */
-            ap_assert(sleepSeconds > 0);
+            fd_set rfds;
+
             alarm(sleepSeconds);
-            sigsuspend(&sigMask);
+
+            FD_ZERO(&rfds);
+            FD_SET(fcgi_pm_pipe[0], &rfds);
+            read_ready = ap_select(fcgi_pm_pipe[0] + 1, &rfds, NULL, NULL, NULL);
+
             alarmLeft = alarm(0);
         }
         callWaitPid = caughtSigChld;
         caughtSigChld = FALSE;
         callDynamicProcs = caughtSigUsr2;
         caughtSigUsr2 = FALSE;
-        sigprocmask(SIG_UNBLOCK, &signalsToBlock, NULL);
 
         /*
          * End of critical region for caughtSigChld and caughtSigTerm.
@@ -1165,7 +1127,7 @@ int fcgi_pm_main(void *dummy, child_info *info)
          * Dynamic fcgi process management
          */
         if((callDynamicProcs) || (!callWaitPid)) {
-            dynamic_read_mbox();
+            dynamic_read_msgs(read_ready);
             now = time(NULL);
             if(fcgi_dynamic_epoch == 0) {
                 fcgi_dynamic_epoch = now;
@@ -1185,7 +1147,7 @@ int fcgi_pm_main(void *dummy, child_info *info)
          * write a log message and update its data structure. */
 
         for (;;) {
-            if (caught_sigterm())
+            if (caughtSigTerm)
                 goto ProcessSigTerm;
 
             childPid = waitpid(-1, &waitStatus, WNOHANG);

@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_config.c,v 1.16 1999/09/19 02:06:56 roberts Exp $
+ * $Id: fcgi_config.c,v 1.17 1999/09/22 05:03:44 roberts Exp $
  */
 
 #include "fcgi.h"
@@ -247,15 +247,13 @@ const char *fcgi_config_make_dir(pool *tp, char *path)
 }
 
 /*******************************************************************************
- * Create a "dynamic" subdirectory and fcgi_dynamic_mbox (used for RH->PM comm)
- * in the fcgi_socket_dir with appropriate permissions.  If the directory
+ * Create a "dynamic" subdirectory.  If the directory
  * already exists we don't mess with it unless 'wax' is set.
  */
-const char *fcgi_config_make_dynamic_dir_n_mbox(pool *p, const int wax)
+const char *fcgi_config_make_dynamic_dir(pool *p, const int wax)
 {
     DIR *dp = NULL;
     struct dirent *dirp = NULL;
-    int fd;
     const char *err;
     pool *tp;
 
@@ -290,33 +288,13 @@ const char *fcgi_config_make_dynamic_dir_n_mbox(pool *p, const int wax)
 
     ap_destroy_pool(tp);
 
-    /* Create fcgi_dynamic_mbox */
-    fcgi_dynamic_mbox = ap_pstrcat(p, fcgi_dynamic_dir, "/fcgi_dynamic_mbox", NULL);
-
-    /* @@@ This really should be a socket or pipe */
-    fd = ap_popenf(p, fcgi_dynamic_mbox, O_CREAT | O_WRONLY | O_TRUNC, S_IRUSR | S_IWUSR);
-    if (fd < 0) {
-        return ap_psprintf(p, "can't create \"%s\": %s",
-            fcgi_dynamic_mbox, strerror(errno));
-    }
-
-    /* If we're root, were gonna setuid/setgid so chown */
-    if (geteuid() == 0 && fchown(fd, ap_user_id, ap_group_id) != 0) {
-        return ap_psprintf(p,
-            "can't chown() \"%s\" to server (uid %ld, gid %ld): %s",
-            fcgi_dynamic_mbox, (long)ap_user_id, (long)ap_group_id, strerror(errno));
-    }
-    ap_pclosef(p, fd);
-
     return NULL;
 }
 
 
 /*******************************************************************************
  * Change the directory used for the Unix/Domain sockets from the default.
- * Create the directory, the "dynamic" subdirectory, and the fcgi_dynamic_mbox used for
- * comm between the RH and the PM (we do this here, as well as in
- * fastcgi_init, so we can prevent Apache from starting if it fails).
+ * Create the directory and the "dynamic" subdirectory.
  */
 const char *fcgi_config_set_socket_dir(cmd_parms *cmd, void *dummy, char *arg)
 {
@@ -348,7 +326,7 @@ const char *fcgi_config_set_socket_dir(cmd_parms *cmd, void *dummy, char *arg)
     if (err != NULL)
         return ap_psprintf(tp, "%s %s: %s", name, arg, err);
 
-    err = fcgi_config_make_dynamic_dir_n_mbox(cmd->pool, 0);
+    err = fcgi_config_make_dynamic_dir(cmd->pool, 0);
     if (err != NULL)
         return ap_psprintf(tp, "%s %s: %s", name, arg, err);
 
