@@ -1,5 +1,7 @@
 Changes with mod_fastcgi 2.2.1
 
+ *) Updates to the INSTALL doc to describe building as a DSO.
+ 
  *) If the FastCgiIpcDir directive was in use and "httpd -t" was issued while
     Apache was running ("apachectl restart" does this), the contents of the
     dynamic directory (dynamic sockets and the mbox) would be blown away 
