@@ -1,5 +1,9 @@
 Changes with mod_fastcgi 2.2.7
 
+ *) Eliminate the concept of disabled applications.  If a failure 
+    occurs trying to setup an application (e.g. bind() error) its 
+    tried again after init-start-delay expires.
+
  *) Tweak to Makefile.tmpl to support DSOs.  Dave Hill [ddhill@zk3.dec.com]
 
 Changes with mod_fastcgi 2.2.6

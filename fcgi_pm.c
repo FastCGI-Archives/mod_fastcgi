@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_pm.c,v 1.37 2000/08/11 02:32:17 robs Exp $
+ * $Id: fcgi_pm.c,v 1.38 2000/08/22 14:56:14 robs Exp $
  */
 
 
@@ -141,49 +141,78 @@ static void kill_fs_procs(pool *p, fcgi_server *s)
     fcgi_servers = s->next;
 }
 
-/*******************************************************************************
- * Bind an address to a socket and set it to listen for incoming connects.
- * The error messages are allocated from the pool p, use temp storage.
- * Don't forget to close the socket, if an error occurs.
- */
-static const char *bind_n_listen(pool *p, struct sockaddr *socket_addr,
-        int socket_addr_len, int backlog, int sock)
+static int init_listen_sock(fcgi_server * fs)
 {
+    ap_assert(fs->directive != APP_CLASS_EXTERNAL);
+
+    /* Create the socket */
+    if ((fs->listenFd = ap_psocket(fcgi_config_pool, fs->socket_addr->sa_family, SOCK_STREAM, 0)) < 0) 
+    {
+        ap_log_error(FCGI_LOG_CRIT, fcgi_apache_main_server,
+            "FastCGI: can't create %sserver \"%s\": socket() failed", 
+            (fs->directive == APP_CLASS_DYNAMIC) ? "(dynamic) " : "",
+            fs->fs_path);
+        return -1;
+    }
+
 #ifndef WIN32
-    if (socket_addr->sa_family == AF_UNIX) {
+    if (fs->socket_addr->sa_family == AF_UNIX) 
+    {
         /* Remove any existing socket file.. just in case */
-        unlink(((struct sockaddr_un *)socket_addr)->sun_path);
+        unlink(((struct sockaddr_un *)fs->socket_addr)->sun_path);
     }
     else 
 #endif
     {
         int flag = 1;
-        setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (char *)&flag, sizeof(flag));
+        setsockopt(fs->listenFd, SOL_SOCKET, SO_REUSEADDR, (char *)&flag, sizeof(flag));
     }
 
     /* Bind it to the socket_addr */
-    if (bind(sock, socket_addr, socket_addr_len) != 0) {
-        return ap_psprintf(p, "bind() failed [%s]", 
+    if (bind(fs->listenFd, fs->socket_addr, fs->socket_addr_len))
+    {
+        char port[11];
+
+        ap_log_error(FCGI_LOG_CRIT, fcgi_apache_main_server,
+            "FastCGI: can't create %sserver \"%s\": bind() failed [%s]", 
+            (fs->directive == APP_CLASS_DYNAMIC) ? "(dynamic) " : "",
+            fs->fs_path,
 #ifndef WIN32
-            socket_addr->sa_family == AF_UNIX ?
-                ((struct sockaddr_un *)socket_addr)->sun_path :
+            fs->socket_addr->sa_family == AF_UNIX ?
+                ((struct sockaddr_un *)fs->socket_addr)->sun_path :
 #endif
-                ap_psprintf(p, "port=%d", ((struct sockaddr_in *)socket_addr)->sin_port));
+                ap_snprintf(port, sizeof(port), "port=%d", 
+                    ((struct sockaddr_in *)fs->socket_addr)->sin_port));
     }
 
 #ifndef WIN32
-    /* Twiddle permissions */
-    if (socket_addr->sa_family == AF_UNIX) {
-        if (chmod(((struct sockaddr_un *)socket_addr)->sun_path, S_IRUSR | S_IWUSR))
-            return "chmod() of socket failed";
+    /* Twiddle Unix socket permissions */
+    else if (fs->socket_addr->sa_family == AF_UNIX
+        && chmod(((struct sockaddr_un *)fs->socket_addr)->sun_path, S_IRUSR | S_IWUSR))
+    {
+        ap_log_error(FCGI_LOG_CRIT, fcgi_apache_main_server,
+            "FastCGI: can't create %sserver \"%s\": chmod() of socket failed", 
+            (fs->directive == APP_CLASS_DYNAMIC) ? "(dynamic) " : "",
+            fs->fs_path);
     }
 #endif
 
     /* Set to listen */
-    if (listen(sock, backlog) != 0)
-        return "listen() failed";
+    else if (listen(fs->listenFd, fs->listenQueueDepth))
+    {
+        ap_log_error(FCGI_LOG_CRIT, fcgi_apache_main_server,
+            "FastCGI: can't create %sserver \"%s\": listen() failed", 
+            (fs->directive == APP_CLASS_DYNAMIC) ? "(dynamic) " : "",
+            fs->fs_path);
+    }
+    else
+    {
+        return 0;
+    }
 
-    return NULL;
+    ap_pclosesocket(fcgi_config_pool, fs->listenFd);
+    fs->listenFd = -1;
+    return -2;
 }
 
 /*
@@ -866,19 +895,7 @@ static void dynamic_read_msgs(int read_ready)
                 goto BagNewServer;
             }
 
-            /* Create the socket */
-            if ((s->listenFd = ap_psocket(sp, s->socket_addr->sa_family, SOCK_STREAM, 0)) < 0) {
-                ap_log_error(FCGI_LOG_CRIT, fcgi_apache_main_server,
-                    "FastCGI: can't create (dynamic) server \"%s\": socket() failed", execName);
-                goto BagNewServer;
-            }
-
-            /* bind() and listen() */
-            err = bind_n_listen(tp, s->socket_addr, s->socket_addr_len,
-                                     s->listenQueueDepth, s->listenFd);
-            if (err) {
-                ap_log_error(FCGI_LOG_CRIT, fcgi_apache_main_server,
-                    "FastCGI: can't create (dynamic) server \"%s\": %s", execName, err);
+            if (init_listen_sock(s)) {
                 goto BagNewServer;
             }
 
@@ -1417,8 +1434,6 @@ void fcgi_pm_main(void *dummy)
     unsigned int i;
 	int read_ready = 0;
     int alarmLeft = 0;
-    pool *tp;
-    const char *err;
 
 #ifdef WIN32
     DWORD dwRet;
@@ -1450,45 +1465,19 @@ void fcgi_pm_main(void *dummy)
 #endif
 
     /* Initialize AppClass */
-    tp = ap_make_sub_pool(fcgi_config_pool);
-    for(s = fcgi_servers; s != NULL; s = s->next) {
-        if (s->directive == APP_CLASS_EXTERNAL)
+    for (s = fcgi_servers; s != NULL; s = s->next) 
+    {
+        if (s->directive != APP_CLASS_STANDARD)
             continue;
 
 #ifdef WIN32
         if (s->socket_path)
-        {
             s->listenFd = 0;
-        }
-        else
 #endif
-        {
-            /* Create the socket */
-            s->listenFd = ap_psocket(fcgi_config_pool, s->socket_addr->sa_family, SOCK_STREAM, 0);
-            if (s->listenFd < 0) {
-                ap_log_error(FCGI_LOG_CRIT, fcgi_apache_main_server,
-                    "FastCGI: server \"%s\" disabled, socket() failed", s->fs_path);
-                continue;
-            }
 
-            /* bind() and listen() */
-            err = bind_n_listen(tp, s->socket_addr, s->socket_addr_len,
-                                    s->listenQueueDepth, s->listenFd);
-            if (err) {
-                ap_log_error(FCGI_LOG_CRIT, fcgi_apache_main_server,
-                             "FastCGI: server \"%s\" disabled: %s",
-                             s->fs_path, err);
-                ap_pclosesocket(fcgi_config_pool, s->listenFd);
-                s->listenFd = -1;
-                continue;
-            }
-        }
-
-        for (i = 0; i < s->numProcesses; i++)
+        for (i = 0; i < s->numProcesses; ++i) 
             s->procs[i].state = STATE_NEEDS_STARTING;
     }
-
-    ap_destroy_pool(tp);
 
 #ifdef WIN32
     ap_log_error(FCGI_LOG_NOTICE_NOERRNO, fcgi_apache_main_server,
@@ -1527,32 +1516,30 @@ void fcgi_pm_main(void *dummy)
          * remember that we do NOT need to restart externally managed
          * FastCGI applications.
          */
-        for (s = fcgi_servers; s != NULL; s = s->next) {
-            if (s->directive == APP_CLASS_EXTERNAL || s->listenFd < 0) {
+        for (s = fcgi_servers; s != NULL; s = s->next) 
+        {
+            if (s->directive == APP_CLASS_EXTERNAL)
                 continue;
-            }
-            if (s->directive == APP_CLASS_DYNAMIC) {
-                numChildren = dynamicMaxClassProcs;
-            } else {
-                numChildren = s->numProcesses;
-            }
 
-            for (i = 0; i < numChildren; i++) {
-                if ((s->procs[i].pid <= 0) &&
-                    (s->procs[i].state == STATE_NEEDS_STARTING))
+            numChildren = (s->directive == APP_CLASS_DYNAMIC) 
+                ? dynamicMaxClassProcs 
+                : s->numProcesses;
+
+            for (i = 0; i < numChildren; ++i) 
+            {
+                if (s->procs[i].pid <= 0 && s->procs[i].state == STATE_NEEDS_STARTING)
                 {
-                    time_t restartTime;
+                    int restart = (s->procs[i].pid < 0);
+                    time_t restartTime = s->restartTime;
+                    
+                    restartTime += (restart) ? s->restartDelay : s->initStartDelay;
 
-                    if (s->procs[i].pid == 0) {
-                        restartTime = s->restartTime + s->initStartDelay;
-                    } else {
-                        restartTime = s->restartTime + s->restartDelay;
-                    }
-
-                    if (restartTime <= now) {
-                        int restart = (s->procs[i].pid < 0);
-
+                    if (restartTime <= now) 
+                    {
                         s->restartTime = now;
+
+                        if (s->listenFd < 0 && init_listen_sock(s))
+                            break;
 
 #ifndef WIN32
                         if (caughtSigTerm) {
