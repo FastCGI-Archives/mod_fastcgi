@@ -3344,7 +3344,7 @@ int FCGIProcMgrBoot(void *data)
 /*    block_alarms();*/
     if((procMgr=fork())<0) {
         /* error */
-        return;
+        return -1;
     } else if(procMgr==0) {
         /* child */
         FastCgiProcMgr(data);
@@ -4595,7 +4595,7 @@ static int FastCgiHandler(WS_Request *reqPtr)
     }
     
     if((!strcmp(reqPtr->protocol, "INCLUDED")) && 
-            (!(allow_options(reqPtr) & OPT_INCNOEXEC))) {
+            ((allow_options(reqPtr) & OPT_INCNOEXEC))) {
         log_reason("Options IncludesNOEXEC is off in this directory",
                 reqPtr->filename, reqPtr);
 	return FORBIDDEN;
@@ -4854,7 +4854,7 @@ ConnectionErrorReturn:
         msg = "errno out of range";
     }
     Free(infoPtr->errorMsg);
-    if (dynamic!=TRUE) {
+    if (dynamic==TRUE) {
         OS_FreeIpcAddr(ipcAddrPtr);
     }
     infoPtr->errorMsg = Malloc(FCGI_ERRMSG_LEN + strlen(msg));
