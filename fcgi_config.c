@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_config.c,v 1.29 2001/05/29 15:22:12 robs Exp $
+ * $Id: fcgi_config.c,v 1.30 2001/11/17 00:50:20 robs Exp $
  */
 
 #include "fcgi.h"
@@ -507,9 +507,7 @@ const char *fcgi_config_new_static_server(cmd_parms *cmd, void *dummy, const cha
     unsigned int envc = 0;
 
 #ifdef WIN32
-    HANDLE mutex = ap_create_mutex(NULL);
-    
-    SetHandleInformation(mutex, HANDLE_FLAG_INHERIT, TRUE);
+    HANDLE mutex;
 #endif
 
     if (*fs_path == '\0')
@@ -556,6 +554,17 @@ const char *fcgi_config_new_static_server(cmd_parms *cmd, void *dummy, const cha
     // TCP FastCGI applications require SystemRoot be present in the environment
     // Put it in both for consistency to the application
     fcgi_config_set_env_var(tp, envp, &envc, "SystemRoot");
+
+    mutex = CreateMutex(NULL, FALSE, fs_path);
+    
+    if (mutex == NULL)
+    {
+        ap_log_error(FCGI_LOG_ALERT, fcgi_apache_main_server,
+            "FastCGI: CreateMutex() failed");
+        return "failed to create FastCGI application accept mutex";
+    }
+    
+    SetHandleInformation(mutex, HANDLE_FLAG_INHERIT, TRUE);
 
     s->mutex_env_string = ap_psprintf(p, "_FCGI_MUTEX_=%ld", mutex);;
 #else

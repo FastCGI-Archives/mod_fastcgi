@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.116 2001/05/29 15:22:13 robs Exp $
+ *  $Id: mod_fastcgi.c,v 1.117 2001/11/17 00:50:20 robs Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -204,16 +204,15 @@ static void send_to_pm(const char id, const char * const fs_path,
     }
 
 #ifdef WIN32
-    if (fcgi_pm_add_job(job) == 0)
-        return;
+    if (fcgi_pm_add_job(job)) return;
 
     SetEvent(fcgi_event_handles[MBOX_EVENT]);
 #else
     ap_assert(buflen <= FCGI_MAX_MSG_LEN);
 
     if (write(fcgi_pm_pipe[1], (const void *)buf, buflen) != buflen) {
-    ap_log_error(FCGI_LOG_WARN, fcgi_apache_main_server,
-        "FastCGI: write() to PM failed");
+        ap_log_error(FCGI_LOG_WARN, fcgi_apache_main_server,
+            "FastCGI: write() to PM failed");
     }
 #endif
 }
@@ -290,22 +289,45 @@ static void init_module(server_rec *s, pool *p)
 static void fcgi_child_init(server_rec *dc0, pool *dc1)
 {
 #ifdef WIN32
-    /* Create the Event Handlers */
+    /* Create the MBOX, TERM, and WAKE event handlers */
     fcgi_event_handles[0] = CreateEvent(NULL, FALSE, FALSE, NULL);
+    if (fcgi_event_handles[0] == NULL) {
+        ap_log_error(FCGI_LOG_ALERT, fcgi_apache_main_server, 
+            "FastCGI: CreateEvent() failed");
+    }
     fcgi_event_handles[1] = CreateEvent(NULL, FALSE, FALSE, NULL);
+    if (fcgi_event_handles[1] == NULL) {
+        ap_log_error(FCGI_LOG_ALERT, fcgi_apache_main_server, 
+            "FastCGI: CreateEvent() failed");
+    }
     fcgi_event_handles[2] = CreateEvent(NULL, FALSE, FALSE, NULL);
-    fcgi_dynamic_mbox_mutex = ap_create_mutex("fcgi_dynamic_mbox_mutex");
+    if (fcgi_event_handles[2] == NULL) {
+        ap_log_error(FCGI_LOG_ALERT, fcgi_apache_main_server, 
+            "FastCGI: CreateEvent() failed");
+    }
+
+    /* Create the mbox mutex (PM - request threads) */
+    fcgi_dynamic_mbox_mutex = CreateMutex(NULL, FALSE, NULL);
+    if (fcgi_dynamic_mbox_mutex == NULL) {
+        ap_log_error(FCGI_LOG_ALERT, fcgi_apache_main_server, 
+            "FastCGI: CreateMutex() failed");
+    }
 
     /* Spawn of the process manager thread */
     fcgi_pm_thread = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)fcgi_pm_main, NULL, 0, NULL);
+    if (fcgi_pm_thread == NULL) {
+        ap_log_error(FCGI_LOG_ALERT, fcgi_apache_main_server, 
+            "CreateThread() failed to spawn the process manager");
+    }
 #endif
+
     return;
 }
 
 static void fcgi_child_exit(server_rec *dc0, pool *dc1) 
 {
 #ifdef WIN32
-    /* Signaling the PM thread tp exit*/
+    /* Signal the PM thread to exit*/
     SetEvent(fcgi_event_handles[TERM_EVENT]);
 
     /* Waiting on pm thread to exit */
@@ -727,58 +749,57 @@ static void set_uid_n_gid(request_rec *r, const char **user, const char **group)
     }
 }
 
-/*******************************************************************************
- * Close the connection to the FastCGI server.  This is normally called by
- * do_work(), but may also be called as in request pool cleanup.
- */
-static void close_connection_to_fs(fcgi_request *fr)
+static void send_request_complete(fcgi_request *fr)
 {
-    pool *rp = fr->r->pool;
-
-    if (fr->fd >= 0) {
-        ap_pclosesocket(rp, fr->fd);
-    }
-
-    if (fr->dynamic) 
+    if (fr->completeTime.tv_sec) 
     {
-        if (fr->keepReadingFromFcgiApp == FALSE) {
-            /* XXX FCGI_REQUEST_COMPLETE_JOB is only sent for requests which complete
-             * normally WRT the fcgi app.  There is no data sent for
-             * connect() timeouts or requests which complete abnormally.
-             * KillDynamicProcs() and RemoveRecords() need to be looked at
-             * to be sure they can reasonably handle these cases before
-             * sending these sort of stats - theres some funk in there.
-             * XXX We should do something special when this a pool cleanup.
-             */
-            if (fcgi_util_gettimeofday(&fr->completeTime) < 0) {
-                /* there's no point to aborting the request, just log it */
-                ap_log_error(FCGI_LOG_ERR, fr->r->server, "FastCGI: can't get time of day");
-            } else {
-                struct timeval qtime, rtime;
+        struct timeval qtime, rtime;
 
-                timersub(&fr->queueTime, &fr->startTime, &qtime);
-                timersub(&fr->completeTime, &fr->queueTime, &rtime);
-                
-                send_to_pm(FCGI_REQUEST_COMPLETE_JOB, fr->fs_path,
-                    fr->user, fr->group,
-                    qtime.tv_sec * 1000000 + qtime.tv_usec,
-                    rtime.tv_sec * 1000000 + rtime.tv_usec);
-            }
-        }
+        timersub(&fr->queueTime, &fr->startTime, &qtime);
+        timersub(&fr->completeTime, &fr->queueTime, &rtime);
+        
+        send_to_pm(FCGI_REQUEST_COMPLETE_JOB, fr->fs_path,
+            fr->user, fr->group,
+            qtime.tv_sec * 1000000 + qtime.tv_usec,
+            rtime.tv_sec * 1000000 + rtime.tv_usec);
     }
 }
 
 #ifdef WIN32
 
-static int set_nonblocking(SOCKET fd, int nonblocking)
+static int set_nonblocking(const fcgi_request * fr, int nonblocking)
 {
-    unsigned long ioctl_arg = (nonblocking) ? 1 : 0;
-    return ioctlsocket(fd, FIONBIO, &ioctl_arg);
+    if (fr->using_npipe_io) 
+    {
+        if (nonblocking)
+        {
+            DWORD mode = PIPE_NOWAIT | PIPE_READMODE_BYTE;
+            if (SetNamedPipeHandleState((HANDLE) fr->fd, &mode, NULL, NULL) == 0)
+            {
+		        ap_log_rerror(FCGI_LOG_ERR, fr->r,
+                    "FastCGI: SetNamedPipeHandleState() failed");
+                return -1;
+            }
+        }
+    }
+    else  
+    {
+        unsigned long ioctl_arg = (nonblocking) ? 1 : 0;
+        if (ioctlsocket(fr->fd, FIONBIO, &ioctl_arg) != 0)
+        {
+            errno = WSAGetLastError();
+            ap_log_rerror(FCGI_LOG_ERR_ERRNO, fr->r, 
+                "FastCGI: ioctlsocket() failed");
+            return -1;
+        }
+    }
+
+    return 0;
 }
 
 #else
 
-static int set_nonblocking(int fd, int nonblocking)
+static int set_nonblocking(const fcgi_request * fr, int nonblocking)
 {
     int nb_flag = 0;
     int fd_flags = fcntl(fd, F_GETFL, 0);
@@ -797,10 +818,62 @@ static int set_nonblocking(int fd, int nonblocking)
 
     fd_flags = (nonblocking) ? (fd_flags | nb_flag) : (fd_flags & ~nb_flag);
 
-    return fcntl(fd, F_SETFL, fd_flags);
+    return fcntl(fr->fd, F_SETFL, fd_flags);
 }
 
 #endif
+
+/*******************************************************************************
+ * Close the connection to the FastCGI server.  This is normally called by
+ * do_work(), but may also be called as in request pool cleanup.
+ */
+static void close_connection_to_fs(fcgi_request *fr)
+{
+#ifdef WIN32
+
+    if (fr->fd != INVALID_SOCKET)
+    {
+        set_nonblocking(fr, FALSE);
+
+        if (fr->using_npipe_io)
+        {
+            CloseHandle((HANDLE) fr->fd);
+        }
+        else
+        {
+            closesocket(fr->fd);
+        }
+
+        fr->fd = INVALID_SOCKET;
+    }
+
+#else /* ! WIN32 */
+
+    if (fr->fd >= 0) 
+    {
+        set_nonblocking(fr, FALSE);
+        closesocket(fr->r->pool, fr->fd);
+        fr->fd = -1;
+    }
+
+#endif /* ! WIN32 */
+
+    if (fr->dynamic && fr->keepReadingFromFcgiApp == FALSE) 
+    {
+        /* XXX FCGI_REQUEST_COMPLETE_JOB is only sent for requests which complete
+         * normally WRT the fcgi app.  There is no data sent for
+         * connect() timeouts or requests which complete abnormally.
+         * KillDynamicProcs() and RemoveRecords() need to be looked at
+         * to be sure they can reasonably handle these cases before
+         * sending these sort of stats - theres some funk in there.
+         */
+        if (fcgi_util_gettimeofday(&fr->completeTime) < 0) 
+        {
+            /* there's no point to aborting the request, just log it */
+            ap_log_error(FCGI_LOG_ERR, fr->r->server, "FastCGI: can't get time of day");
+        }
+    }
+}
 
 /*******************************************************************************
  * Connect to the FastCGI server.
@@ -1008,21 +1081,18 @@ static int open_connection_to_fs(fcgi_request *fr)
             ap_log_rerror(FCGI_LOG_ERR, r,
                 "FastCGI: failed to connect to server \"%s\": "
                 "CreateFile()/WaitNamedPipe() timed out", fr->fs_path);
+            fr->fd = INVALID_SOCKET;
             return FCGI_FAILED; 
         }
 
         FCGIDBG2("got_named_pipe_connect: %s", fr->fs_path);
-
-        ap_block_alarms();
-        ap_note_cleanups_for_h(rp, (HANDLE) fr->fd);
-        ap_unblock_alarms();
 
         return FCGI_OK;
     }
 #endif
 
     /* Create the socket */
-    fr->fd = ap_psocket(rp, socket_addr->sa_family, SOCK_STREAM, 0);
+    fr->fd = socket(socket_addr->sa_family, SOCK_STREAM, 0);
 
     if (fr->fd < 0) {
 #ifdef WIN32
@@ -1030,7 +1100,7 @@ static int open_connection_to_fs(fcgi_request *fr)
 #endif
         ap_log_rerror(FCGI_LOG_ERR_ERRNO, r,
             "FastCGI: failed to connect to server \"%s\": "
-            "ap_psocket() failed", fr->fs_path);
+            "socket() failed", fr->fs_path);
         return FCGI_FAILED; 
     }
 
@@ -1047,7 +1117,7 @@ static int open_connection_to_fs(fcgi_request *fr)
 
     /* If appConnectTimeout is non-zero, setup do a non-blocking connect */
     if ((fr->dynamic && dynamicAppConnectTimeout) || (!fr->dynamic && fr->fs->appConnectTimeout)) {
-        set_nonblocking(fr->fd, TRUE);
+        set_nonblocking(fr, TRUE);
     }
 
     if (fr->dynamic && fcgi_util_gettimeofday(&fr->startTime) < 0) {
@@ -1195,7 +1265,7 @@ static int open_connection_to_fs(fcgi_request *fr)
 ConnectionComplete:
     /* Return to blocking mode if it was set up */
     if ((fr->dynamic && dynamicAppConnectTimeout) || (!fr->dynamic && fr->fs->appConnectTimeout)) {
-        set_nonblocking(fr->fd, FALSE);
+        set_nonblocking(fr, FALSE);
     }
 
 #ifdef TCP_NODELAY
@@ -1224,14 +1294,14 @@ static int server_error(fcgi_request *fr)
 
 static void cleanup(void *data)
 {
-    const fcgi_request * const fr = (fcgi_request *)data;
+    fcgi_request * const fr = (fcgi_request *) data;
 
-    if (fr == NULL)
-        return ;
+    if (fr == NULL) return;
 
-    if (fr->fd >= 0) {
-        set_nonblocking(fr->fd, FALSE);
-    }
+    /* its more than likely already run, but... */
+    close_connection_to_fs(fr);
+
+    send_request_complete(fr);
 
     if (fr->fs_stderr_len) {
         ap_log_rerror(FCGI_LOG_ERR_NOERRNO, fr->r,
@@ -1280,6 +1350,10 @@ static int do_work(request_rec *r, fcgi_request *fr)
             return server_error(fr);
     }
 
+    ap_block_alarms();
+    ap_register_cleanup(rp, (void *)fr, cleanup, ap_null_cleanup);
+    ap_unblock_alarms();
+
     /* Connect to the FastCGI Application */
     ap_hard_timeout("connect() to FastCGI server", r);
     if (open_connection_to_fs(fr) != FCGI_OK) {
@@ -1305,21 +1379,8 @@ static int do_work(request_rec *r, fcgi_request *fr)
      * uses the select */
     ap_hard_timeout("FastCGI request processing", r);
 
-    /* Register to get the script's stderr logged at the end of the request */
-    ap_block_alarms();
-    ap_register_cleanup(rp, (void *)fr, cleanup, ap_null_cleanup);
-    ap_unblock_alarms();
-
     /* Before we do any writing, set the connection non-blocking */
-#ifdef WIN32
-    if (fr->using_npipe_io) {
-        DWORD mode = PIPE_NOWAIT | PIPE_READMODE_BYTE;
-        SetNamedPipeHandleState((HANDLE) fr->fd, &mode, NULL, NULL);
-    }
-    else  
-#endif
-        
-    set_nonblocking(fr->fd, TRUE);
+    set_nonblocking(fr, TRUE);
 
     /* The socket is writeable, so get the first write out of the way */
     if (fcgi_buf_get_to_fd(fr->serverOutputBuffer, fr->fd) < 0) {
@@ -1784,6 +1845,8 @@ static int content_handler(request_rec *r)
     fcgi_request *fr = NULL;
     int ret;
 
+    FCGIDBG1("->content_handler()");
+
     /* Setup a new FastCGI request */
     if ((fr = create_fcgi_request(r, NULL)) == NULL)
         return SERVER_ERROR;
@@ -1800,7 +1863,11 @@ static int content_handler(request_rec *r)
         return ret;
 
     /* Special case redirects */
-    return post_process_for_redirects(r, fr);
+    ret = post_process_for_redirects(r, fr);
+
+    FCGIDBG1("<-content_handler()");
+
+    return ret;
 }
 
 

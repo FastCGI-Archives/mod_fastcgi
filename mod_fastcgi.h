@@ -1,5 +1,5 @@
 /*
- * $Id: mod_fastcgi.h,v 1.36 2001/05/29 15:22:13 robs Exp $
+ * $Id: mod_fastcgi.h,v 1.37 2001/11/17 00:50:21 robs Exp $
  */
 
 #ifndef MOD_FASTCGI_H
@@ -93,10 +93,17 @@
 #define FCGI_FLUSH	FALSE
 
 #ifdef WIN32
+
+/* # of millisecs to wait on the mbox mutex */
+#define FCGI_MBOX_MUTEX_TIMEOUT 5000
+
 #define DEFAULT_SOCK_DIR "\\\\.\\pipe\\FastCGI\\"
-#else
+
+#else /* ! WIN32 */
+
 #define DEFAULT_SOCK_DIR "/tmp/fcgi"       /* Default dir for Unix/Domain sockets */
-#endif
+
+#endif /* ! WIN32 */
 
 #define FCGI_MAGIC_TYPE "application/x-httpd-fcgi"
 

@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_pm.c,v 1.60 2001/08/24 02:14:17 robs Exp $
+ * $Id: fcgi_pm.c,v 1.61 2001/11/17 00:50:20 robs Exp $
  */
 
 
@@ -111,19 +111,18 @@ static void shutdown_all()
             ? dynamicMaxClassProcs
             : s->numProcesses;
         
-        /* Remove the socket file */
-        if (s->socket_path != NULL && s->directive != APP_CLASS_EXTERNAL) {
 #ifndef WIN32
+        if (s->socket_path != NULL && s->directive != APP_CLASS_EXTERNAL) 
+        {
+            /* Remove the socket file */
             if (unlink(s->socket_path) != 0 && errno != ENOENT) {
                 ap_log_error(FCGI_LOG_ERR, fcgi_apache_main_server,
                     "FastCGI: unlink() failed to remove socket file \"%s\" for%s server \"%s\"",
                     s->socket_path,
                     (s->directive == APP_CLASS_DYNAMIC) ? " (dynamic)" : "", s->fs_path);
             }
-#else
-           CloseHandle((HANDLE)s->listenFd);
-#endif
         }
+#endif
 
         /* Send TERM to all processes */
         for (i = 0; i < numChildren; i++, proc++) 
@@ -143,7 +142,7 @@ static int init_listen_sock(fcgi_server * fs)
     ap_assert(fs->directive != APP_CLASS_EXTERNAL);
 
     /* Create the socket */
-    if ((fs->listenFd = ap_psocket(fcgi_config_pool, fs->socket_addr->sa_family, SOCK_STREAM, 0)) < 0) 
+    if ((fs->listenFd = socket(fs->socket_addr->sa_family, SOCK_STREAM, 0)) < 0) 
     {
 #ifdef WIN32
         errno = WSAGetLastError();  // Not sure if this will work as expected
@@ -290,7 +289,6 @@ static void signal_handler(int signo)
  *
  *----------------------------------------------------------------------
  */
-
 static pid_t spawn_fs_process(fcgi_server *fs, ServerProcess *process)
 {
 #ifndef WIN32
@@ -401,6 +399,13 @@ FailedSystemCallExit:
     char * termination_env_string = NULL;
 
     process->terminationEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
+    if (process->terminationEvent == NULL)
+    {
+        ap_log_error(FCGI_LOG_CRIT, fcgi_apache_main_server,
+            "FastCGI: can't create termination event for server \"%s\", "
+            "CreateEvent() failed", fs->fs_path);
+        exit(0);
+    }
     SetHandleInformation(process->terminationEvent, HANDLE_FLAG_INHERIT, TRUE);
     
     termination_env_string = ap_psprintf(tp, 
@@ -645,9 +650,9 @@ static void schedule_start(fcgi_server *s, int proc)
 static void dynamic_read_msgs(int read_ready)
 {
     fcgi_server *s;
+    int rc;
 
 #ifndef WIN32
-    int rc;
     static int buflen = 0;
     static char buf[FCGI_MSGS_BUFSIZE + 1];
     char *ptr1, *ptr2, opcode;
@@ -660,7 +665,7 @@ static void dynamic_read_msgs(int read_ready)
     fcgi_pm_job *cjob = NULL;
 #endif
 
-    pool *sp, *tp;
+    pool *sp = NULL, *tp;
 
 #ifndef WIN32
     user[MAX_USER_NAME_LEN + 1] = group[MAX_GID_CHAR_LEN] = '\0';
@@ -711,18 +716,30 @@ static void dynamic_read_msgs(int read_ready)
     }
     buflen += rc;
     buf[buflen] = '\0';
+
 #else
-    if (ap_acquire_mutex(fcgi_dynamic_mbox_mutex) != MULTI_OK) {
+    
+    /* dynamic_read_msgs() is called when a MBOX_EVENT is received (a 
+     * request to do something) and/or when a timeout expires.
+     * There really should be no reason why this wait would get stuck
+     * but there's no point in waiting forever. */
+
+    rc = WaitForSingleObject(fcgi_dynamic_mbox_mutex, FCGI_MBOX_MUTEX_TIMEOUT);
+
+    if (rc != WAIT_OBJECT_0 && rc != WAIT_ABANDONED) 
+    {
         ap_log_error(FCGI_LOG_ALERT, fcgi_apache_main_server,
-            "FastCGI: Failed to aquire the dynamic mbox mutex!");
+            "FastCGI: failed to aquire the dynamic mbox mutex - something is broke?!");
+        return;
     }
 
     joblist = fcgi_dynamic_mbox;
     fcgi_dynamic_mbox = NULL;
 
-    if (! ap_release_mutex(fcgi_dynamic_mbox_mutex)) {
+    if (! ReleaseMutex(fcgi_dynamic_mbox_mutex)) 
+    {
         ap_log_error(FCGI_LOG_ALERT, fcgi_apache_main_server,
-            "FastCGI: Failed to release the dynamic mbox mutex!");
+            "FastCGI: failed to release the dynamic mbox mutex - something is broke?!");
     }
 
     cjob = joblist;
@@ -805,7 +822,16 @@ static void dynamic_read_msgs(int read_ready)
 #endif
         {
 #ifdef WIN32
-            HANDLE mutex = ap_create_mutex(NULL);
+
+            HANDLE mutex = CreateMutex(NULL, FALSE, "cjob->fs_path");
+
+            if (mutex == NULL)
+            {
+                ap_log_error(FCGI_LOG_ALERT, fcgi_apache_main_server,
+                    "FastCGI: can't create accept mutex "
+                    "for (dynamic) server \"%s\"", cjob->fs_path);
+                goto BagNewServer;
+            }
             
             SetHandleInformation(mutex, HANDLE_FLAG_INHERIT, TRUE);
 #else
@@ -836,6 +862,14 @@ static void dynamic_read_msgs(int read_ready)
             ap_getparents(s->fs_path);
             ap_no2slash(s->fs_path);
             s->procs = fcgi_util_fs_create_procs(sp, dynamicMaxClassProcs);
+
+            /* XXX the socket_path (both Unix and Win) *is* deducible and
+             * thus can and will be used by other apache instances without
+             * the use of shared data regarding the processes serving the 
+             * requests.  This can result in slightly unintuitive process
+             * counts and security implications.  This is prevented
+             * if suexec (Unix) is in use.  This is both a feature and a flaw.
+             * Changing it now would break existing installations. */
 
 #ifndef WIN32
             /* Create socket file's path */
@@ -1076,7 +1110,7 @@ NextJob:
         continue;
 
 BagNewServer:
-        ap_destroy_pool(sp);
+        if (sp) ap_destroy_pool(sp);
 
 #ifdef WIN32
     free(cjob->fs_path);
@@ -1222,7 +1256,7 @@ static void dynamic_kill_idle_fs_procs(void)
 // Can we use WaitForMultipleObjects()
 #define FCGI_PROC_WAIT_TIME 100
 
-void child_wait_thread(void *dummy) {
+void child_wait_thread_main(void *dummy) {
     fcgi_server *s;
     DWORD dwRet = WAIT_TIMEOUT;
     int numChildren;
@@ -1249,7 +1283,7 @@ void child_wait_thread(void *dummy) {
                     DWORD exitStatus = 0;
 
                     /* timeout is currently set for 100 miliecond */ 
-                    /* it may need t longer or user customizable */
+                    /* it may need to be longer or user customizable */
                     dwRet = WaitForSingleObject(s->procs[i].handle, FCGI_PROC_WAIT_TIME);
 
                     waited = 1;
@@ -1356,8 +1390,7 @@ void fcgi_pm_main(void *dummy)
 
 #ifdef WIN32
     DWORD dwRet;
-    int first_time = 1;
-    HANDLE wait_thread = INVALID_HANDLE_VALUE;
+    HANDLE child_wait_thread = INVALID_HANDLE_VALUE;
 #else
     int callWaitPid, callDynamicProcs;
 #endif
@@ -1407,6 +1440,14 @@ void fcgi_pm_main(void *dummy)
 #endif
 
     now = time(NULL);
+
+    child_wait_thread = CreateThread(NULL, 0, 
+        (LPTHREAD_START_ROUTINE) child_wait_thread_main, NULL, 0, NULL);
+    if (child_wait_thread == NULL)
+    {
+        ap_log_error(FCGI_LOG_ALERT, fcgi_apache_main_server,
+            "FastCGI: failed to create process manager's wait thread!");
+    }
 
     /*
      * Loop until SIGTERM
@@ -1515,6 +1556,7 @@ void fcgi_pm_main(void *dummy)
         }
 
 #ifndef WIN32
+
         if(caughtSigTerm) {
             goto ProcessSigTerm;
         }
@@ -1635,12 +1677,8 @@ ChildFound:
                     s->fs_path, (int)childPid, WTERMSIG(waitStatus), SYS_SIGLIST[WTERMSIG(waitStatus)]);
             }
         } /* for (;;), waitpid() */
-#else
-        if (first_time) {
-            /* Start the child wait thread */
-            wait_thread = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)child_wait_thread, NULL, 0, NULL);
-            first_time = 0;
-        }
+
+#else /* WIN32 */
 
         /* wait for an event to occur or timer expires */
         expire = time(NULL) + sleepSeconds;
@@ -1688,21 +1726,26 @@ ChildFound:
         }
         else if (dwRet == TERM_EVENT) {
             ap_log_error(FCGI_LOG_INFO_NOERRNO, fcgi_apache_main_server, 
-                         "FastCGI: Termination event received process manager shutting down");
+                "FastCGI: Termination event received process manager shutting down");
+            
             bTimeToDie = TRUE;
+            dwRet = WaitForSingleObject(child_wait_thread, INFINITE);
 
-            dwRet = WaitForSingleObject(wait_thread, INFINITE);
             goto ProcessSigTerm;
         }
         else {
             // Have an received an unknown event - should not happen
             ap_log_error(FCGI_LOG_CRIT, fcgi_apache_main_server,
                 "FastCGI: WaitForMultipleobjects() return an unrecognized event");
+            
             bTimeToDie = TRUE;
-            dwRet = WaitForSingleObject(wait_thread, INFINITE);
+            dwRet = WaitForSingleObject(child_wait_thread, INFINITE);
+
             goto ProcessSigTerm;
         }
-#endif
+
+#endif /* WIN32 */
+
     } /* for (;;), the whole shoot'n match */
 
 ProcessSigTerm:
@@ -1719,24 +1762,26 @@ ProcessSigTerm:
 }
 
 #ifdef WIN32
-int fcgi_pm_add_job(fcgi_pm_job *new_job) {
+int fcgi_pm_add_job(fcgi_pm_job *new_job) 
+{
+    int rv = WaitForSingleObject(fcgi_dynamic_mbox_mutex, FCGI_MBOX_MUTEX_TIMEOUT);
 
-    if (new_job == NULL)
-        return 0;
-
-    if (ap_acquire_mutex(fcgi_dynamic_mbox_mutex) != MULTI_OK) {
+    if (rv != WAIT_OBJECT_0 && rv != WAIT_ABANDONED) 
+    {
         ap_log_error(FCGI_LOG_ALERT, fcgi_apache_main_server,
-            "FastCGI: Failed to aquire the dynamic mbox mutex!");
+            "FastCGI: failed to aquire the dynamic mbox mutex - something is broke?!");
+        return -1;
     }
 
     new_job->next = fcgi_dynamic_mbox;
     fcgi_dynamic_mbox = new_job;
 
-    if (! ap_release_mutex(fcgi_dynamic_mbox_mutex)) {
+    if (! ReleaseMutex(fcgi_dynamic_mbox_mutex)) 
+    {
         ap_log_error(FCGI_LOG_ALERT, fcgi_apache_main_server,
-            "FastCGI: Failed to release the dynamic mbox mutex!");
+            "FastCGI: failed to release the dynamic mbox mutex - something is broke?!");
     }
 
-    return 1;
+    return 0;
 }
 #endif
