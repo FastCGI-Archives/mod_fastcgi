@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.51 1998/10/25 03:47:15 roberts Exp $
+ *  $Id: mod_fastcgi.c,v 1.52 1998/10/25 14:24:10 roberts Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -1317,6 +1317,7 @@ static FastCgiServerInfo *CreateFcgiServerInfo(int numInstances, char *ePath)
     serverInfoPtr->group = "-";
     serverInfoPtr->envp = NULL;
     serverInfoPtr->listenQueueDepth = FCGI_DEFAULT_LISTEN_Q;
+    serverInfoPtr->appConnectTimeout = FCGI_DEFAULT_APP_CONN_TIMEOUT;
     serverInfoPtr->numProcesses = numInstances;
     serverInfoPtr->initStartDelay = 0;
     serverInfoPtr->restartDelay = FCGI_DEFAULT_RESTART_DELAY;
@@ -2077,7 +2078,9 @@ const char *ExternalAppClassCmd(cmd_parms *cmd, void *dummy, char *arg)
     char *localPath = NULL;
     FastCgiServerInfo *serverInfoPtr = NULL;
     int configResult = -1;
-    int i;
+    int i, n;
+    int appConnectTimeout = FCGI_DEFAULT_APP_CONN_TIMEOUT;
+    char *cvtPtr;
     char *errMsg = fcgi_Malloc(1024);
 
     /*
@@ -2127,6 +2130,17 @@ const char *ExternalAppClassCmd(cmd_parms *cmd, void *dummy, char *arg)
             i++;
             localPath = argv[i];
             continue;
+        } else if((strcmp(argv[i], "-appConnTimeout") == 0)) {
+            if((i + 1) == argc) {
+                goto MissingValueReturn;
+            }
+            i++;
+            n = strtol(argv[i], &cvtPtr, 10);
+            if(*cvtPtr != '\0' || n < 0) {
+                goto BadValueReturn;
+            }
+            appConnectTimeout = n;
+            continue;
         } else {
             sprintf(errMsg, "ExternalAppClass: Unknown option %s\n", argv[i]);
             goto ErrorReturn;
@@ -2155,6 +2169,7 @@ const char *ExternalAppClassCmd(cmd_parms *cmd, void *dummy, char *arg)
     ASSERT(serverInfoPtr != NULL);
     DStringAppend(&serverInfoPtr->execPath, className, -1);
     serverInfoPtr->directive = APP_CLASS_EXTERNAL;
+	serverInfoPtr->appConnectTimeout = appConnectTimeout;
 
     if(hostPort != NULL) {
         configResult = ConfigureTCPServer(hostPort, FALSE,
@@ -2175,12 +2190,12 @@ const char *ExternalAppClassCmd(cmd_parms *cmd, void *dummy, char *arg)
 MissingValueReturn:
     sprintf(errMsg, "ExternalAppClass: missing value for %s\n", argv[i]);
     goto ErrorReturn;
-#if 0
+
 BadValueReturn:
     sprintf(errMsg, "ExternalAppClass: bad value \"%s\" for %s\n",
             argv[i], argv[i-1]);
     goto ErrorReturn;
-#endif
+
 ErrorReturn:
     if(serverInfoPtr != NULL) {
         FreeFcgiServerInfo(serverInfoPtr);

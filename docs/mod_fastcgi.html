@@ -143,10 +143,15 @@ application processes, using the executable file <CODE>path-name</CODE>.
 Should any of these processes die, <CODE>mod_fastcgi</CODE> will
 write an error log entry and restart the faulty process.</P>
 
-<P>The optional parameters to the <CODE>AppClass</CODE> directive
-are as follows:</P>
+<P>The optional parameters to the <CODE>ExternalAppClass</CODE>
+directive are as follows:</P>
 
 <UL>
+  <LI><B>appConnTimeout:</B> an integer representing a number of
+  seconds that the web server spends trying to connect to the FastCGI
+  application. If the connection is unsuccessful within that time
+  interval, the web server generates SERVER_ERROR response that
+  is sent back to the client. The default value is 15 seconds.
   <LI><B>processes:</B> number of FastCGI processes that the Web
   server will spawn, default 1.
   <LI><B>listen-queue-depth:</B> depth of listen queue shared by
@@ -160,7 +165,7 @@ are as follows:</P>
   decreases the demand placed on a system at initialization. Default
   value is 0 seconds.
   <LI><B>restart-delay:</B> minimum number of seconds between restarts
-  of processes in this class, default 5.  This delay prevents a
+  of processes in this class, default 5. This delay prevents a
   broken application from soaking up too much of the system. Default
   value is 5 seconds.
   <LI><B>priority:</B> priority of FastCGI application processes,
@@ -230,7 +235,13 @@ directive are as follows:</P>
   from this Web server. Most commonly, the FastCGI application
   listening on this socket would have been started by an <CODE>AppClass</CODE>
   directive with the <CODE>-socket</CODE> option.
-  <P>&nbsp;
+  <LI><B>appConnTimeout:</B> an integer representing a number of
+  seconds that the web server spends trying to connect to FastCGI
+  application. If the connection is unsuccessful within that time
+  interval, the web server generates SERVER_ERROR response that
+  is sent back to the client. The provided value should be greater
+  than the one specified by the <CODE>startDelay</CODE> attribute.
+  The default value is 15 seconds.
 </UL>
 
 <P>Exactly one of the <CODE>port</CODE> and <CODE>socket</CODE>
@@ -357,6 +368,11 @@ are as follows:</P>
   interval, a message CONN_TIMEOUT is sent to the process manager
   to invoke a new copy of the given FastCGI application. The default
   value is 3 seconds.
+  <LI><B>listen-queue-depth:</B> depth of listen queue shared by
+  the processes, default 5. A deeper listen queue allows the server
+  to cope with transient load fluctuations without rejecting requests;
+  it does not increase throughput. Adding extra processes may increase
+  throughput, depending upon the application and the host.
   <LI><B>appConnTimeout:</B> an integer representing a number of
   seconds that the web server spends trying to connect to FastCGI
   application. If the connection is unsuccessful within that time
