@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.27 1998/03/02 16:19:40 roy Exp $
+ *  $Id: mod_fastcgi.c,v 1.28 1998/03/09 21:22:47 mar Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -2680,7 +2680,7 @@ NothingToDo:
 		break;
 	}
 	s = LookupFcgiServerInfo(execName);
- 	if(s==NULL) {
+ 	if(s==NULL && opcode != REQ_COMPLETE) {
 	    s = CreateFcgiServerInfo(maxClassProcs, execName);
 	    DStringAppend(&s->execPath, execName, -1);
 	    s->numProcesses = 0;
@@ -2811,8 +2811,11 @@ NothingToDo:
 			STATE_NEEDS_STARTING;
 		break;
 	   case REQ_COMPLETE:
-		s->totalConnTime += ctime;
-		s->totalQueueTime += qsec;
+		/* only record stats if we have a structure */
+		if (s) {
+		  s->totalConnTime += ctime;
+		  s->totalQueueTime += qsec;
+		}
 		break;
 	}
     }
