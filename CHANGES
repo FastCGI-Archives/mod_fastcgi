@@ -6,21 +6,21 @@
 
  *) Add a -min-server-life option to the FastCgiConfig and 
     FastCgiServer directives to provide better control of the 
-    restart backoff feature.  Benjamin Osheroff [ben@gimbo.net]
+    restart backoff feature.  ["Benjamin Osheroff" <ben gimbo.net>]
 
 2.4.2
 
  *) [WIN] Fix handle leaks in the process manager.  
-    Sascha Schumann [sascha@schumann.cx]
+    ["Sascha Schumann" <sascha schumann.cx>]
 
  *) [WIN] Use a permanent pool for allocating the SystemRoot 
-    environment variable.  Sakamoto [ringring@zb4.so-net.ne.jp]
+    environment variable.  [Sakamoto <ringring zb4.so-net.ne.jp>]
 
  *) [WIN] Fix starting of scripts under AP2.
 
  *) Do the connect() to the application *after* collecting a chunk
     of client data.  This reinstates the pre-2.4.0 behaviour.
-    James Jurach [muaddib@erf.net].
+    ["James Jurach" <muaddib erf.net>]
 
  *) Remove an assert that was triggering on WIN when spawn() failed.
 
@@ -34,7 +34,7 @@
 
  *) Return NOT_FOUND (404) or FORBIDDEN (403) instead of 
     INTERNAL_SERVER_ERROR (500) when there are configuration issues
-    or the script does't exist.  Suggested by Jeff Lawson [bovine@ud.com].
+    or the script does't exist.  Suggested by ["Jeff Lawson" <bovine ud.com>].
 
 2.4.0
 
@@ -52,20 +52,20 @@
     the wrapper under certain circumstances, application invocation
     environments were inconsistent.  With this change, the wrapper is
     always used (when enabled) under both Apache 1.3 and 2.
-    Reported by Michael Richards [michael@fastmail.ca].
+    Reported by ["Michael Richards" <michael fastmail.ca>].
 
  *) [*nix/AP2] Use the vhost uid/gid instead of the server uid/gid
     for dynamic application invocation when the FastCgiWrapper is in use.
-    Reported by Michael Richards [michael@fastmail.ca]
+    Reported by ["Michael Richards" <michael fastmail.ca>]
 
  *) [*nix] Fix handling of FastCgiWrapper when passed a real path,
-    i.e. other than "on" or "off".  Michael Richards [michael@fastmail.ca]
+    i.e. other than "on" or "off".  ["Michael Richards" <michael fastmail.ca>]
 
  *) Eliminate the logging of "incomplete headers (0 bytes) received from 
     server" when a client aborts. 
 
  *) [WIN32] Fix a delay in handling large POSTs to named pipe based
-    servers. Philip Gladstone [philip@okena.com]
+    servers. ["Philip Gladstone" <philip okena.com>]
 
  *) [*nix/AP2] Prevent the module from being initalized twice at startup
     (resulting in confusing error messages to the log).
@@ -99,16 +99,16 @@
  *) Fix auth compatibility mode handling for access checker and authorizer
 
  *) Fix HEAD request handling.  Based on a patch by 
-    Chris Lightfoot [chris@ex-parrot.com]
+    ["Chris Lightfoot" <chris ex-parrot.com>].
 
  *) [*nix] When autoupdate is enabled touch the socket when restarting
     the processes to prevent further requests.  
-    Eckebrecht von Pappenheim [evp@heise.de]
+    ["Eckebrecht von Pappenheim" <evp heise.de>]
 
  *) Apache 2.0 support.
 
  *) [WIN32] Don't read from a potentially closed named pipe. 
-    Philip Gladstone [philip@okena.com]
+    ["Philip Gladstone" <philip okena.com>]
 
  *) Require the Apache version 1.3.6 or later to eliminate some signal
     handling funk.
@@ -142,14 +142,14 @@
  *) Fix 'FastCgiConfig -flush'.
 
  *) Prevent silly maxProcesses and processSlack combinations.
-    Dmitry Dorofeev [dima@yasp.com]
+    ["Dmitry Dorofeev" <dima yasp.com>]
                                                                
  *) Properly handle the killing of idle processes when one takes a long time
     to exit once signaled down (or the config is funky).
-    Dmitry Dorofeev [dima@yasp.com]
+    ["Dmitry Dorofeev" <dima yasp.com>]
 
  *) Always kill the youngest instance of an application.  Suggested by 
-    Dmitry Dorofeev [dima@yasp.com]
+    ["Dmitry Dorofeev" <dima yasp.com>]
 
 2.2.12
 
@@ -160,22 +160,23 @@
  *) Fix some broken casts that were likely the cause of an assert.
 
  *) Win32. Eliminate forward slashes from the named pipe path name.
-    Gerald Richter [richter@ecos.de]
+    ["Gerald Richter" <richter ecos.de>]
 
  *) SIGUSR2 is no longer blocked in the process manager and the fastcgi 
-    applications it spawns. [ryans@amazon.com]
+    applications it spawns. [<ryans amazon.com>]
 
  *) Added support for the -flush argument to FastCgiConfig. 
-    Eric Sit [esit@alum.mit.edu]
+    ["Eric Sit" <esit alum.mit.edu>]
 
  *) Change the "which call to module_init() is this" check to a more
-    reliable approach.  Doru Petrescu [pdoru@kappa.ro]
+    reliable approach.  ["Doru Petrescu" <pdoru kappa.ro>]
 
  *) Close the old pipe file descriptor in apache main on USR1/HUP 
-    (elimnates a small leak).  James E. Jurach Jr. jjurach@fundsxpress.com
+    (elimnates a small leak).  
+    ["James E. Jurach Jr." <jjurach fundsxpress.com>]
 
- *) Fix a bug in fcgi_config_set_authoritative_slot(). Tetsuya Furukawa
-    [tetsuya@secom-sis.co.jp]
+ *) Fix a bug in fcgi_config_set_authoritative_slot(). 
+    ["Tetsuya Furukawa" <tetsuya secom-sis.co.jp>]
 
  *) Eliminate the use of locks to assist in the clean shutdown of
     applications.  Instead, it is assumed that applications handle
@@ -186,15 +187,15 @@
     an updated application lib (termination is now signalled with an
 	Event and handled by specialized thread).
 
- *) Docs cleanup.  Andrew Benham [adsb@bigfoot.com]
+ *) Docs cleanup.  ["Andrew Benham" <adsb bigfoot.com>]
 
  *) Added code so if the last instance of a dynamic application died without
     provocation, then don't restart it if singleThreshold > 0 (i.e. if the
     configuration allows the last instance to be killed, then allow it to die).
-    Andrew Benham [adsb@bigfoot.com]
+    ["Andrew Benham" <adsb bigfoot.com>]
 
  *) Fix the loadFactor calculation used to determine when dyanmic
-    applications could be killed off due to low demand [adsb@bigfoot.com].
+    applications could be killed off due to low demand. [<adsb bigfoot.com>]
 
  *) Fix a deadlock condition that could occur with Win32 named 
     pipes (dynamic).
@@ -205,11 +206,12 @@
 2.2.10
 
  *) Allow absolute pathnames in the -socket argument.  Suggested by 
-    Christian Jaeger [christian.jaeger@sl.ethz.ch].
+    ["Christian Jaeger" <christian.jaeger sl.ethz.ch>].
 
  *) Don't invoke suexec when the user/group for the fastcgi application
     is the same as the apache main server.  This is consistent with 
-    apache's suexec handling.  Suggested by Nikolaus Rath [Nikolaus@rath.org].
+    apache's suexec handling.  Suggested by ["Nikolaus Rath" 
+    <Nikolaus rath.org>].
 
  *) Reset the apache drop dead timer upon successful read or writes
     to/from the client.  This eliminates timeouts that were occuring
@@ -228,7 +230,7 @@
     was available it was being returned by Apache's accept().  This 
     caused it to be registered for pool cleanup.  mod_cgi though moves
     the CGI stdin pipe to FD0 and thus it was getting waxed during pool
-    cleanup.  Problem identified by checksum@163.net.
+    cleanup.  Problem identified by [<checksum 163.net>].
 
 Changes with mod_fastcgi 2.2.8
 
@@ -236,13 +238,15 @@ Changes with mod_fastcgi 2.2.8
     occurs trying to setup an application (e.g. bind() error) its 
     tried repeatedly every init-start-delay seconds.
 
- *) Tweak to Makefile.tmpl to support DSOs.  Dave Hill [ddhill@zk3.dec.com]
+ *) Tweak to Makefile.tmpl to support DSOs.  
+    ["Dave Hill" <ddhill zk3.dec.com>]
 
 Changes with mod_fastcgi 2.2.6
 
  *) Shutdown the PM when Apache appears to have disappeared.
 
- *) seteuid() tweak for HP-UX 11.  Milton L. Hankins [mlh@swl.msd.ray.com]
+ *) seteuid() tweak for HP-UX 11.  
+    ["Milton L. Hankins" <mlh swl.msd.ray.com>]
 
  *) (Win32) More dynamic fixes.
 
@@ -263,11 +267,11 @@ Changes with mod_fastcgi 2.2.6
 
 Changes with mod_fastcgi 2.2.4
 
- *) Beta WinNT support.  David Allen [djallen@raleigh.ibm.com] and 
-    Rob Saccoccio [robs@chelsea.net]
+ *) Beta WinNT support.  ["David Allen" <djallen raleigh.ibm.com>] and 
+    [Rob Saccoccio <robs chelsea.net>]
 
  *) Remove request type restriction (GET and POST only) in order to support
-    Web DAV requests.  Scott Robertson [sroberts@codeit.com] 
+    Web DAV requests.  ["Scott Robertson" <sroberts codeit.com>] 
 
  *) Allow requests for URLs such as /server/some/other/qualifier to match a
     FastCGI server defined as /server.	This was done primarily for Java
@@ -285,7 +289,7 @@ Changes with mod_fastcgi 2.2.4
  *) Clean up FastCGI application pathnames (e.g. remove duplicate slashes). 
  
  *) Fix bugs that prevented dynamic processes from being shutdown when
-    the load subsided.  Lars Heete [heete@do.isst.fhg.de]
+    the load subsided.  ["Lars Heete" <heete do.isst.fhg.de>]
 
  *) Prevent dynamic processes from being scheduled to be started before
     the init-start-delay or restart-delay period expires.  This prevents
@@ -329,8 +333,8 @@ Changes with mod_fastcgi 2.2.4
  *) Fix a bug in the stderr handling introduced in 2.2.2.  There were conditions
     that resulted in not or improperly terminated strings.
 
- *) Fix the call to setsockopt() to disable Nagle.  [based on a bug report by
-    Johannes Plassmann <johannes.plassmann@pdb.siemens.de>]
+ *) Fix the call to setsockopt() to disable Nagle.  Based on a bug report by
+    ["Johannes Plassmann" <johannes.plassmann pdb.siemens.de>].
 
 Changes with mod_fastcgi 2.2.2
 
@@ -344,7 +348,7 @@ Changes with mod_fastcgi 2.2.2
  *) Wrap the SIGPIPE handler manipulation code such that it is only applicable
     to Apache releases prior to 1.3.6.
 
- *) Minor tweaks for RUSSIAN_APACHE.  [Sergey Gershtein <sg@mplik.ru>]
+ *) Minor tweaks for RUSSIAN_APACHE.  ["Sergey Gershtein" <sg mplik.ru>]
 
  *) Dynamic updates:
 
@@ -366,13 +370,13 @@ Changes with mod_fastcgi 2.2.2
 
  *) Allow the -initial-env argument to be used to pass variables from the
     Apache process environment to the FastCGI server (by specifying a
-    variable name without the "=" or a value).  [suggested by
-    Martin Lichtin <lichtin@oanda.com>]
+    variable name without the "=" or a value).  Suggested by
+    ["Martin Lichtin" <lichtin oanda.com>]
 
  *) Cleanup some debug macros.
 
- *) Improved script stderr handling.  [based on suggestions by
-    David Birnbaum <davidb@chelsea.net>]
+ *) Improved script stderr handling.  Based on suggestions by
+    ["David Birnbaum" <davidb chelsea.net>]
 
  *) Added IRIX and FreeBSD to the list of supported platforms and other minor
     updates to the INSTALL doc.
@@ -383,7 +387,7 @@ Changes with mod_fastcgi 2.2.2
     messages in the log?
 
  *) Fix a bug in FastCgiExternalServer that broke support for external servers
-    on other hosts.  [Dave Neuer <dneuer@futuristics.net>]
+    on other hosts.  ["Dave Neuer" <dneuer futuristics.net>]
 
 Changes with mod_fastcgi 2.2.1
 
@@ -418,7 +422,7 @@ Changes with mod_fastcgi 2.2.1
     can still print our error message to the log from do_work().
 
  *) Fix a compile error in open_connection_to_fs() on systems with TCP_NODELAY
-    defined (Don Locrasto [locrasto@iceminer.com]).
+    defined. ["Don Locrasto" <locrasto iceminer.com>]
 
 Changes with mod_fastcgi 2.2.0
 
@@ -520,7 +524,7 @@ commit notes and stick 'em in here.. when I get some free time.	;)
 *** Originally from docs/README..
 
 Apache[X1.03.01]/mod_fastcgi[02.00.05] 19970909 unsupported
-From: Stanley Gambarin <stanleyg@cs.bu.edu>
+From: "Stanley Gambarin" <stanleyg cs.bu.edu>
 
  *) Yet more changes to the source distribution.  Separated out
     the Tcl dynamic string and buffer libraries into separate files.
@@ -530,7 +534,7 @@ From: Stanley Gambarin <stanleyg@cs.bu.edu>
     file more than once.
 
 Apache[X1.03.01]/mod_fastcgi[02.00.04] 19970908 unsupported
-From: Stanley Gambarin <stanleyg@cs.bu.edu>
+From: "Stanley Gambarin" <stanleyg cs.bu.edu>
 
  *) More changes to the installation scripts.  Theoretically we
     should be able to to use the same Makefile/installation script
@@ -538,28 +542,28 @@ From: Stanley Gambarin <stanleyg@cs.bu.edu>
     layer to use the same source code for both 1.2.x and 1.3.x sources.
 
 Apache[X1.03.01]/mod_fastcgi[02.00.03] 19970905 unsupported
-From: Stanley Gambarin <stanleyg@cs.bu.edu>
+From: "Stanley Gambarin" <stanleyg cs.bu.edu>
 
  *) Created Makefile to compile the module into the archive library,
     just like the proxy module.  Also initial draft of the installation
     script, which should work for both 1.2 and 1.3 sources of Apache.
 
 Apache[01.02.04]/mod_fastcgi[02.00.02] 19970903 unsupported
-From: Stanley Gambarin <stanleyg@cs.bu.edu>
+From: "Stanley Gambarin" <stanleyg cs.bu.edu>
 
  *) More source reorg.  Separated out some header files.  Need much
     more work on this.  Updated the TODO file.  Added fcgivers.h and
     CHANGES	file to track the history.
 
 Apache[01.02.04]/mod_fastcgi[02.00.01] 19970902 unsupported
-From: Stanley Gambarin <stanleyg@cs.bu.edu>
+From: "Stanley Gambarin" <stanleyg cs.bu.edu>
 
  *) Source reorganization.  This is done to provide a basis for later
     functionality implementation.  See TODO file for more information
     of what possible future enhancements are possible/desired.
 
 Apache[01.02.04]/mod_fastcgi[02.00.00] 19970902 unsupported
-From:  David MacKenzie <djm@va.pubnix.com>
+From:  "David MacKenzie" <djm va.pubnix.com>
 
  *) Create the "dynamic" dir and "mbox" as the user specified in the
     User and Group directives instead of as root.  They are created with
@@ -757,7 +761,7 @@ What's New: Version 1.3.1, 17 Sept 1996
 
  *) On some systems (Linux, some Solaris?, Irix?), connect requires
     write access to a Unix Domain socket, so provide it.  (Reported
-    by Scott Langley, freeform@wired.com, others.)
+    by Scott Langley, <freeform wired.com>, others.)
 
  *) If you hit a .fcg file, but there's no AppClass defined, the
     error should be NOT_FOUND instead of SERVER_ERROR.  (Reported
@@ -803,8 +807,7 @@ What's New: Version 1.3, 4 Sept 1996
 What's New: Version 1.2, 3 June 1996
 
  *) Ported from Apache-1.0-based code to Apache-1.1b2 internals by
-    Ralf S. Engelschall
-    <rse@en.muc.de>
+    ["Ralf S. Engelschall" <rse en.muc.de>]
     Add version string: APACHEVERSION macro to mod_fastcgi.c
 
  *) chown FastCGI socket to user_id and setuid to user_id for app
