@@ -1,3 +1,7 @@
+Changes with mod_fastcgi 2.2.3
+
+ *) 
+
 Changes with mod_fastcgi 2.2.2
 
  *) Added support for blocking connect()s by setting appConnTimeout to 0.
