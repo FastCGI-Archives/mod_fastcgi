@@ -1,0 +1,37 @@
+/* 
+ * This file contains some notes for the developers of the mod_fastcgi.
+ */
+
+>>>> Stanley Gambarin
+
+There are a lot of differences between Apache 1.2 and 1.3.  The 
+introduction of Sigfunc typedef was one of those, ap_md5() function
+was another.  I was thinking of providing some sort of a layer to
+allow running of the same code for both 1.2, 1.3 and possibly further
+up versions.
+
+Future note: Apache currently does not protect you from the multiple
+inclusion of the header files using #ifndef HEADER_FILE stuff, so I am
+forced to include "conf.h" into 4 files (3 explicitly and 1 using 
+httpd.h). There are probably other files that needs such inclusions, so
+I am marking the code as /* apache code */, so that someone may change it
+later to include one file (need to wait till apache 2.0, i guess) 
+
+>>>> David MacKenzie
+
+After the patches, my version of mod_fastcgi mostly works for dynamic
+applications.  There is a race condition I haven't figured out how to
+fix yet.  The process manager sometimes kills an application process
+that either apache is currently using to handle a request, or apache
+has just chosen to use (based on a lock file existing) but hasn't yet
+tried to contact (with connect()).  This results in a "500 Server
+Error"; I see it about 1 in every 20 FastCGI requests when using
+FCGIConfig parameters that kill processes rather aggressively.
+
+The other bug I haven't fixed yet is that if the server is not
+extremely busy, and the FastCGI applications don't take a long time to
+process requests, almost any set of FCGIConfig parameters results in
+short application lifetimes (less than 3 minutes), because the
+calculated load is almost always less than 1, on a scale of 0-100.
+I'm considering adding a logarithmic weighting to the load, but
+haven't figured out how yet.
