@@ -1,5 +1,9 @@
 2.2.13
 
+ *) [*nix/AP2] Use the vhost uid/gid instead of the server uid/gid
+    for dynamic application invocation when the FastCgiWrapper is in use.
+    Reported by Michael Richards [michael@fastmail.ca]
+
  *) [*nix] Fix handling of FastCgiWrapper when passed a real path,
     i.e. other than "on" or "off".  Michael Richards [michael@fastmail.ca]
 

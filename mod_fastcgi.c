@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.147 2002/12/05 03:02:05 robs Exp $
+ *  $Id: mod_fastcgi.c,v 1.148 2002/12/23 03:19:14 robs Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -79,6 +79,8 @@
 #if APR_HAVE_CTYPE_H
 #include <ctype.h>
 #endif
+
+#include "unixd.h"
 
 #endif
 #endif
@@ -969,6 +971,32 @@ static int write_to_client(fcgi_request *fr)
     return OK;
 }
 
+static void 
+get_request_identity(request_rec * const r, 
+                     uid_t * const uid, 
+                     gid_t * const gid)
+{
+#if defined(WIN32) 
+    *uid = (uid_t) 0;
+    *gid = (gid_t) 0;
+#elif defined(APACHE2)
+    ap_unix_identity_t * identity = ap_run_get_suexec_identity(r);
+    if (identity) 
+    {
+        *uid = identity->uid;
+        *gid = identity->gid;
+    }
+    else
+    {
+        *uid = 0;
+        *gid = 0;
+    }
+#else
+    *uid = r->server->server_uid;
+    *gid = r->server->server_gid;
+#endif
+}
+
 /*******************************************************************************
  * Determine the user and group the wrapper should be called with.
  * Based on code in Apache's create_argv_cmd() (util_script.c).
@@ -992,8 +1020,13 @@ static void set_uid_n_gid(request_rec *r, const char **user, const char **group)
         *group = "-";
     }
     else {
-        *user = ap_psprintf(r->pool, "%ld", (long) fcgi_util_get_server_uid(r->server));
-        *group = ap_psprintf(r->pool, "%ld", (long) fcgi_util_get_server_gid(r->server));
+        uid_t uid;
+        gid_t gid;
+
+        get_request_identity(r, &uid, &gid);
+
+        *user = ap_psprintf(r->pool, "%ld", (long) uid);
+        *group = ap_psprintf(r->pool, "%ld", (long) gid);
     }
 }
 
@@ -2367,11 +2400,15 @@ static fcgi_request *create_fcgi_request(request_rec * const r, const char *path
     pool * const p = r->pool;
     fcgi_server *fs;
     fcgi_request * const fr = (fcgi_request *)ap_pcalloc(p, sizeof(fcgi_request));
+    uid_t uid;
+    gid_t gid;
 
     fs_path = path ? path : r->filename;
 
-    fs = fcgi_util_fs_get_by_id(fs_path, fcgi_util_get_server_uid(r->server), 
-                                fcgi_util_get_server_gid(r->server));
+    get_request_identity(r, &uid, &gid);
+
+    fs = fcgi_util_fs_get_by_id(fs_path, uid, gid);
+
     if (fs == NULL) 
     {
         const char * err;
@@ -2770,9 +2807,12 @@ AccessFailed:
 static int 
 fixups(request_rec * r)
 {
-    if (fcgi_util_fs_get_by_id(r->filename, 
-                               fcgi_util_get_server_uid(r->server), 
-                               fcgi_util_get_server_gid(r->server)))
+    uid_t uid;
+    gid_t gid;
+
+    get_request_identity(r, &uid, &gid);
+
+    if (fcgi_util_fs_get_by_id(r->filename, uid, gid))
     {
         r->handler = FASTCGI_HANDLER_NAME;
         return OK;
