@@ -1,5 +1,9 @@
 2.4.3
 
+ *) Don't count an application exit towards the number of
+    failures when doing restart backoff handling if the exit
+    status is 0.  ["Rob Saccoccio" <robs fastcgi.com>]
+
  *) [*nix] Don't use suexec when there is no user/group in effect.
     This change is consistent with Apache2 handling.  Identified
     by ["Florian Effenberger" <floeff arcor.de>].

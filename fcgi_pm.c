@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_pm.c,v 1.91 2004/04/15 00:32:56 robs Exp $
+ * $Id: fcgi_pm.c,v 1.92 2004/04/15 01:23:05 robs Exp $
  */
 
 
@@ -1538,10 +1538,15 @@ void child_wait_thread_main(void *dummy) {
                         /* a child fs has died */
                         /* mark the child as dead */
 
+                        GetExitCodeProcess(s->procs[i].handle, &exitStatus);
+
                         if (s->directive == APP_CLASS_STANDARD) {
                             /* restart static app */
                             s->procs[i].state = FCGI_START_STATE;
-                            s->numFailures++;
+                            if (exitStatus != 0) {
+                                /* don't bump failure count on exit 0 */
+                                s->numFailures++;
+                            }
                         }
                         else {
                             s->numProcesses--;
@@ -1553,7 +1558,10 @@ void child_wait_thread_main(void *dummy) {
                             }
                             else {
                                 /* dynamic app shouldn't have died or dynamicAutoUpdate killed it*/
-                                s->numFailures++;
+                                if (exitStatus != 0) {
+                                    /* don't bump failure count on exit 0 */
+                                    s->numFailures++;
+                                }
 
                                 if (dynamicAutoRestart || (s->numProcesses <= 0 && dynamicThreshold1 == 0)) {
                                     s->procs[i].state = FCGI_START_STATE;
@@ -1563,8 +1571,6 @@ void child_wait_thread_main(void *dummy) {
                                 }
                             }
                         }
-
-                        GetExitCodeProcess(s->procs[i].handle, &exitStatus);
 
                         ap_log_error(FCGI_LOG_WARN_NOERRNO, fcgi_apache_main_server,
                             "FastCGI:%s server \"%s\" (pid %d) terminated with exit with status '%d'",
@@ -1965,7 +1971,10 @@ ChildFound:
             if (s->directive == APP_CLASS_STANDARD) {
                 /* Always restart static apps */
                 s->procs[i].state = FCGI_START_STATE;
-                s->numFailures++;
+                if (! (WIFEXITED(waitStatus) && (WEXITSTATUS(waitStatus) == 0))) {
+                    /* don't bump the failure count if the app exited with 0 */
+                    s->numFailures++;
+                }
             }
             else {
                 s->numProcesses--;
@@ -1976,7 +1985,11 @@ ChildFound:
                 }
                 else {
                     /* A dynamic app died or exited without provocation from the PM */
-                    s->numFailures++;
+
+                    if (! (WIFEXITED(waitStatus) && (WEXITSTATUS(waitStatus) == 0))) {
+                        /* don't bump the failure count if the app exited with 0 */
+                        s->numFailures++;
+                    }
 
                     if (dynamicAutoRestart || (s->numProcesses <= 0 && dynamicThreshold1 == 0))
                         s->procs[i].state = FCGI_START_STATE;
