@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_util.c,v 1.26 2002/09/22 16:53:13 robs Exp $
+ * $Id: fcgi_util.c,v 1.27 2002/10/21 23:54:24 robs Exp $
  */
 
 #include "fcgi.h"
@@ -11,15 +11,17 @@
 #include <unistd.h>
 #include <grp.h>
 #include <pwd.h>
+#include "unixd.h"
 #endif
 
 uid_t 
 fcgi_util_get_server_uid(const server_rec * const s)
 {
 #ifdef APACHE2
-    /* AP2TODO get the server's uid */
-    return 0;
+    /* the main server's uid */
+    return ap_user_id;
 #else
+    /* the vhost's uid */
     return s->server_uid;
 #endif
 }
@@ -28,9 +30,10 @@ uid_t
 fcgi_util_get_server_gid(const server_rec * const s)
 {
 #ifdef APACHE2
-    /* AP2TODO get the server's gid */
-    return 0;
+    /* the main server's gid */
+    return ap_group_id;
 #else
+    /* the vhost's gid */
     return s->server_gid;
 #endif
 }
