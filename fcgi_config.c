@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_config.c,v 1.33 2002/07/26 03:10:53 robs Exp $
+ * $Id: fcgi_config.c,v 1.34 2002/07/26 03:14:08 robs Exp $
  */
 
 #include "fcgi.h"
@@ -461,9 +461,9 @@ const char *fcgi_config_set_socket_dir(cmd_parms *cmd, void *dummy, const char *
             name);
     }
 
-#ifndef WIN32
-
     arg_nc = ap_pstrdup(cmd->pool, arg);
+
+#ifndef WIN32
 
 #ifdef APACHE2
     if (apr_filepath_merge(&arg_nc, "", arg, 0, cmd->pool))
