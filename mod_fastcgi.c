@@ -3556,7 +3556,7 @@ void ModFastCgiInit(server_rec *s, pool *p)
         log_printf(s, "mod_fastcgi: %s\n", ptr);
     }
 
-    spawn_child(p, FCGIProcMgrBoot, NULL, 
+    spawn_child(p, (void *)FCGIProcMgrBoot, NULL, 
             kill_always, NULL, &fp);
     /* 
      * synchronization step, only needs to be performed once
