@@ -1,6 +1,6 @@
 <!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">
 <html>
-<!-- $Id: mod_fastcgi.html,v 1.15 2000/04/27 02:27:36 robs Exp $ -->
+<!-- $Id: mod_fastcgi.html,v 1.16 2000/05/22 12:43:44 robs Exp $ -->
 
 <head>
 <title>Apache module mod_fastcgi</title>
@@ -307,8 +307,8 @@ mutually exclusive.</DD>
     values, this is the amount of time used in a <code>select()</code>  to write
     to the file descriptor returned by a non-blocking
     <code>connect().</code>&nbsp;
-    Non-blocking <code>connect()</code>s are troublesome on many
-    platforms.&nbsp; See also -idle-timeout, it produces similar results but in
+    Non-blocking <code>connect()</code>s are troublesome on many platforms and
+    thus the use of the option is not recommended.&nbsp; See also -idle-timeout, it produces similar results but in
     a more portable manner.</dd>
   <dt><code><b>-idle-timeout <em>n</em></b>&nbsp;(30 seconds)</code></dt>
   <dd>The number of seconds of FastCGI application inactivity allowed before the
