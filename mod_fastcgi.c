@@ -2725,7 +2725,7 @@ NothingToDo:
 		   */
 		  struct stat stbuf;
 		  int i, numChildren;
-		  if ((stat(execName, &stbuf)>=0) &&
+		  if ((stat(execName, &stbuf)==0) &&
 		      (stbuf.st_mtime > s->restartTime)) {
 		    /* kill old server(s) */
 		    if (s->directive == APP_CLASS_DYNAMIC) {
