@@ -1,5 +1,5 @@
 /*
- * $Id: mod_fastcgi.h,v 1.7 1999/02/09 03:08:09 roberts Exp $
+ * $Id: mod_fastcgi.h,v 1.8 1999/02/15 02:41:38 roberts Exp $
  */
 
 #ifndef MOD_FASTCGI_H
@@ -112,6 +112,11 @@
 
 #ifndef max
 #define max(a,b) ((a) > (b) ? (a) : (b))
+#endif
+
+/* This is (more or less) from http_main.c. It should be in an Apache header */
+#ifndef SYS_SIGLIST
+#define SYS_SIGLIST ap_sys_siglist
 #endif
 
 #endif	/* MOD_FASTCGI_H */

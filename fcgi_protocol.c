@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_protocol.c,v 1.1 1999/02/09 03:08:01 roberts Exp $
+ * $Id: fcgi_protocol.c,v 1.2 1999/02/15 02:41:41 roberts Exp $
  */
  
 
@@ -284,14 +284,14 @@ int fcgi_protocol_dequeue(pool *p, fcgi_request *fr)
              */
             if (header.version != FCGI_VERSION) {
                 ap_log_rerror(FCGI_LOG_ERR_NOERRNO, fr->r, 
-                    "FastCGI: invalid protocol version: %d != FCGI_VERSION(%d)",
-                    header.version, FCGI_VERSION);
+                    "FastCGI: comm with server \"%s\" aborted: protocol error: invalid version: %d != FCGI_VERSION(%d)",
+                    fr->fs_path, header.version, FCGI_VERSION);
                 return SERVER_ERROR;
             }
             if (header.type > FCGI_MAXTYPE) {
                 ap_log_rerror(FCGI_LOG_ERR_NOERRNO, fr->r, 
-                    "FastCGI: invalid protocol type: %d > FCGI_MAXTYPE(%d)",
-                    header.type, FCGI_MAXTYPE);
+                    "FastCGI: comm with server \"%s\" aborted: protocol error: invalid type: %d > FCGI_MAXTYPE(%d)",
+                    fr->fs_path, header.type, FCGI_MAXTYPE);
                 return SERVER_ERROR;
             }
 
@@ -339,15 +339,15 @@ int fcgi_protocol_dequeue(pool *p, fcgi_request *fr)
                         fr->fs_stderr = ap_pcalloc(p, FCGI_SERVER_MAX_STDERR_LEN + 1);
                         
                     max_len = min(len, FCGI_SERVER_MAX_STDERR_LEN - strlen(fr->fs_stderr));
-        	    fcgi_buf_get_to_block(fr->serverInputBuffer, fr->fs_stderr + strlen(fr->fs_stderr), max_len);
+                    fcgi_buf_get_to_block(fr->serverInputBuffer, fr->fs_stderr + strlen(fr->fs_stderr), max_len);
 
-		    if (max_len < len) {
-                        ap_log_rerror(FCGI_LOG_ERR_NOERRNO, fr->r, 
-                            "FastCGI: too much stderr received from script \"%s\", increase FCGI_SERVER_MAX_STDERR_LEN (%d)",
+                    if (max_len < len) {
+                        ap_log_rerror(FCGI_LOG_WARNING_NOERRNO, fr->r, 
+                            "FastCGI: too much stderr received from server \"%s\", increase FCGI_SERVER_MAX_STDERR_LEN (%d)",
                             fr->fs_path, FCGI_SERVER_MAX_STDERR_LEN);
-			fcgi_buf_toss(fr->serverInputBuffer, len - max_len);
+                        fcgi_buf_toss(fr->serverInputBuffer, len - max_len);
                     }
-	
+
                     fr->dataLen -= len;
                 }
                 break;
@@ -355,9 +355,9 @@ int fcgi_protocol_dequeue(pool *p, fcgi_request *fr)
                 if (!fr->readingEndRequestBody) {
                     if (fr->dataLen != sizeof(FCGI_EndRequestBody)) {
                         ap_log_rerror(FCGI_LOG_ERR_NOERRNO, fr->r, 
-                            "FastCGI: invalid FCGI_END_REQUEST size: "
+                            "FastCGI: comm with server \"%s\" aborted: protocol error: invalid FCGI_END_REQUEST size: "
                             "%d != sizeof(FCGI_EndRequestBody)(%d)",
-                            fr->dataLen, sizeof(FCGI_EndRequestBody));
+                            fr->fs_path, fr->dataLen, sizeof(FCGI_EndRequestBody));
                         return SERVER_ERROR;
                     }
                     fr->readingEndRequestBody = TRUE;
@@ -376,8 +376,8 @@ int fcgi_protocol_dequeue(pool *p, fcgi_request *fr)
                          * XXX: What to do with FCGI_OVERLOADED?
                          */
                         ap_log_rerror(FCGI_LOG_ERR_NOERRNO, fr->r, 
-                            "FastCGI: invalid FCGI_END_REQUEST status: "
-                            "%d != FCGI_REQUEST_COMPLETE(%d)",
+                            "FastCGI: comm with server \"%s\" aborted: protocol error: invalid FCGI_END_REQUEST status: "
+                            "%d != FCGI_REQUEST_COMPLETE(%d)", fr->fs_path,
                             erBody->protocolStatus, FCGI_REQUEST_COMPLETE);
                         return SERVER_ERROR;
                     }

@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.60 1999/02/13 20:29:26 roberts Exp $
+ *  $Id: mod_fastcgi.c,v 1.61 1999/02/15 02:41:39 roberts Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -421,7 +421,7 @@ static const char *process_headers(request_rec *r, fcgi_request *fr)
             }
             if (statusValue < 0) {
                 fr->parseHeader = SCAN_CGI_BAD_HEADER;
-                return ap_psprintf(r->pool, "Invalid Status value '%s'", value);
+                return ap_psprintf(r->pool, "invalid Status '%s'", value);
             }
             hasStatus = TRUE;
             r->status = statusValue;
@@ -522,11 +522,11 @@ BadHeader:
     if ((p = strpbrk(name, "\r\n")) != NULL)
         *p = '\0';
     fr->parseHeader = SCAN_CGI_BAD_HEADER;
-    return ap_psprintf(r->pool, "malformed header: '%s'", name);
+    return ap_psprintf(r->pool, "malformed header '%s'", name);
 
 DuplicateNotAllowed:
     fr->parseHeader = SCAN_CGI_BAD_HEADER;
-    return ap_psprintf(r->pool, "duplicate response header: '%s'", name);
+    return ap_psprintf(r->pool, "duplicate header '%s'", name);
 }
 
 /*
@@ -582,7 +582,9 @@ static int write_to_client(fcgi_request *fr)
      * reason) so the script can be released from having to wait around
      * for the transmission to the client to complete. */
     if (ap_bwrite(fr->r->connection->client, begin, count) != count) {
-        ap_log_rerror(FCGI_LOG_ERR, fr->r, "FastCGI: bwrite() to client failed");
+        ap_log_rerror(FCGI_LOG_INFO, fr->r, 
+            "FastCGI: comm with server \"%s\" aborted: bwrite() to client failed (client aborted?)",
+            fr->fs_path);
         return -1;
     }
 
@@ -596,7 +598,9 @@ static int write_to_client(fcgi_request *fr)
      * can tie up the FastCGI server longer than is necessary so its an option now */
     if (fr->fs && fr->fs->flush) {
         if (ap_bflush(fr->r->connection->client)) {
-            ap_log_rerror(FCGI_LOG_INFO, fr->r, "FastCGI: bflush() failed (client problem)");
+            ap_log_rerror(FCGI_LOG_INFO, fr->r, 
+                "FastCGI: comm with server \"%s\" aborted: bflush() failed (client aborted?)",
+                fr->fs_path);
             return -1;
         }
     }
@@ -920,7 +924,8 @@ static int do_work(request_rec *r, fcgi_request *fr)
     /* Connect to the FastCGI Application */
     ap_hard_timeout("connect() to FastCGI server", r);
     if ((err = open_connection_to_fs(fr))) {
-        ap_log_rerror(FCGI_LOG_ERR, r, "FastCGI: %s", err);
+        ap_log_rerror(FCGI_LOG_ERR, r, 
+            "FastCGI: failed to connect to server \"%s\": %s", fr->fs_path, err);
         return server_error(fr);
     }
         
@@ -986,7 +991,8 @@ static int do_work(request_rec *r, fcgi_request *fr)
             }
 
             if ((status = ap_select(numFDs, &read_set, &write_set, NULL, timeOutPtr)) < 0) {
-                ap_log_rerror(FCGI_LOG_ERR, r, "FastCGI: select() failed");
+                ap_log_rerror(FCGI_LOG_ERR, r, 
+                    "FastCGI: comm with server \"%s\" aborted: select() failed", fr->fs_path);
                 return server_error(fr);
             }
             
@@ -1003,7 +1009,8 @@ static int do_work(request_rec *r, fcgi_request *fr)
             /* Read from the FastCGI server */
             if (FD_ISSET(fr->fd, &read_set)) {
                 if ((status = fcgi_buf_add_fd(fr->serverInputBuffer, fr->fd)) < 0) {
-                    ap_log_rerror(FCGI_LOG_ERR, r, "FastCGI: read() from script \"%s\" failed", fr->fs_path);
+                    ap_log_rerror(FCGI_LOG_ERR, r, 
+                        "FastCGI: comm with server \"%s\" aborted: read failed", fr->fs_path);
                     return server_error(fr);
                 }
                 
@@ -1016,7 +1023,8 @@ static int do_work(request_rec *r, fcgi_request *fr)
             /* Write to the FastCGI server */
             if (FD_ISSET(fr->fd, &write_set)) {
                 if (fcgi_buf_get_to_fd(fr->serverOutputBuffer, fr->fd) < 0) {
-                    ap_log_rerror(FCGI_LOG_ERR, r, "FastCGI: write() to script \"%s\" failed", fr->fs_path);
+                    ap_log_rerror(FCGI_LOG_ERR, r, 
+                        "FastCGI: comm with server \"%s\" aborted: write failed", fr->fs_path);
                     return server_error(fr);
                 }
             }
@@ -1046,7 +1054,8 @@ static int do_work(request_rec *r, fcgi_request *fr)
         
         if (fr->parseHeader == SCAN_CGI_READING_HEADERS) {
             if ((err = process_headers(r, fr))) {
-                ap_log_rerror(FCGI_LOG_ERR, r, "FastCGI: %s", err);
+                ap_log_rerror(FCGI_LOG_ERR, r, 
+                    "FastCGI: comm with server \"%s\" aborted: error parsing headers: %s", fr->fs_path, err);
                 return server_error(fr);
             }
         }    
@@ -1064,7 +1073,7 @@ static int do_work(request_rec *r, fcgi_request *fr)
             
         case SCAN_CGI_READING_HEADERS:
             ap_log_rerror(FCGI_LOG_ERR, r, 
-                "FastCGI: incomplete headers (%d bytes) received from script \"%s\"",
+                "FastCGI: incomplete headers (%d bytes) received from server \"%s\"",
                 fr->header->nelts, fr->fs_path);
             return server_error(fr);
             
@@ -1102,21 +1111,21 @@ static fcgi_request *create_fcgi_request(request_rec * const r, const char *fs_p
         if (stat(fs_path, my_finfo) < 0) {
             ap_log_rerror(FCGI_LOG_ERR, r, "FastCGI: stat() of \"%s\" failed", fs_path);
             return NULL;
-	    }
+        }
     }
     else {
         my_finfo = &r->finfo;
-	    fs_path = r->filename;
+        fs_path = r->filename;
     }
 
     fs = fcgi_util_fs_get_by_id(fs_path, r->server->server_uid, r->server->server_gid);
     if (fs == NULL) {
         /* Its a request for a dynamic FastCGI application */
         const char * const err = 
-	    fcgi_util_fs_is_path_ok(p, fs_path, my_finfo, r->server->server_uid, r->server->server_gid);
+            fcgi_util_fs_is_path_ok(p, fs_path, my_finfo, r->server->server_uid, r->server->server_gid);
  
         if (err) {
-            ap_log_rerror(FCGI_LOG_ERR_NOERRNO, r, "FastCGI: invalid script \"%s\": %s", fs_path, err);
+            ap_log_rerror(FCGI_LOG_ERR_NOERRNO, r, "FastCGI: invalid server \"%s\": %s", fs_path, err);
             return NULL;
         }
     }
@@ -1233,7 +1242,7 @@ static int content_handler(request_rec *r)
     /* If its a dynamic invocation, make sure scripts are OK here */
     if (fr->dynamic && !(ap_allow_options(r) & OPT_EXECCGI) && !apache_is_scriptaliased(r)) {
         ap_log_rerror(FCGI_LOG_ERR_NOERRNO, r, 
-            "FastCGI: \"Options ExecCGI\" is off in this directory: %s", r->uri);
+            "FastCGI: \"ExecCGI Option\" is off in this directory: %s", r->uri);
         return SERVER_ERROR;
     }
 

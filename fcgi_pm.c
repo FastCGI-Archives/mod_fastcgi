@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_pm.c,v 1.1 1999/02/09 03:08:00 roberts Exp $
+ * $Id: fcgi_pm.c,v 1.2 1999/02/15 02:41:40 roberts Exp $
  */
 
 #include "fcgi.h"
@@ -44,7 +44,7 @@ static void kill_fs_procs(pool *p, fcgi_server *s)
 
         if (unlink(lockFileName) != 0) {
             ap_log_error(FCGI_LOG_ERR, NULL, 
-                "FastCGI: unlink() failed to remove lock file '%s' for app '%s'",
+                "FastCGI: unlink() failed to remove lock file \"%s\" for (dynamic) server \"%s\"",
                 lockFileName, s->fs_path);
         }
     }
@@ -53,8 +53,9 @@ static void kill_fs_procs(pool *p, fcgi_server *s)
     if (s->socket_path != NULL && s->directive != APP_CLASS_EXTERNAL) {
         if (unlink(s->socket_path) != 0) {
             ap_log_error(FCGI_LOG_ERR, NULL, 
-                "FastCGI: unlink() failed to remove socket file '%s' for app '%s'",
-                s->socket_path, s->fs_path);
+                "FastCGI: unlink() failed to remove socket file \"%s\" for%s server \"%s\"",
+                s->socket_path, 
+                (s->directive == APP_CLASS_DYNAMIC) ? " (dynamic)" : "", s->fs_path);
         }
     }
     fcgi_servers = s->next;
@@ -302,7 +303,7 @@ static int spawn_fs_process(
     ap_open_logs(fcgi_apache_parent_server, fcgi_config_pool);
     
 FailedSystemCallExit:
-    ap_log_error(FCGI_LOG_ERR, NULL, "FastCGI: can't start '%s' (pid %ld), %s failed",
+    ap_log_error(FCGI_LOG_ERR, NULL, "FastCGI: can't start server \"%s\" (pid %ld), %s failed",
         programName, (long) getpid(), failedSysCall);
     exit(-1);
     
@@ -406,7 +407,7 @@ static int dynamic_read_mbox(void)
     char user[MAX_USER_NAME_LEN + 2];
     char group[MAX_GID_CHAR_LEN + 1];
     unsigned long qsec = 0, start_time = 0; /* microseconds spent waiting for the
-                                        * application, and spent using it */
+                                             * application, and spent using it */
     time_t now = time(NULL);
     pool *sp;
     pool * const tp = ap_make_sub_pool(fcgi_config_pool);
@@ -415,12 +416,14 @@ static int dynamic_read_mbox(void)
 
     /* Obtain the data from the fcgi_dynamic_mbox file */
     if ((fd = ap_popenf(tp, fcgi_dynamic_mbox, O_RDWR, S_IRUSR | S_IWUSR)) < 0) {
-        ap_log_error(FCGI_LOG_ERR, NULL, "FastCGI: openf() of fcgi_dynamic_mbox failed");
+        ap_log_error(FCGI_LOG_ALERT, NULL, 
+            "FastCGI: openf() of fcgi_dynamic_mbox \"%s\" failed", fcgi_dynamic_mbox);
         goto CleanupReturn;
     }
     fcgi_wait_for_shared_write_lock(fd);
     if (fstat(fd, &statbuf) < 0) {
-        ap_log_error(FCGI_LOG_ERR, NULL, "FastCGI: fstat() of fcgi_dynamic_mbox failed");
+        ap_log_error(FCGI_LOG_ALERT, NULL, 
+            "FastCGI: fstat() of fcgi_dynamic_mbox \"%s\" failed", fcgi_dynamic_mbox);
         goto NothingToDo;
     }
     buf = ap_pcalloc(tp, statbuf.st_size + 1);
@@ -429,11 +432,13 @@ static int dynamic_read_mbox(void)
         goto NothingToDo;
     }
     if (read(fd, (void *)buf, statbuf.st_size) < statbuf.st_size) {
-        ap_log_error(FCGI_LOG_ERR, NULL, "FastCGI: read() from fcgi_dynamic_mbox failed");
+        ap_log_error(FCGI_LOG_ALERT, NULL, 
+            "FastCGI: read() from fcgi_dynamic_mbox \"%s\" failed", fcgi_dynamic_mbox);
         goto NothingToDo;
     }
     if (ftruncate(fd, 0) < 0) {
-        ap_log_error(FCGI_LOG_ERR, NULL, "FastCGI: ftruncate() of fcgi_dynamic_mbox failed");
+        ap_log_error(FCGI_LOG_ALERT, NULL, 
+            "FastCGI: ftruncate() of fcgi_dynamic_mbox \"%s\" failed", fcgi_dynamic_mbox);
         goto NothingToDo;
     }
 
@@ -517,15 +522,15 @@ NothingToDo:
             err = fcgi_util_socket_make_domain_addr(tp, (struct sockaddr_un **)&s->socket_addr,
                                           &s->socket_addr_len, s->socket_path);
             if (err) {
-                ap_log_error(FCGI_LOG_ERR, NULL,
-                    "FastCGI: can't create dynamic server '%s', %s", execName, err);
+                ap_log_error(FCGI_LOG_CRIT, NULL,
+                    "FastCGI: can't create (dynamic) server \"%s\": %s", execName, err);
                 goto BagNewServer;
             }
 
             /* Create the socket */
             if ((s->listenFd = ap_psocket(sp, s->socket_addr->sa_family, SOCK_STREAM, 0)) < 0) {
-                ap_log_error(FCGI_LOG_ERR, NULL,
-                    "FastCGI: can't create dynamic server '%s', socket() failed", execName);
+                ap_log_error(FCGI_LOG_CRIT, NULL,
+                    "FastCGI: can't create (dynamic) server \"%s\": socket() failed", execName);
                 goto BagNewServer;
             }
 
@@ -533,8 +538,8 @@ NothingToDo:
             err = bind_n_listen(tp, s->socket_addr, s->socket_addr_len,
                                      s->listenQueueDepth, s->listenFd);
             if (err) {
-                ap_log_error(FCGI_LOG_ERR, NULL,
-                    "FastCGI: can't create dynamic server '%s', %s", execName, err);
+                ap_log_error(FCGI_LOG_CRIT, NULL,
+                    "FastCGI: can't create (dynamic) server \"%s\": %s", execName, err);
                 goto BagNewServer;
             }
 
@@ -543,8 +548,8 @@ NothingToDo:
             fd = ap_popenf(tp, lockPath,
                        O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
             if (fd < 0) {
-                ap_log_error(FCGI_LOG_ERR, NULL,
-                    "FastCGI: can't create dynamic server '%s', popenf(%s) failed", 
+                ap_log_error(FCGI_LOG_CRIT, NULL,
+                    "FastCGI: can't create (dynamic) server \"%s\": can't open lock file \"%s\": popenf() failed", 
                     execName, lockPath);
                 goto BagNewServer;
             }
@@ -557,8 +562,8 @@ NothingToDo:
                     struct passwd *pw = getpwnam(&user[1]);
 
                     if (!pw) {
-                        ap_log_error(FCGI_LOG_ERR, NULL,
-                            "FastCGI: can't create dynamic server '%s', getpwnam(%s) failed",
+                        ap_log_error(FCGI_LOG_CRIT, NULL,
+                            "FastCGI: can't create (dynamic) server \"%s\": can't get uid/gid for suexec: getpwnam(%s) failed",
                             execName, &user[1]);
                         goto BagNewServer;
                     }
@@ -575,8 +580,8 @@ NothingToDo:
                     s->uid = (uid_t)atol(user);
                     pw = getpwuid(s->uid);
                     if (!pw) {
-                        ap_log_error(FCGI_LOG_ERR, NULL,
-                            "FastCGI: can't create dynamic server '%s', getwpuid(%ld) failed",
+                        ap_log_error(FCGI_LOG_CRIT, NULL,
+                            "FastCGI: can't create (dynamic) server \"%s\": can't get uid/gid for suexec: getwpuid(%ld) failed",
                             execName, (long)s->uid);
                         goto BagNewServer;
                     }
@@ -609,7 +614,7 @@ NothingToDo:
                             kill(s->procs[i].pid, SIGTERM);
                         }
                         ap_log_error(FCGI_LOG_INFO_NOERRNO, NULL,
-                            "FastCGI: restarting all '%s' processes, newer version found", execName);
+                            "FastCGI: restarting server \"%s\" processes, newer version found", execName);
                     }
 
                     /* If dynamicAutoRestart, don't mark any new processes
@@ -652,8 +657,9 @@ NothingToDo:
             case CONN_TIMEOUT:
                 if ((s->numProcesses + 1) > dynamicMaxClassProcs) {
                     /* Can't do anything here, log error */
-                    ap_log_error(FCGI_LOG_CRIT_NOERRNO, NULL, 
-                        "FastCGI: exceeded dynamicMaxClassProcs (%d)", dynamicMaxClassProcs);
+                    ap_log_error(FCGI_LOG_WARNING_NOERRNO, NULL, 
+                        "FastCGI: can't schedule the start of another (dynamic) server \"%s\" process: "
+                        "exceeded dynamicMaxClassProcs (%d)", s->fs_path, dynamicMaxClassProcs);
                     continue;
                 }
                 if ((fcgi_dynamic_total_proc_count + 1) > dynamicMaxProcs) {
@@ -662,8 +668,9 @@ NothingToDo:
                      * terminated beforehand, probably need
                      * to increase ProcessSlack parameter
                      */
-                    ap_log_error(FCGI_LOG_CRIT_NOERRNO, NULL, 
-                        "FastCGI: exceeded dynamicMaxProcs (%d)", dynamicMaxProcs);
+                    ap_log_error(FCGI_LOG_WARNING_NOERRNO, NULL, 
+                        "FastCGI: can't schedule the start of another (dynamic) server \"%s\" process: "
+                        "exceeded dynamicMaxProcs (%d)", s->fs_path, dynamicMaxProcs);
                     continue;
                 }
                 /* find next free slot */
@@ -817,7 +824,7 @@ static void dynamic_kill_idle_fs_procs()
                         /* child */
 
                         /* rename the process for ps - best we can easily */
-                        strncpy(ap_server_argv0, "fcgiBlkKill", strlen(ap_server_argv0));
+                        change_process_name("fcgiBlkKill");
 
                         dynamic_blocking_kill(funcData);
                     } else {
@@ -892,7 +899,7 @@ int fcgi_pm_main(void *dummy, child_info *info)
         s->listenFd = ap_psocket(fcgi_config_pool, s->socket_addr->sa_family, SOCK_STREAM, 0);
         if (s->listenFd < 0) {
             ap_log_error(FCGI_LOG_CRIT, NULL,
-                "FastCGI: AppClass \"%s\" disabled, ap_psocket() failed", s->fs_path);
+                "FastCGI: server \"%s\" disabled, socket() failed", s->fs_path);
             continue;
         }
 
@@ -901,7 +908,7 @@ int fcgi_pm_main(void *dummy, child_info *info)
                                 s->listenQueueDepth, s->listenFd);
         if (err) {
             ap_log_error(FCGI_LOG_CRIT, NULL,
-                         "FastCGI: AppClass \"%s\" disabled: %s",
+                         "FastCGI: server \"%s\" disabled: %s",
                          s->fs_path, err);
             ap_pclosesocket(fcgi_config_pool, s->listenFd);
             s->listenFd = -1;
@@ -984,7 +991,9 @@ int fcgi_pm_main(void *dummy, child_info *info)
                                 s->envp, s->username, s->group);
                         if (status != 0) {
                             ap_log_error(FCGI_LOG_CRIT, NULL,
-                                "FastCGI: can't start '%s', fork() failed", s->fs_path);
+                                "FastCGI: can't start%s server \"%s\": spawn_fs_process() failed",
+                                (s->directive == APP_CLASS_DYNAMIC) ? " (dynamic)" : "",
+                                s->fs_path);
                             
                             /* do not restart failed dynamic apps */
                             if (s->directive != APP_CLASS_DYNAMIC) {
@@ -1008,13 +1017,15 @@ int fcgi_pm_main(void *dummy, child_info *info)
 
                         if (fcgi_suexec != NULL) {
 			                ap_log_error(FCGI_LOG_INFO_NOERRNO, NULL,
-                                "FastCGI: %s (uid %ld, gid %ld) %sstarted with pid %ld",
+                                "FastCGI:%s server \"%s\" (uid %ld, gid %ld) %sstarted with pid %ld",
+                                (s->directive == APP_CLASS_DYNAMIC) ? " (dynamic)" : "",
 				                s->fs_path, (long)s->uid, (long)s->gid, 
                                 restart ? "re" : "", (long)s->procs[i].pid);
 			            }
 		                else {
 			                ap_log_error(FCGI_LOG_INFO_NOERRNO, NULL,
-                                "FastCGI: %s %sstarted with pid %ld",
+                                "FastCGI:%s server \"%s\" %sstarted with pid %ld",
+                                (s->directive == APP_CLASS_DYNAMIC) ? " (dynamic)" : "",
 				                s->fs_path, restart ? "re" : "", (long)s->procs[i].pid);
                         }
                         ap_assert(s->procs[i].pid > 0);
@@ -1138,15 +1149,27 @@ ChildFound:
 
             if (WIFEXITED(waitStatus)) {
                 ap_log_error(FCGI_LOG_WARNING_NOERRNO, NULL, 
-                    "FastCGI: %s (pid %d) terminated by calling exit with status=%d",
+                    "FastCGI:%s server \"%s\" (pid %d) terminated by calling exit with status '%d'",
+                    (s->directive == APP_CLASS_DYNAMIC) ? " (dynamic)" : "",
                     s->fs_path, (int)childPid, WEXITSTATUS(waitStatus));
             } 
-            else {
-                ap_assert(WIFSIGNALED(waitStatus));
-                ap_log_error(FCGI_LOG_ERR_NOERRNO, NULL, 
-                    "FastCGI: %s (pid %d) terminated due to uncaught signal %d\n",
-                    s->fs_path, (int)childPid, WTERMSIG(waitStatus));
+            else if (WIFSIGNALED(waitStatus)) {
+                ap_log_error(FCGI_LOG_WARNING_NOERRNO, NULL, 
+                    "FastCGI:%s server \"%s\" (pid %d) terminated due to uncaught signal '%d' (%s)%s",
+                    (s->directive == APP_CLASS_DYNAMIC) ? " (dynamic)" : "",
+                    s->fs_path, (int)childPid, WTERMSIG(waitStatus), SYS_SIGLIST[WTERMSIG(waitStatus)],
+#ifdef WCOREDUMP
+                    WCOREDUMP(waitStatus) ? ", a core file may have been generated" : "");
+#else
+                    "");                    
+#endif                    
             }
+            else if (WIFSTOPPED(waitStatus)) {
+                ap_log_error(FCGI_LOG_WARNING_NOERRNO, NULL, 
+                    "FastCGI:%s server \"%s\" (pid %d) stopped due to uncaught signal '%d' (%s)",
+                    (s->directive == APP_CLASS_DYNAMIC) ? " (dynamic)" : "",
+                    s->fs_path, (int)childPid, WTERMSIG(waitStatus), SYS_SIGLIST[WTERMSIG(waitStatus)]);
+            } 
         } /* for (;;) */
     } /* for (;;) */
 
