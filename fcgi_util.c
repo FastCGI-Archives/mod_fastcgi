@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_util.c,v 1.15 2000/09/19 16:26:52 robs Exp $
+ * $Id: fcgi_util.c,v 1.16 2000/11/12 15:13:24 robs Exp $
  */
 
 #include "fcgi.h"
@@ -28,12 +28,15 @@ const char *
 fcgi_util_socket_make_path_absolute(pool * const p, 
         const char *const file, const int dynamic)
 {
-    return (const char *)ap_pstrcat(p, 
-#ifdef WIN32
-        (dynamic ? fcgi_dynamic_dir : fcgi_socket_dir), file, NULL);
-#else
-        (dynamic ? fcgi_dynamic_dir : fcgi_socket_dir), "/", file, NULL);
-#endif
+    if (ap_os_is_path_absolute(file))
+    {
+	    return file;
+    }
+    else
+    {
+        const char * parent_dir = dynamic ? fcgi_dynamic_dir : fcgi_socket_dir;
+        return (const char *) ap_make_full_path(p, parent_dir, file);
+    }
 }
 
 /*******************************************************************************

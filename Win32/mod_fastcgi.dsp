@@ -136,5 +136,9 @@ SOURCE=..\mod_fastcgi.c
 
 SOURCE=..\mod_fastcgi.h
 # End Source File
+# Begin Source File
+
+SOURCE=..\docs\mod_fastcgi.html
+# End Source File
 # End Target
 # End Project

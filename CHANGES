@@ -1,5 +1,8 @@
 2.2.9
 
+ *) Allow absolute pathnames in the -socket argument.  Suggested by 
+    Christian Jaeger [christian.jaeger@sl.ethz.ch].
+
  *) Don't invoke suexec when the user/group for the fastcgi application
     is the same as the apache main server.  This is consistent with 
     apache's suexec handling.  Suggested by Nikolaus Rath [Nikolaus@rath.org].
@@ -13,10 +16,10 @@
     FastCgiWrapper and eliminating any checks regarding the target 
     application (this is the repsonibility of the wrapper).
 
- *) Fix a nasty bug that occurred when a client aborted a request 
+ *) Fix a nasty bug that occurred when a client aborted a POST request 
     before the connection to a dynamic FastCGI application was opened.
     The application's lock file descriptor wasn't setup but was being 
-    closed which resulted in FD0 being closed.  Normally this open to 
+    closed which resulted in FD0 being closed.  Normally this is open to 
     /dev/null and should pose no problems except that because the FD
     was available it was being returned by Apache's accept().  This 
     caused it to be registered for pool cleanup.  mod_cgi though moves
