@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_pm.c,v 1.83 2002/10/24 00:58:57 robs Exp $
+ * $Id: fcgi_pm.c,v 1.84 2003/01/19 16:33:51 robs Exp $
  */
 
 
@@ -401,15 +401,23 @@ static pid_t spawn_fs_process(fcgi_server *fs, ServerProcess *process)
      * install its own handler. */
     signal(SIGPIPE, SIG_IGN);
 
-    if (fcgi_wrapper && (fcgi_user_id != fs->uid || fcgi_group_id != fs->gid)) {
-        char *shortName = strrchr(fs->fs_path, '/') + 1;
+    if (fcgi_wrapper)
+    {
+        char *shortName;
 
         /* Relinquish our root real uid powers */
         seteuid_root();
         setuid(ap_user_id);
 
+        /* AP13 does not use suexec if the target uid/gid is the same as the 
+         * server's - AP20 does.  I (now) consider the latter approach better
+         * (fcgi_pm.c v1.42 incorporated the 1.3 behaviour, v1.84 reverted it). */
+
+        shortName = strrchr(fs->fs_path, '/') + 1;
+
         do {
-            execle(fcgi_wrapper, fcgi_wrapper, fs->username, fs->group, shortName, NULL, fs->envp);
+            execle(fcgi_wrapper, fcgi_wrapper, fs->username, fs->group,
+                   shortName, NULL, fs->envp);
         } while (errno == EINTR);
     }
     else {
