@@ -132,9 +132,10 @@ and <CODE>Directory</CODE> sections.</P>
 
 <H2>AppClass</H2>
 
-<P><STRONG>Syntax:</STRONG> AppClass path-name <EM>[-processes
-N] [-listen-queue-depth N] [-restart-delay N] [-priority N] [-port
-N] [-socket sock-name] [-initial-env name=value]<BR>
+<P><STRONG>Syntax:</STRONG> AppClass path-name <EM>[-appConnTimeout
+timeout] [-processes N] [-listen-queue-depth N] [-init-start-delay
+N] [-restart-delay N] [-priority N] [-port N] [-socket sock-name]
+[-initial-env name=value]<BR>
 </EM><STRONG>Context:</STRONG> srm.conf<BR>
 <STRONG>Module:</STRONG> mod_fastcgi</P>
 
@@ -161,13 +162,12 @@ directive are as follows:</P>
   throughput, depending upon the application and the host.
   <LI><B>init-start-delay:</B> minimum number of seconds between
   the start of a process instance within this class and the last
-  (re)start of a proccess within the class, default 0. This delay
-  decreases the demand placed on a system at initialization. Default
-  value is 0 seconds.
+  (re)start of a proccess within the class. This delay decreases
+  the demand placed on a system at initialization. Default value
+  is 1 second.
   <LI><B>restart-delay:</B> minimum number of seconds between restarts
-  of processes in this class, default 5. This delay prevents a
-  broken application from soaking up too much of the system. Default
-  value is 5 seconds.
+  of processes in this class. This delay prevents a broken application
+  from soaking up too much of the system. Default value is 5 seconds.
   <LI><B>priority:</B> priority of FastCGI application processes,
   as defined by the <CODE>setpriority</CODE> system call. The default
   value is zero, i.e. same priority as the HTTP server. Negative
@@ -208,7 +208,7 @@ non-existent or not executable.</P>
 <H2>ExternalAppClass</H2>
 
 <P><STRONG>Syntax:</STRONG> ExternalAppClass path-name <EM>[-host
-host:port] [-socket sock-name]<BR>
+host:port] [-socket sock-name] [-appConnTimeout timeout]<BR>
 </EM><STRONG>Context:</STRONG> srm.conf<BR>
 <STRONG>Module:</STRONG> mod_fastcgi</P>
 
@@ -368,6 +368,13 @@ are as follows:</P>
   allowed. You can add several name-value pairs to the initial
   environment by using this option several times. The default initial
   environment is empty (no name-value pairs.)
+  <LI><B>init-start-delay:</B> minimum number of seconds between
+  the start of a process instance within this class and the last
+  (re)start of a proccess within the class. Default value is 1
+  second.
+  <LI><B>restart-delay:</B> minimum number of seconds between restarts
+  of processes in this class. This delay prevents a broken application
+  from soaking up too much of the system. Default value is 5 seconds.
   <LI><B>startDelay:</B> an integer representing a number of seconds
   that the web server waits in trying to connect to the FastCGI
   application. If the connection is unsuccessful within that time

@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.53 1998/10/25 22:09:21 roberts Exp $
+ *  $Id: mod_fastcgi.c,v 1.54 1998/10/31 13:56:46 roberts Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -739,6 +739,7 @@ typedef request_rec WS_Request;
 #define FCGI_MAGIC_TYPE "application/x-httpd-fcgi"
 #define FCGI_DEFAULT_LISTEN_Q 5            /* listen queue size */
 #define FCGI_DEFAULT_RESTART_DELAY 5       /* delay between restarts */
+#define DEFAULT_INIT_START_DELAY 1         /* delay between starts */
 #define FCGI_DEFAULT_PRIORITY 0            /* process priority - not used */
 #define FCGI_ERRMSG_LEN 200                /* size of error buffer */
 #define FCGI_MIN_EXEC_RETRY_DELAY 10       /* minimum number of seconds to
@@ -983,6 +984,8 @@ static int processSlack = FCGI_DEFAULT_PROCESS_SLACK;
 static int restartDynamic = FCGI_DEFAULT_RESTART_DYNAMIC;
 static int autoUpdate = FCGI_DEFAULT_AUTOUPDATE;
 static int dynamicListenQueueDepth = FCGI_DEFAULT_LISTEN_Q;
+static int dynamicInitStartDelay = DEFAULT_INIT_START_DELAY;
+static int dynamicRestartDelay = FCGI_DEFAULT_RESTART_DELAY;
 
 
 /*
@@ -1320,7 +1323,7 @@ static FastCgiServerInfo *CreateFcgiServerInfo(int numInstances, char *ePath)
     serverInfoPtr->listenQueueDepth = FCGI_DEFAULT_LISTEN_Q;
     serverInfoPtr->appConnectTimeout = FCGI_DEFAULT_APP_CONN_TIMEOUT;
     serverInfoPtr->numProcesses = numInstances;
-    serverInfoPtr->initStartDelay = 0;
+    serverInfoPtr->initStartDelay = DEFAULT_INIT_START_DELAY;
     serverInfoPtr->restartDelay = FCGI_DEFAULT_RESTART_DELAY;
     serverInfoPtr->restartOnExit = FALSE;
     serverInfoPtr->numRestarts = 0;
@@ -1350,7 +1353,7 @@ static FastCgiServerInfo *CreateFcgiServerInfo(int numInstances, char *ePath)
 
     procInfoPtr = serverInfoPtr->procInfo;
     for(i = 0; i < numInstances; i++) {
-        procInfoPtr->pid = -1;
+        procInfoPtr->pid = 0;
         procInfoPtr->listenFd = -1;
         procInfoPtr->fcgiFd = -1;
         procInfoPtr->state = STATE_READY;
@@ -2169,7 +2172,7 @@ const char *ExternalAppClassCmd(cmd_parms *cmd, void *dummy, char *arg)
     ASSERT(serverInfoPtr != NULL);
     DStringAppend(&serverInfoPtr->execPath, className, -1);
     serverInfoPtr->directive = APP_CLASS_EXTERNAL;
-	serverInfoPtr->appConnectTimeout = appConnectTimeout;
+    serverInfoPtr->appConnectTimeout = appConnectTimeout;
 
     if(hostPort != NULL) {
         configResult = ConfigureTCPServer(hostPort, FALSE,
@@ -2386,6 +2389,28 @@ const char *FCGIConfigCmd(cmd_parms *cmd, void *dummy, char *arg)
                 goto BadValueReturn;
             }
             dynamicListenQueueDepth = n;
+            continue;
+        } else if((strcmp(argv[i], "-restart-delay") == 0)) {
+            if((i + 1) == argc) {
+                goto MissingValueReturn;
+            }
+            i++;
+            n = strtol(argv[i], &cvtPtr, 10);
+            if(*cvtPtr != '\0' || n < 0) {
+                goto BadValueReturn;
+            }
+            dynamicRestartDelay = n;
+            continue;
+        } else if((strcmp(argv[i], "-init-start-delay") == 0)) {
+            if((i + 1) == argc) {
+                goto MissingValueReturn;
+            }
+            i++;
+            n = strtol(argv[i], &cvtPtr, 10);
+            if(*cvtPtr != '\0' || n < 0) {
+                goto BadValueReturn;
+            }
+            dynamicInitStartDelay = n;
             continue;
         } else if((strcmp(argv[i], "-processSlack") == 0)) {
             if((i+1) == argc) {
@@ -2697,7 +2722,9 @@ NothingToDo:
             s->group = strdup(group);
             s->numProcesses = 0;
             s->restartTime = 0;
-			s->envp = dynamicEnvp;
+            s->restartDelay = dynamicRestartDelay;
+            s->initStartDelay = dynamicInitStartDelay;
+            s->envp = dynamicEnvp;
             s->directive = APP_CLASS_DYNAMIC;
             /* create a socket file for the app */
             ipcAddrPtr = (OS_IpcAddr *) OS_InitIpcAddr();
@@ -2752,18 +2779,14 @@ NothingToDo:
                                 "mod_fastcgi: binary %s modified, restarting FCGI app server\n",
                                 execName);
                     }
-                    if (restartDynamic) {
-                        /* don't worry about restarting the processes after
-                         * killing them.  We'll restart them after getting
-                         * the SIGCHLD because we're restarting dynamic
-                         * proceses automatically.
-                         */
+               
+                    /* If restartDynamic, don't mark any new processes
+                     * for  starting because we probably got the
+                     * PLEASE_START due to autoUpdate and the ProcMgr
+                     * will be restarting all of those we just killed.
+                     */
+                    if (restartDynamic)
                         continue;
-                    } else {
-                        /* we need to restart this process now.  Don't do a
-                         * continue here, and we'll restart it below.
-                         */
-                    }
                 } else {
                     /* we've been asked to start a process--only start
                     * it if we're not already running at least one
@@ -2813,7 +2836,7 @@ NothingToDo:
                 }
                 /* find next free slot */
                 for(i=0;i<maxClassProcs;i++) {
-                    if((s->procInfo[i].pid == -1) &&
+                    if((s->procInfo[i].pid <= 0) &&
                             ((s->procInfo[i].state == STATE_READY) ||
                             (s->procInfo[i].state == STATE_NEEDS_STARTING) ||
                             (s->procInfo[i].state == STATE_KILLED)))
@@ -3319,13 +3342,10 @@ void FastCgiProcMgr(void *data)
         fflush(errorLog);
     }
 
-    /*
-     * s->procInfo[i].pid == 0 means we've never tried to start this one.
-     */
+    /* Initialize AppClass */
     for(s = fastCgiServers; s != NULL; s = s->next) {
         s->restartTime = 0;
         for(i = 0; i < s->numProcesses; i++) {
-            s->procInfo[i].pid = 0;
             s->procInfo[i].state = STATE_NEEDS_STARTING;
         }
     }
@@ -3378,21 +3398,15 @@ void FastCgiProcMgr(void *data)
                     time_t restartTime;
                     time_t now = time(NULL);
 
-                    /* start dynamic apps immediately */
-                    if(s->directive == APP_CLASS_DYNAMIC) {
-                        restartTime = now;
+                    if (s->procInfo[i].pid == 0) {
+                        restartTime = s->restartTime + s->initStartDelay;
                     } else {
-                        if (s->procInfo[i].pid == 0) {
-                            restartTime = s->restartTime + s->initStartDelay;
-                        } else {
-                            restartTime = s->restartTime + s->restartDelay;
-                        }
+                        restartTime = s->restartTime + s->restartDelay;
                     }
+
                     if(restartTime <= now) {
                         int restart = (s->procInfo[i].pid < 0);
-                        if(restart) {
-                            s->numRestarts++;
-                        }
+
                         s->restartTime = now;
                         if(CaughtSigTerm()) {
                             goto ProcessSigTerm;
@@ -3405,7 +3419,7 @@ void FastCgiProcMgr(void *data)
                                 s->envp, s->user, s->group);
                         if(status != 0) {
                             fprintf(errorLog,
-                                    "[%s] mod_fastcgi: AppClass %s"
+                                    "[%s] mod_fastcgi: %s"
                                     " fork failed, errno = %s.\n",
                                     get_time(),
                                     DStringValue(&s->execPath),
@@ -3427,10 +3441,19 @@ void FastCgiProcMgr(void *data)
                             globalNumInstances++;
                         }
                         s->procInfo[i].state = STATE_STARTED;
-                        if(restart) {
+                        if (restart) {
+                            s->numRestarts++;
                             fprintf(errorLog,
-                                    "[%s] mod_fastcgi: AppClass %s"
+                                    "[%s] mod_fastcgi: %s"
                                     " restarted with pid %d.\n",
+                                    get_time(),
+                                    DStringValue(&s->execPath),
+                                    (int)s->procInfo[i].pid);
+                            fflush(errorLog);
+                        } else {
+                            fprintf(errorLog,
+                                    "[%s] mod_fastcgi: %s"
+                                    " started with pid %d.\n",
                                     get_time(),
                                     DStringValue(&s->execPath),
                                     (int)s->procInfo[i].pid);
@@ -3540,18 +3563,15 @@ ChildFound:
                 s->numProcesses--;
                 globalNumInstances--;
                 if(s->procInfo[i].state == STATE_VICTIM) {
-                        s->procInfo[i].state = STATE_KILLED;
+                    s->procInfo[i].state = STATE_KILLED;
                     continue;
                 } else {
                     /*
-                     * dynamic app dies when it shoudn't have.
+                     * dynamic app shouldn't have died or autoUpdate killed it
                      */
+                    s->numFailures++;
                     if (restartDynamic) {
                         s->procInfo[i].state = STATE_NEEDS_STARTING;
-                        s->restartDelay = s->numFailures;
-                        if (s->restartDelay > 10)
-                            s->restartDelay = 10;
-                        s->numFailures++;
                     } else {
                         s->procInfo[i].state = STATE_READY;
                     }
@@ -3560,15 +3580,15 @@ ChildFound:
 
             if(WIFEXITED(waitStatus)) {
                 fprintf(errorLog,
-                        "[%s] mod_fastcgi: AppClass %s pid %d terminated"
-                        " by calling exit with status = %d.\n",
+                        "[%s] mod_fastcgi: %s (pid %d) terminated"
+                        " by calling exit with status = %d\n",
                         get_time(), DStringValue(&s->execPath), (int)childPid,
                         WEXITSTATUS(waitStatus));
             } else {
                 ASSERT(WIFSIGNALED(waitStatus));
                 fprintf(errorLog,
-                        "[%s] mod_fastcgi: AppClass %s pid %d terminated"
-                        " due to uncaught signal %d.\n",
+                        "[%s] mod_fastcgi: %s (pid %d) terminated"
+                        " due to uncaught signal %d\n",
                         get_time(), DStringValue(&s->execPath), (int)childPid,
                         WTERMSIG(waitStatus));
             }
