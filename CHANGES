@@ -1,3 +1,7 @@
+Changes with mod_fastcgi 2.2.2
+
+ *) 
+
 Changes with mod_fastcgi 2.2.1
 
  *) Updates to the INSTALL doc to describe building as a DSO.
