@@ -1,6 +1,10 @@
 
 Changes with mod_fastcgi 2.2
 
+ *) Use Apache's NET_SIZE_T to get the correct arg type for getsockopt().
+
+ *) Deleted redundant header files from fcgi.h.
+
  *) Full path names are no longer required for directives which take
     file names as arguments.  Like other Apache directives you can
     specify paths from server_root (don't start with a "/").

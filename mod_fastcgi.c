@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.58 1999/02/10 03:10:45 roberts Exp $
+ *  $Id: mod_fastcgi.c,v 1.59 1999/02/11 04:04:22 roberts Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -820,10 +820,12 @@ static const char *open_connection_to_fs(fcgi_request *fr)
 
     if (FD_ISSET(fr->fd, &write_fds) || FD_ISSET(fr->fd, &read_fds)) {
         int error = 0;
-        int len = sizeof(error);
+        NET_SIZE_T len = sizeof(error);
+        
         if (getsockopt(fr->fd, SOL_SOCKET, SO_ERROR, (char *)&error, &len) < 0)
             /* Solaris pending error */
             return "select() failed (Solaris pending error)";
+            
         if (error != 0) {
             /* Berkeley-derived pending error */
             errno = error;
