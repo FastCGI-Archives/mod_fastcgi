@@ -1,6 +1,6 @@
 <!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">
 <HTML>
-    <!-- $Id: mod_fastcgi.html,v 1.34 2002/10/04 04:37:48 robs Exp $ -->
+    <!-- $Id: mod_fastcgi.html,v 1.35 2004/01/07 02:02:31 robs Exp $ -->
     <HEAD>
         <TITLE>
             Apache module mod_fastcgi
@@ -369,6 +369,14 @@
                 may increase throughput/performance, depending upon the application and the host.
             </DD>
             <DT>
+                <CODE><STRONG>-min-server-life <EM>n</EM></STRONG> (30)</CODE>
+            </DT>
+            <DD>
+				The minimum number of seconds the application must run for before its restart
+				interval is increased to 600 seconds.  The server will get 3 tries to run for at least this
+				number of seconds.
+            </DD>
+            <DT>
                 <CODE><STRONG>-pass-header <EM>header</EM></STRONG> (none)</CODE>
             </DT>
             <DD>
@@ -574,6 +582,14 @@
             <DD>
                 The maximum total number of dynamic FastCGI application instances allowed to run at any one time. It
                 must be &gt;= to -maxClassProcesses (this is not programmatically enforced).
+            </DD>
+            <DT>
+                <CODE><STRONG>-min-server-life <EM>n</EM></STRONG> (30)</CODE>
+            </DT>
+            <DD>
+				The minimum number of seconds a dynamic FastCGI application must run for before its restart
+				interval is increased to 600 seconds.  The server will get 3 tries to run for at least this
+				number of seconds.
             </DD>
             <DT>
                 <CODE><STRONG>-minProcesses <EM>n</EM></STRONG> (5)</CODE>
