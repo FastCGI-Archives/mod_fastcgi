@@ -1,5 +1,7 @@
 Changes with mod_fastcgi 2.2.3
 
+ *) Add the pass-header arg to server directives.
+
  *) Allow supplementary groups to be passed to spawned FastCGI applications (as
     is done for CGI) - at least until PR2580 is resolved.
 
