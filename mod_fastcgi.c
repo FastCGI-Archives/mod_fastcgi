@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.105 2001/02/19 06:00:10 robs Exp $
+ *  $Id: mod_fastcgi.c,v 1.106 2001/03/05 15:45:49 robs Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -814,7 +814,7 @@ static int set_nonblocking(int fd, int nonblocking)
 /*******************************************************************************
  * Connect to the FastCGI server.
  */
-static const char *open_connection_to_fs(fcgi_request *fr)
+static int open_connection_to_fs(fcgi_request *fr)
 {
     struct timeval  tval;
     fd_set          write_fds, read_fds;
@@ -824,9 +824,7 @@ static const char *open_connection_to_fs(fcgi_request *fr)
     const char *socket_path = NULL;
     struct sockaddr *socket_addr = NULL;
     int socket_addr_len = 0;
-#ifdef WIN32
-    int errcode;
-#else
+#ifndef WIN32
     const char *err = NULL;
 #endif
 
@@ -838,8 +836,12 @@ static const char *open_connection_to_fs(fcgi_request *fr)
 #ifndef WIN32
         err = fcgi_util_socket_make_domain_addr(rp, (struct sockaddr_un **)&socket_addr,
                                       &socket_addr_len, socket_path);
-        if (err)
-            return err;
+        if (err) {
+		    ap_log_rerror(FCGI_LOG_ERR, r,
+                "FastCGI: failed to connect to server \"%s\": "
+                "%s", fr->fs_path, err);
+            return FCGI_FAILED;
+        }
 #endif
     } else {
 #ifdef WIN32
@@ -918,8 +920,12 @@ static const char *open_connection_to_fs(fcgi_request *fr)
         } while (result != 1);
 
         /* Block until we get a shared (non-exclusive) read Lock */
-        if (fcgi_wait_for_shared_read_lock(fr->lockFd) < 0)
-            return "failed to obtain a shared read lock";
+        if (fcgi_wait_for_shared_read_lock(fr->lockFd) < 0) {
+            ap_log_rerror(FCGI_LOG_ERR, r,
+                "FastCGI: failed to connect to server \"%s\": "
+                "can't obtain shared read lock", fr->fs_path);
+            return FCGI_FAILED;
+        }
 
 #ifdef WIN32
         ap_block_alarms();
@@ -959,7 +965,10 @@ static const char *open_connection_to_fs(fcgi_request *fr)
         }
 
         if (fcgi_util_gettimeofday(&fr->startTime) < 0) {
-            return "gettimeofday() failed";
+            ap_log_rerror(FCGI_LOG_ERR, r,
+                "FastCGI: failed to connect to server \"%s\": "
+                "can't get time of day", fr->fs_path);
+            return FCGI_FAILED;
         }
 
         do 
@@ -977,7 +986,10 @@ static const char *open_connection_to_fs(fcgi_request *fr)
             }
 
             if (GetLastError() != ERROR_PIPE_BUSY) {
-                return("CreateFile() failed ()"); 
+                ap_log_rerror(FCGI_LOG_ERR, r,
+                    "FastCGI: failed to connect to server \"%s\": "
+                    "CreateFile() failed", fr->fs_path);
+                return FCGI_FAILED; 
             }
 
             // All pipe instances are busy, so wait 
@@ -988,7 +1000,10 @@ static const char *open_connection_to_fs(fcgi_request *fr)
             }
 
             if (fcgi_util_gettimeofday(&fr->queueTime) < 0) {
-                return "gettimeofday() failed";
+                ap_log_rerror(FCGI_LOG_ERR, r,
+                    "FastCGI: failed to connect to server \"%s\": "
+                    "can't get time of day", fr->fs_path);
+                return FCGI_FAILED;
             }
 
             connect_time = fr->queueTime.tv_sec - fr->startTime.tv_sec;
@@ -998,7 +1013,10 @@ static const char *open_connection_to_fs(fcgi_request *fr)
         } while (connect_time < max_connect_time);
 
         if (fr->fd == (SOCKET) INVALID_HANDLE_VALUE) {
-            return "CreateFile()/WaitNamedPipe() timed out";
+            ap_log_rerror(FCGI_LOG_ERR, r,
+                "FastCGI: failed to connect to server \"%s\": "
+                "CreateFile()/WaitNamedPipe() timed out", fr->fs_path);
+            return FCGI_FAILED; 
         }
 
         FCGIDBG2("got_named_pipe_connect: %s", fr->fs_path);
@@ -1007,21 +1025,31 @@ static const char *open_connection_to_fs(fcgi_request *fr)
         ap_note_cleanups_for_h(rp, (HANDLE) fr->fd);
         ap_unblock_alarms();
 
-        return NULL;
+        return FCGI_OK;
     }
 #endif
 
     /* Create the socket */
     fr->fd = ap_psocket(rp, socket_addr->sa_family, SOCK_STREAM, 0);
 
-    if (fr->fd < 0)
-        return "ap_psocket() failed";
+    if (fr->fd < 0) {
+#ifdef WIN32
+        errno = WSAGetLastError();  // Not sure this is going to work as expected
+#endif
+        ap_log_rerror(FCGI_LOG_ERR_ERRNO, r,
+            "FastCGI: failed to connect to server \"%s\": "
+            "ap_psocket() failed", fr->fs_path);
+        return FCGI_FAILED; 
+    }
 
 #ifndef WIN32
     if (fr->fd >= FD_SETSIZE) {
-        return ap_psprintf(rp, "socket file descriptor (%u) is larger than "
+        ap_log_rerror(FCGI_LOG_ERR, r,
+            "FastCGI: failed to connect to server \"%s\": "
+            "socket file descriptor (%u) is larger than "
             "FD_SETSIZE (%u), you probably need to rebuild Apache with a "
-            "larger FD_SETSIZE", fr->fd, FD_SETSIZE);
+            "larger FD_SETSIZE", fr->fs_path, fr->fd, FD_SETSIZE);
+        return FCGI_FAILED;
     }
 #endif
 
@@ -1030,18 +1058,29 @@ static const char *open_connection_to_fs(fcgi_request *fr)
         set_nonblocking(fr->fd, TRUE);
     }
 
-    if (fr->dynamic && fcgi_util_gettimeofday(&fr->startTime) < 0)
-        return "gettimeofday() failed";
+    if (fr->dynamic && fcgi_util_gettimeofday(&fr->startTime) < 0) {
+        ap_log_rerror(FCGI_LOG_ERR, r,
+            "FastCGI: failed to connect to server \"%s\": "
+            "can't get time of day", fr->fs_path);
+        return FCGI_FAILED;
+    }
 
     /* Connect */
     if (connect(fr->fd, (struct sockaddr *)socket_addr, socket_addr_len) == 0)
         goto ConnectionComplete;
 
 #ifdef WIN32
-    errcode = GetLastError();
-    if (errcode != WSAEWOULDBLOCK)
-        return "connect() failed";
+
+    errno = WSAGetLastError();
+    if (errno != WSAEWOULDBLOCK) {
+        ap_log_rerror(FCGI_LOG_ERR_ERRNO, r,
+            "FastCGI: failed to connect to server \"%s\": "
+            "connect() failed", fr->fs_path);
+        return FCGI_FAILED;
+    }
+
 #else
+
     /* ECONNREFUSED means the listen queue is full (or there isn't one).
      * With dynamic I can at least make sure the PM knows this is occuring */
     if (fr->dynamic && errno == ECONNREFUSED) {
@@ -1051,8 +1090,13 @@ static const char *open_connection_to_fs(fcgi_request *fr)
         errno = ECONNREFUSED;
     }
 
-    if (errno != EINPROGRESS)
-        return "connect() failed";
+    if (errno != EINPROGRESS) {
+        ap_log_rerror(FCGI_LOG_ERR, r,
+            "FastCGI: failed to connect to server \"%s\": "
+            "connect() failed", fr->fs_path);
+        return FCGI_FAILED;
+    }
+
 #endif
 
     /* The connect() is non-blocking */
@@ -1071,8 +1115,13 @@ static const char *open_connection_to_fs(fcgi_request *fr)
             if (status < 0)
                 break;
 
-            if (fcgi_util_gettimeofday(&fr->queueTime) < 0)
-                return "gettimeofday() failed";
+            if (fcgi_util_gettimeofday(&fr->queueTime) < 0) {
+                ap_log_rerror(FCGI_LOG_ERR, r,
+                    "FastCGI: failed to connect to server \"%s\": "
+                    "can't get time of day", fr->fs_path);
+                return FCGI_FAILED;
+            }
+
             if (status > 0)
                 break;
 
@@ -1082,8 +1131,11 @@ static const char *open_connection_to_fs(fcgi_request *fr)
 
         /* XXX These can be moved down when dynamic vars live is a struct */
         if (status == 0) {
-            return ap_psprintf(rp, "connect() timed out (appConnTimeout=%dsec)",
-                dynamicAppConnectTimeout);
+            ap_log_rerror(FCGI_LOG_ERR_NOERRNO, r,
+                "FastCGI: failed to connect to server \"%s\": "
+                "connect() timed out (appConnTimeout=%dsec)", 
+                fr->fs_path, dynamicAppConnectTimeout);
+            return FCGI_FAILED;
         }
     }  /* dynamic */
     else {
@@ -1094,30 +1146,59 @@ static const char *open_connection_to_fs(fcgi_request *fr)
         read_fds = write_fds;
 
         status = ap_select((fr->fd+1), &read_fds, &write_fds, NULL, &tval);
+
         if (status == 0) {
-            return ap_psprintf(rp, "connect() timed out (appConnTimeout=%dsec)",
-                fr->fs->appConnectTimeout);
+            ap_log_rerror(FCGI_LOG_ERR_NOERRNO, r,
+                "FastCGI: failed to connect to server \"%s\": "
+                "connect() timed out (appConnTimeout=%dsec)", 
+                fr->fs_path, dynamicAppConnectTimeout);
+            return FCGI_FAILED;
         }
     }  /* !dynamic */
 
-    if (status < 0)
-        return "select() failed";
+    if (status < 0) {
+#ifdef WIN32
+        errno = WSAGetLastError(); 
+#endif
+        ap_log_rerror(FCGI_LOG_ERR_ERRNO, r,
+            "FastCGI: failed to connect to server \"%s\": "
+            "select() failed", fr->fs_path);
+        return FCGI_FAILED;
+    }
 
     if (FD_ISSET(fr->fd, &write_fds) || FD_ISSET(fr->fd, &read_fds)) {
         int error = 0;
         NET_SIZE_T len = sizeof(error);
 
-        if (getsockopt(fr->fd, SOL_SOCKET, SO_ERROR, (char *)&error, &len) < 0)
+        if (getsockopt(fr->fd, SOL_SOCKET, SO_ERROR, (char *)&error, &len) < 0) {
             /* Solaris pending error */
-            return "select() failed (Solaris pending error)";
+#ifdef WIN32
+            errno = WSAGetLastError(); 
+#endif
+            ap_log_rerror(FCGI_LOG_ERR_ERRNO, r,
+                "FastCGI: failed to connect to server \"%s\": "
+                "select() failed (Solaris pending error)", fr->fs_path);
+            return FCGI_FAILED;
+        }
 
         if (error != 0) {
             /* Berkeley-derived pending error */
             errno = error;
-            return "select() failed (pending error)";
+            ap_log_rerror(FCGI_LOG_ERR_ERRNO, r,
+                "FastCGI: failed to connect to server \"%s\": "
+                "select() failed (pending error)", fr->fs_path);
+            return FCGI_FAILED;
         }
-    } else
-        return "select() error - THIS CAN'T HAPPEN!";
+    } 
+    else {
+#ifdef WIN32
+        errno = WSAGetLastError();
+#endif
+        ap_log_rerror(FCGI_LOG_ERR_ERRNO, r,
+            "FastCGI: failed to connect to server \"%s\": "
+            "select() error - THIS CAN'T HAPPEN!", fr->fs_path);
+        return FCGI_FAILED;
+    }
 
 ConnectionComplete:
     /* Return to blocking mode if it was set up */
@@ -1134,7 +1215,7 @@ ConnectionComplete:
     }
 #endif
 
-    return NULL;
+    return FCGI_OK;
 }
 
 static int server_error(fcgi_request *fr)
@@ -1209,9 +1290,7 @@ static int do_work(request_rec *r, fcgi_request *fr)
 
     /* Connect to the FastCGI Application */
     ap_hard_timeout("connect() to FastCGI server", r);
-    if ((err = open_connection_to_fs(fr))) {
-        ap_log_rerror(FCGI_LOG_ERR, r,
-            "FastCGI: failed to connect to server \"%s\": %s", fr->fs_path, err);
+    if (open_connection_to_fs(fr) != FCGI_OK) {
         return server_error(fr);
     }
 
