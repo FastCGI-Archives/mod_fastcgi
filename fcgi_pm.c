@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_pm.c,v 1.46 2001/02/19 06:04:15 robs Exp $
+ * $Id: fcgi_pm.c,v 1.47 2001/02/19 06:08:55 robs Exp $
  */
 
 
@@ -264,7 +264,7 @@ static void dynamic_blocking_kill(void *data)
        // This is a major problem 
         FCGIDBG1("fcgi_wait_for_shared_write_lock() failed >> MAJOR PROBLEM");
     }
-	else {
+    else {
        fcgi_kill(funcData->process, 1);
        fcgi_rdwr_unlock(funcData->lock, WRITER);
     }
@@ -745,7 +745,11 @@ static void dynamic_read_msgs(int read_ready)
         for (s = fcgi_servers; s != NULL; s = s->next) {
             if (s->directive != APP_CLASS_DYNAMIC)
                 break;
-            /* XXX what does this adjustment do? */
+
+            /* Advance the last analyzed timestamp by the elapsed time since
+             * it was last set. Round the increase down to the nearest
+             * multiple of dynamicUpdateInterval */
+
             fcgi_dynamic_last_analyzed += (((long)(now-fcgi_dynamic_last_analyzed)/dynamicUpdateInterval)*dynamicUpdateInterval);
             s->smoothConnTime = (unsigned long) ((1.0-dynamicGain)*s->smoothConnTime + dynamicGain*s->totalConnTime);
             s->totalConnTime = 0UL;
@@ -1037,7 +1041,7 @@ static void dynamic_read_msgs(int read_ready)
         switch (cjob->id)
 #endif
         {
-			unsigned int i;
+            unsigned int i;
 
             case PLEASE_START:
             case CONN_TIMEOUT:
@@ -1108,9 +1112,9 @@ BagNewServer:
         ap_destroy_pool(sp);
 
 #ifdef WIN32
-	free(cjob->fs_path);
-	free(cjob);
-	cjob = joblist;
+    free(cjob->fs_path);
+    free(cjob);
+    cjob = joblist;
 #endif
     }
 
@@ -1434,7 +1438,7 @@ void fcgi_pm_main(void *dummy)
 {
     fcgi_server *s;
     unsigned int i;
-	int read_ready = 0;
+    int read_ready = 0;
     int alarmLeft = 0;
 
 #ifdef WIN32
@@ -1593,7 +1597,7 @@ void fcgi_pm_main(void *dummy)
                             ap_log_error(FCGI_LOG_WARN_NOERRNO, fcgi_apache_main_server,
                                 "FastCGI:%s server \"%s\" %sstarted (pid %ld)",
                                 (s->directive == APP_CLASS_DYNAMIC) ? " (dynamic)" : "",
-				                s->fs_path, restart ? "re" : "", (long)s->procs[i].pid);
+                                s->fs_path, restart ? "re" : "", (long)s->procs[i].pid);
                         }
                         ap_assert(s->procs[i].pid > 0);
                     } else {
@@ -1728,7 +1732,7 @@ ChildFound:
             }
         } /* for (;;), waitpid() */
 #else
-	    if (first_time) {
+        if (first_time) {
             /* Start the child wait thread */
             wait_thread = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)child_wait_thread, NULL, 0, NULL);
             first_time = 0;
@@ -1757,7 +1761,7 @@ ChildFound:
          */
         if ((dwRet == MBOX_EVENT) || (dwRet == WAIT_TIMEOUT)) {
             if (dwRet == MBOX_EVENT) {
-				read_ready = 1;    
+                read_ready = 1;    
             }
 
             now = time(NULL);
@@ -1815,22 +1819,22 @@ ProcessSigTerm:
 #ifdef WIN32
 int fcgi_pm_add_job(fcgi_pm_job *new_job) {
 
-	if (new_job == NULL)
-		return 0;
+    if (new_job == NULL)
+        return 0;
 
     if (ap_acquire_mutex(fcgi_dynamic_mbox_mutex) != MULTI_OK) {
         ap_log_error(FCGI_LOG_ALERT, fcgi_apache_main_server,
             "FastCGI: Failed to aquire the dynamic mbox mutex!");
     }
 
-	new_job->next = fcgi_dynamic_mbox;
-	fcgi_dynamic_mbox = new_job;
+    new_job->next = fcgi_dynamic_mbox;
+    fcgi_dynamic_mbox = new_job;
 
     if (! ap_release_mutex(fcgi_dynamic_mbox_mutex)) {
         ap_log_error(FCGI_LOG_ALERT, fcgi_apache_main_server,
             "FastCGI: Failed to release the dynamic mbox mutex!");
     }
 
-	return 1;
+    return 1;
 }
 #endif
