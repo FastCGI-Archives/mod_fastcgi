@@ -1,5 +1,9 @@
 Changes with mod_fastcgi 2.2.3
 
+ *) Allow requests for URLs such as /server/some/other/qualifier to match a
+    FastCGI server defined as /server.	This was done primarily for Java
+	Servlets, but is generically useful.
+
  *) Change the comm between the PM and the request handlers from a regular
     file to a pipe and an assortment of other dynamic fixes.
 

@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_util.c,v 1.7 1999/09/16 01:45:56 roberts Exp $
+ * $Id: fcgi_util.c,v 1.8 1999/10/06 11:42:39 roberts Exp $
  */
 
 #include "fcgi.h"
@@ -211,13 +211,24 @@ fcgi_util_fs_get_by_id(const char *ePath, uid_t uid, gid_t gid)
     char path[FCGI_MAXPATH];
     fcgi_server *s;
 
+    /* @@@ This should now be done in the loop below */
     ap_cpystrn(path, ePath, FCGI_MAXPATH);
     ap_no2slash(path);
 
     for (s = fcgi_servers; s != NULL; s = s->next) {
-        if (strcmp(s->fs_path, path) == 0) {
-            if (fcgi_suexec == NULL || (uid == s->uid && gid == s->gid))
-                return s;
+        int i;
+        const char *fs_path = s->fs_path;
+        for (i = 0; fs_path[i] && path[i]; ++i) {
+            if (fs_path[i] != path[i]) {
+                break;
+            }
+        }
+        if (fs_path[i]) {
+            continue;
+        }
+        if (path[i] == '\0' || path[i] == '/') {
+        if (fcgi_suexec == NULL || (uid == s->uid && gid == s->gid))
+            return s;
         }
     }
     return NULL;
