@@ -1,5 +1,5 @@
 /* 
- * $Id: fcgi.h,v 1.6 1999/02/24 04:38:02 roberts Exp $
+ * $Id: fcgi.h,v 1.7 1999/02/25 02:49:12 roberts Exp $
  */
 
 #ifndef FCGI_H
@@ -227,7 +227,7 @@ typedef struct
  */
 void *fcgi_config_create_dir_config(pool *p, char *dummy);
 const char *fcgi_config_make_dir(pool *tp, char *path);
-const char *fcgi_config_make_dynamic_dir_n_mbox(pool *p);
+const char *fcgi_config_make_dynamic_dir_n_mbox(pool *p, int wax);
 const char *fcgi_config_new_static_server(cmd_parms *cmd, void *dummy, const char *arg);
 const char *fcgi_config_new_external_server(cmd_parms *cmd, void *dummy, const char *arg);
 const char *fcgi_config_set_config(cmd_parms *cmd, void *dummy, const char *arg);

@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.66 1999/02/24 04:38:00 roberts Exp $
+ *  $Id: mod_fastcgi.c,v 1.67 1999/02/25 02:49:09 roberts Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -208,7 +208,7 @@ static void init_module(server_rec *s, pool *p)
         ap_log_error(FCGI_LOG_ERR, s, "FastCGI: %s", err);
 
     /* Create Dynamic directory and fcgi_dynamic_mbox file */
-    if ((err = fcgi_config_make_dynamic_dir_n_mbox(p)))
+    if ((err = fcgi_config_make_dynamic_dir_n_mbox(p, 1)))
         ap_log_error(FCGI_LOG_ERR, s, "FastCGI: %s", err);
 
     /* Spawn the PM only once.  Under Unix, Apache calls init() routines

@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_config.c,v 1.4 1999/02/24 04:38:04 roberts Exp $
+ * $Id: fcgi_config.c,v 1.5 1999/02/25 02:49:12 roberts Exp $
  */
 
 #include "fcgi.h"
@@ -226,10 +226,11 @@ const char *fcgi_config_make_dir(pool *tp, char *path)
 }
 
 /*******************************************************************************
- * Create a "dynamic" subdirectory and fcgi_dynamic_mbox (used for RH->PM comm) in the
- * fcgi_socket_dir with appropriate permissions.
+ * Create a "dynamic" subdirectory and fcgi_dynamic_mbox (used for RH->PM comm)
+ * in the fcgi_socket_dir with appropriate permissions.  If the directory 
+ * already exists we don't mess with it unless 'wax' is set.
  */
-const char *fcgi_config_make_dynamic_dir_n_mbox(pool *p)
+const char *fcgi_config_make_dynamic_dir_n_mbox(pool *p, const int wax)
 {
     DIR *dp = NULL;
     struct dirent *dirp = NULL;
@@ -239,13 +240,13 @@ const char *fcgi_config_make_dynamic_dir_n_mbox(pool *p)
 
     fcgi_dynamic_dir = ap_pstrcat(p, fcgi_socket_dir, "/dynamic", NULL);
 
-    err = fcgi_config_make_dir(p, fcgi_dynamic_dir);
-    if (err != NULL) {
-        return ap_psprintf(p,
-            "can't create dynamic directory \"%s\": %s",
-            fcgi_dynamic_dir, err);
-    }
+    if ((err = fcgi_config_make_dir(p, fcgi_dynamic_dir)))
+        return ap_psprintf(p, "can't create dynamic directory \"%s\": %s", fcgi_dynamic_dir, err);
 
+    /* Don't step on a running server unless its OK. */
+    if (!wax)
+        return NULL;
+    
     /* Create a subpool for the directory operations */
     tp = ap_make_sub_pool(p);
 
@@ -326,7 +327,7 @@ const char *fcgi_config_set_socket_dir(cmd_parms *cmd, void *dummy, char *arg)
     if (err != NULL)
         return ap_psprintf(tp, "%s %s: %s", name, arg, err);
 
-    err = fcgi_config_make_dynamic_dir_n_mbox(cmd->pool);
+    err = fcgi_config_make_dynamic_dir_n_mbox(cmd->pool, 0);
     if (err != NULL)
         return ap_psprintf(tp, "%s %s: %s", name, arg, err);
 

@@ -1,7 +1,18 @@
 Changes with mod_fastcgi 2.2.1
 
- *) Add an extern declaration for ap_sys_siglist, its exposed but not in any
-    Apache header file.
+ *) If the FastCgiIpcDir directive was in use and "httpd -t" was issued while
+    Apache was running ("apachectl restart" does this), the contents of the
+    dynamic directory (dynamic sockets and the mbox) would be blown away 
+    (a 2.1b1 bug).
+
+ *) Add an extern declaration for ap_sys_siglist (its exposed but not in any
+    Apache header file) to prevent a compile error on systems without
+    SYS_SIGLIST defined.
+    
+ *) During auth requests, the subprocess_env table was left holding variables
+    sent to the auth FastCGI server (including REMOTE_PASSWD!) which means they
+    were passed to other processing phases (such as CGI/FastCGI).  The
+    subprocess_env is now restored to its pre-auth condition.
     
  *) Added a FastCGI Authorizer Role compatibility mode which implements the 
     specification to the tee.  Use -compat arg with any of the Auth server
@@ -17,8 +28,8 @@ Changes with mod_fastcgi 2.2.1
     doesn't get a valid FastCGI protocol header over the wire, we
     can still print our error message to the log from do_work().
 
- *) Fix an obvious copy-n-paste error in open_connection_to_fs() 
-    if TCP_NODELAY was defined (Don Locrasto [locrasto@iceminer.com]).
+ *) Fix a compile error in open_connection_to_fs() on systems with TCP_NODELAY
+    defined (Don Locrasto [locrasto@iceminer.com]).
 
 Changes with mod_fastcgi 2.2.0
 
