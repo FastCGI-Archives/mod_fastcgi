@@ -1,5 +1,7 @@
 Changes with mod_fastcgi 2.2.3
 
+ *) Change the "server started" log message level from INFO to WARN.
+
  *) Fix dynamic server "Connection Refused" handling.
 
  *) Fix demand-based dynamic process spawing (uses a more portable approach).

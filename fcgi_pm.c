@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_pm.c,v 1.8 1999/09/03 19:04:41 roberts Exp $
+ * $Id: fcgi_pm.c,v 1.9 1999/09/08 03:57:58 roberts Exp $
  */
 
 #include "fcgi.h"
@@ -612,7 +612,7 @@ NothingToDo:
                         for (i = 0; i < s->numProcesses; i++) {
                             kill(s->procs[i].pid, SIGTERM);
                         }
-                        ap_log_error(FCGI_LOG_INFO_NOERRNO, fcgi_apache_main_server,
+                        ap_log_error(FCGI_LOG_WARN_NOERRNO, fcgi_apache_main_server,
                             "FastCGI: restarting server \"%s\" processes, newer version found", execName);
                     }
 
@@ -920,7 +920,8 @@ int fcgi_pm_main(void *dummy, child_info *info)
     }
     ap_destroy_pool(tp);
     
-    ap_log_error(FCGI_LOG_INFO_NOERRNO, fcgi_apache_main_server, "FastCGI: process manager initialized");
+    ap_log_error(FCGI_LOG_NOTICE_NOERRNO, fcgi_apache_main_server, 
+        "FastCGI: process manager initialized (pid %ld)", fcgi_pm_pid);
 
     /*
      * Loop until SIGTERM
@@ -1016,15 +1017,15 @@ int fcgi_pm_main(void *dummy, child_info *info)
                             s->numRestarts++;
 
                         if (fcgi_suexec != NULL) {
-                            ap_log_error(FCGI_LOG_INFO_NOERRNO, fcgi_apache_main_server,
-                                "FastCGI:%s server \"%s\" (uid %ld, gid %ld) %sstarted with pid %ld",
+                            ap_log_error(FCGI_LOG_WARN_NOERRNO, fcgi_apache_main_server,
+                                "FastCGI:%s server \"%s\" (uid %ld, gid %ld) %sstarted (pid %ld)",
                                 (s->directive == APP_CLASS_DYNAMIC) ? " (dynamic)" : "",
                                 s->fs_path, (long)s->uid, (long)s->gid, 
                                 restart ? "re" : "", (long)s->procs[i].pid);
                         }
                         else {
-                            ap_log_error(FCGI_LOG_INFO_NOERRNO, fcgi_apache_main_server,
-                                "FastCGI:%s server \"%s\" %sstarted with pid %ld",
+                            ap_log_error(FCGI_LOG_WARN_NOERRNO, fcgi_apache_main_server,
+                                "FastCGI:%s server \"%s\" %sstarted (pid %ld)",
                                 (s->directive == APP_CLASS_DYNAMIC) ? " (dynamic)" : "",
 				                s->fs_path, restart ? "re" : "", (long)s->procs[i].pid);
                         }
