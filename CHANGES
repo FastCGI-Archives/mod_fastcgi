@@ -1,5 +1,8 @@
 2.4.1
 
+ *) [WIN] Use a permanent pool for allocating the SystemRoot 
+    environment variable.  Sakamoto [ringring@zb4.so-net.ne.jp]
+
  *) [WIN] Fix starting of scripts under AP2.
 
  *) Do the connect() to the application *after* collecting a chunk
