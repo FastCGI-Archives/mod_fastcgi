@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.46 1998/08/24 12:42:45 roberts Exp $
+ *  $Id: mod_fastcgi.c,v 1.47 1998/09/04 15:47:33 roberts Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -4225,7 +4225,7 @@ char *ScanLine(char *start, int continuation)
     /*
      * Trim any trailing whitespace.
      */
-    while(isspace(p[-1]) && p > start) {
+    while(isspace((unsigned char)p[-1]) && p > start) {
         p--;
     }
 
@@ -4325,7 +4325,7 @@ void ScanCGIHeader(WS_Request *reqPtr, FastCgiInfo *infoPtr)
             goto BadHeader;
         }
         value = p + 1;
-        while(p != name && isspace(*(p - 1))) {
+        while(p != name && isspace((unsigned char)*(p - 1))) {
             p--;
         }
         if(p == name) {
@@ -4336,7 +4336,7 @@ void ScanCGIHeader(WS_Request *reqPtr, FastCgiInfo *infoPtr)
             *p = ' ';
             goto BadHeader;
         }
-        while(isspace(*value)) {
+        while(isspace((unsigned char)*value)) {
             value++;
         }
 
