@@ -1478,7 +1478,7 @@ static FastCgiServerInfo *CreateFcgiServerInfo(int numInstances, char *ePath)
 static void FreeFcgiServerInfo(FastCgiServerInfo *serverInfoPtr)
 {
     FcgiProcessInfo *processInfoPtr;
-    int i;
+    int i, numChildren;
     char *lockFileName;
     OS_IpcAddr *ipcAddrPtr;
     char *fname;
@@ -1487,6 +1487,20 @@ static void FreeFcgiServerInfo(FastCgiServerInfo *serverInfoPtr)
      * Free up process/connection info.
      */
     processInfoPtr = serverInfoPtr->procInfo;
+    if(serverInfoPtr->directive == APP_CLASS_DYNAMIC) {
+        numChildren = maxClassProcs;
+    } else {
+        numChildren = serverInfoPtr->numProcesses;
+    }
+
+    for (i = 0; i < numChildren; i++) {
+        if(processInfoPtr->pid != -1) {
+            kill(processInfoPtr->pid, SIGTERM);
+            processInfoPtr->pid = -1;
+        }
+        OS_FreeIpcAddr(processInfoPtr->ipcAddr);
+    }
+
     for(i = 0; i < serverInfoPtr->numProcesses; i ++, processInfoPtr++) {
         if(processInfoPtr->pid != -1) {
             kill(processInfoPtr->pid, SIGTERM);
