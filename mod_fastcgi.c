@@ -116,7 +116,7 @@ typedef gid_t long;
 #include "http_log.h"
 #include "util_script.h"
 #include "http_conf_globals.h"
-#include "md5.h"
+#include "util_md5.h"
 
 #if APACHE_RELEASE < 1030000
 #define ap_md5(a,b) md5(a,b)

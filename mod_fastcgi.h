@@ -16,8 +16,12 @@
 #define TRUE  (1)
 #define FALSE (0)
 #define ASSERT assert
+#ifndef min
 #define min(a,b) ((a) < (b) ? (a) : (b))
+#endif
+#ifndef max
 #define max(a,b) ((a) > (b) ? (a) : (b))
+#endif
 
 /* dynamic string definitions */
 #define DString                 Tcl_DString
