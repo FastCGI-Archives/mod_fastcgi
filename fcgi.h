@@ -1,5 +1,5 @@
-/* 
- * $Id: fcgi.h,v 1.10 1999/05/31 02:10:56 roberts Exp $
+/*
+ * $Id: fcgi.h,v 1.11 1999/08/02 12:55:28 roberts Exp $
  */
 
 #ifndef FCGI_H
@@ -227,9 +227,9 @@ typedef struct
 #define FCGIDBG3(a,b,c)
 #define FCGIDBG4(a,b,c,d)
 #define FCGIDBG5(a,b,c,d,e)
-#endif 
+#endif
 
-/* 
+/*
  * fcgi_config.c
  */
 void *fcgi_config_create_dir_config(pool *p, char *dummy);
@@ -239,9 +239,9 @@ const char *fcgi_config_new_static_server(cmd_parms *cmd, void *dummy, const cha
 const char *fcgi_config_new_external_server(cmd_parms *cmd, void *dummy, const char *arg);
 const char *fcgi_config_set_config(cmd_parms *cmd, void *dummy, const char *arg);
 const char *fcgi_config_set_fcgi_uid_n_gid(int set);
-const char *fcgi_config_new_auth_server(cmd_parms *cmd, fcgi_dir_config *dir_config, 
+const char *fcgi_config_new_auth_server(cmd_parms *cmd, fcgi_dir_config *dir_config,
 					const char *fs_path, const char *compat);
-const char *fcgi_config_set_authoritative_slot(const cmd_parms *cmd, 
+const char *fcgi_config_set_authoritative_slot(const cmd_parms *cmd,
 					       fcgi_dir_config *dir_config, int arg);
 const char *fcgi_config_set_socket_dir(cmd_parms *cmd, void *dummy, char *arg);
 const char *fcgi_config_set_suexec(cmd_parms *cmd, void *dummy, const char *arg);
@@ -260,8 +260,8 @@ void fcgi_protocol_queue_client_buffer(fcgi_request *fr);
 int fcgi_protocol_queue_env(request_rec *r, fcgi_request *fr, char ***envp);
 int fcgi_protocol_dequeue(pool *p, fcgi_request *fr);
 
-/* 
- * fcgi_buf.c 
+/*
+ * fcgi_buf.c
  */
 #define BufferLength(b)     ((b)->length)
 #define BufferFree(b)       ((b)->size - (b)->length)
@@ -301,19 +301,19 @@ void fcgi_buf_get_to_array(Buffer *buf,array_header *arr, int len);
 
 char *fcgi_util_socket_hash_filename(pool *p, const char *path,
 	const char *user, const char *group);
-const char *fcgi_util_socket_make_path_absolute(pool * const p, 
+const char *fcgi_util_socket_make_path_absolute(pool * const p,
   	const char *const file, const int dynamic);
 const char *fcgi_util_socket_get_lock_filename(pool *p, const char *socket_path);
 const char *fcgi_util_socket_make_domain_addr(pool *p, struct sockaddr_un **socket_addr,
   	int *socket_addr_len, const char *socket_path);
 const char *fcgi_util_socket_make_inet_addr(pool *p, struct sockaddr_in **socket_addr,
   	int *socket_addr_len, const char *host, int port);
-const char *fcgi_util_check_access(pool *tp, 
-    const char * const path, const struct stat *statBuf, 
+const char *fcgi_util_check_access(pool *tp,
+    const char * const path, const struct stat *statBuf,
     const int mode, const uid_t uid, const gid_t gid);
 fcgi_server *fcgi_util_fs_get_by_id(const char *ePath, uid_t uid, gid_t gid);
 fcgi_server *fcgi_util_fs_get(const char *ePath, const char *user, const char *group);
-const char *fcgi_util_fs_is_path_ok(pool * const p, const char * const fs_path, 
+const char *fcgi_util_fs_is_path_ok(pool * const p, const char * const fs_path,
 	struct stat *finfo, const uid_t uid, const gid_t gid);
 fcgi_server *fcgi_util_fs_new(pool *p);
 void fcgi_util_fs_add(fcgi_server *s);

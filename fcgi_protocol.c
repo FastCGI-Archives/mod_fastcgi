@@ -1,14 +1,14 @@
 /*
- * $Id: fcgi_protocol.c,v 1.6 1999/06/17 03:12:27 roberts Exp $
+ * $Id: fcgi_protocol.c,v 1.7 1999/08/02 12:53:05 roberts Exp $
  */
- 
+
 
 #include "fcgi.h"
 #include "fcgi_protocol.h"
 
  /*******************************************************************************
- * Build and queue a FastCGI message header.  It is the caller's 
- * responsibility to make sure that there's enough space in the buffer, and 
+ * Build and queue a FastCGI message header.  It is the caller's
+ * responsibility to make sure that there's enough space in the buffer, and
  * that the data bytes (specified by 'len') are queued immediately following
  * this header.
  */
@@ -62,7 +62,7 @@ void fcgi_protocol_queue_begin_request(fcgi_request *fr)
 }
 
 /*******************************************************************************
- * Build a FastCGI name-value pair (env) header.  
+ * Build a FastCGI name-value pair (env) header.
  */
 static void build_env_header(int nameLen, int valueLen,
         unsigned char *headerBuffPtr, int *headerLenPtr)
@@ -138,7 +138,7 @@ static void add_auth_cgi_vars(request_rec *r, const int compat)
         ap_table_unset(e, "CONTENT_LENGTH");
         return;
     }
-        
+
     /* Note that the code below special-cases scripts run from includes,
      * because it "knows" that the sub_request has been hacked to have the
      * args and path_info of the original request, and not any that may have
@@ -159,8 +159,8 @@ static void add_auth_cgi_vars(request_rec *r, const int compat)
 }
 
 /*******************************************************************************
- * Build and queue the environment name-value pairs.  Returns TRUE if the 
- * complete ENV was buffered, FALSE otherwise.  Note: envp is updated to 
+ * Build and queue the environment name-value pairs.  Returns TRUE if the
+ * complete ENV was buffered, FALSE otherwise.  Note: envp is updated to
  * reflect the current position in the ENV.
  */
 int fcgi_protocol_queue_env(request_rec *r, fcgi_request *fr, char ***envp)
@@ -173,16 +173,16 @@ int fcgi_protocol_queue_env(request_rec *r, fcgi_request *fr, char ***envp)
 
     if (*envp == NULL) {
         ap_add_common_vars(r);
-            
+
         if (fr->role == FCGI_RESPONDER)
 	        ap_add_cgi_vars(r);
-        else 
+        else
             add_auth_cgi_vars(r, fr->auth_compat);
-        
+
         *envp = ap_create_environment(r->pool, r->subprocess_env);
         pass = prep;
     }
-    
+
     while (**envp) {
         switch (pass) {
             case prep:
@@ -259,7 +259,7 @@ void fcgi_protocol_queue_client_buffer(fcgi_request *fr)
      * in the output buffer, indicate EOF.
      */
     if (movelen == in_len && fr->expectingClientContent <= 0
-            && BufferFree(fr->serverOutputBuffer) >= sizeof(FCGI_Header)) 
+            && BufferFree(fr->serverOutputBuffer) >= sizeof(FCGI_Header))
     {
         queue_header(fr, FCGI_STDIN, 0);
         fr->eofSent = TRUE;
@@ -267,8 +267,8 @@ void fcgi_protocol_queue_client_buffer(fcgi_request *fr)
 }
 
 /*******************************************************************************
- * Read FastCGI protocol messages from the FastCGI server input buffer into 
- * fr->header when parsing headers, to fr->fs_stderr when reading stderr data, 
+ * Read FastCGI protocol messages from the FastCGI server input buffer into
+ * fr->header when parsing headers, to fr->fs_stderr when reading stderr data,
  * or to the client output buffer otherwises.
  */
 int fcgi_protocol_dequeue(pool *p, fcgi_request *fr)
@@ -291,13 +291,13 @@ int fcgi_protocol_dequeue(pool *p, fcgi_request *fr)
              * and other packet problems.
              */
             if (header.version != FCGI_VERSION) {
-                ap_log_rerror(FCGI_LOG_ERR_NOERRNO, fr->r, 
+                ap_log_rerror(FCGI_LOG_ERR_NOERRNO, fr->r,
                     "FastCGI: comm with server \"%s\" aborted: protocol error: invalid version: %d != FCGI_VERSION(%d)",
                     fr->fs_path, header.version, FCGI_VERSION);
                 return SERVER_ERROR;
             }
             if (header.type > FCGI_MAXTYPE) {
-                ap_log_rerror(FCGI_LOG_ERR_NOERRNO, fr->r, 
+                ap_log_rerror(FCGI_LOG_ERR_NOERRNO, fr->r,
                     "FastCGI: comm with server \"%s\" aborted: protocol error: invalid type: %d > FCGI_MAXTYPE(%d)",
                     fr->fs_path, header.type, FCGI_MAXTYPE);
                 return SERVER_ERROR;
@@ -341,37 +341,37 @@ int fcgi_protocol_dequeue(pool *p, fcgi_request *fr)
                 if (len > 0) {
                     int max_len;
                     char *start_of_line, *end_of_line;
-                    
+
                     /* This doesn't have to be fast, its the exception */
-                    
+
                     if (fr->fs_stderr == NULL)
                         fr->fs_stderr = ap_pcalloc(p, FCGI_SERVER_MAX_STDERR_LINE_LEN + 1);
-                        
+
                     /* We're gonna consume all of it */
                     fr->dataLen -= len;
-                    
+
                     while ((max_len = min(len, FCGI_SERVER_MAX_STDERR_LINE_LEN - strlen(fr->fs_stderr)))) {
                         /* Put as much as we can in the block */
                         int cur_stderr_len = strlen(fr->fs_stderr);
-                        fcgi_buf_get_to_block(fr->serverInputBuffer, 
+                        fcgi_buf_get_to_block(fr->serverInputBuffer,
                             fr->fs_stderr + cur_stderr_len, max_len);
-                        *(fr->fs_stderr + cur_stderr_len + max_len) = '\0';         
-                        len -= max_len;            
-                        
+                        *(fr->fs_stderr + cur_stderr_len + max_len) = '\0';
+                        len -= max_len;
+
                         /* Print as much as we can */
                         start_of_line = fr->fs_stderr;
                         while ((end_of_line = strpbrk(start_of_line, "\r\n"))) {
                             *end_of_line = '\0';
-                            ap_log_rerror(FCGI_LOG_ERR_NOERRNO, fr->r, 
+                            ap_log_rerror(FCGI_LOG_ERR_NOERRNO, fr->r,
                                 "FastCGI: server \"%s\" stderr: %s", fr->fs_path, start_of_line);
                             ++end_of_line;
                             start_of_line = end_of_line + strspn(end_of_line, "\r\n");
                         }
-                    
+
                         /* Move any leftovers down */
                         if (*start_of_line && start_of_line != fr->fs_stderr) {
                             int move_len = strlen(start_of_line);
-                        
+
                             memmove(fr->fs_stderr, start_of_line, move_len);
                             *(fr->fs_stderr + move_len) = '\0';
                         }
@@ -380,10 +380,10 @@ int fcgi_protocol_dequeue(pool *p, fcgi_request *fr)
                     }
 
                     if (len) {
-                        ap_log_rerror(FCGI_LOG_ERR_NOERRNO, fr->r, 
+                        ap_log_rerror(FCGI_LOG_ERR_NOERRNO, fr->r,
                             "FastCGI: server \"%s\" stderr: %s...", fr->fs_path, fr->fs_stderr);
-                        *fr->fs_stderr = '\0';        
-                        ap_log_rerror(FCGI_LOG_WARNING_NOERRNO, fr->r, 
+                        *fr->fs_stderr = '\0';
+                        ap_log_rerror(FCGI_LOG_WARNING_NOERRNO, fr->r,
                             "FastCGI: too much stderr received from server \"%s\", %d bytes discarded, "
                             "increase FCGI_SERVER_MAX_STDERR_LINE_LEN (%d) and rebuild "
                             "or use \"\\n\" to terminate lines",
@@ -395,7 +395,7 @@ int fcgi_protocol_dequeue(pool *p, fcgi_request *fr)
             case FCGI_END_REQUEST:
                 if (!fr->readingEndRequestBody) {
                     if (fr->dataLen != sizeof(FCGI_EndRequestBody)) {
-                        ap_log_rerror(FCGI_LOG_ERR_NOERRNO, fr->r, 
+                        ap_log_rerror(FCGI_LOG_ERR_NOERRNO, fr->r,
                             "FastCGI: comm with server \"%s\" aborted: protocol error: invalid FCGI_END_REQUEST size: "
                             "%d != sizeof(FCGI_EndRequestBody)(%d)",
                             fr->fs_path, fr->dataLen, sizeof(FCGI_EndRequestBody));
@@ -416,7 +416,7 @@ int fcgi_protocol_dequeue(pool *p, fcgi_request *fr)
                         /*
                          * XXX: What to do with FCGI_OVERLOADED?
                          */
-                        ap_log_rerror(FCGI_LOG_ERR_NOERRNO, fr->r, 
+                        ap_log_rerror(FCGI_LOG_ERR_NOERRNO, fr->r,
                             "FastCGI: comm with server \"%s\" aborted: protocol error: invalid FCGI_END_REQUEST status: "
                             "%d != FCGI_REQUEST_COMPLETE(%d)", fr->fs_path,
                             erBody->protocolStatus, FCGI_REQUEST_COMPLETE);
