@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.73 1999/06/07 05:24:50 roberts Exp $
+ *  $Id: mod_fastcgi.c,v 1.74 1999/06/10 02:49:19 roberts Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -881,7 +881,7 @@ ConnectionComplete:
         /* We shouldn't be sending small packets and there's no application
          * level ack of the data we send, so disable Nagle */
         int set = 1;
-        setsockopt(socket, IPPROTO_TCP, TCP_NODELAY, (char *)&set, sizeof(set));
+        setsockopt(fr->fd, IPPROTO_TCP, TCP_NODELAY, (char *)&set, sizeof(set));
     }       
 #endif            
     

@@ -1,6 +1,7 @@
 Changes with mod_fastcgi 2.2.3
 
- *) 
+ *) Fix the call to setsockopt() to disable Nagle.  [based on a bug report by
+    Johannes Plassmann <johannes.plassmann@pdb.siemens.de>]
 
 Changes with mod_fastcgi 2.2.2
 
