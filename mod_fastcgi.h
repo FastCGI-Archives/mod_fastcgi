@@ -13,12 +13,20 @@
 #include <assert.h>
 
 /* general defines */
+#ifndef TRUE
 #define TRUE  (1)
+#endif
+
+#ifndef FALSE
 #define FALSE (0)
+#endif
+
 #define ASSERT assert
+
 #ifndef min
 #define min(a,b) ((a) < (b) ? (a) : (b))
 #endif
+
 #ifndef max
 #define max(a,b) ((a) > (b) ? (a) : (b))
 #endif
