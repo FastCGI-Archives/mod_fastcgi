@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_pm.c,v 1.85 2003/02/04 01:14:10 robs Exp $
+ * $Id: fcgi_pm.c,v 1.86 2003/06/17 01:24:48 robs Exp $
  */
 
 
@@ -1795,7 +1795,7 @@ void fcgi_pm_main(void *dummy)
                             sleepSeconds = min(sleepSeconds,
                                 max((int) s->restartDelay, FCGI_MIN_EXEC_RETRY_DELAY));
 
-                            ap_assert(s->procs[i].pid < 0);
+                            s->procs[i].pid = -1;
                             break;
                         }
 

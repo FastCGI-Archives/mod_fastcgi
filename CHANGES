@@ -1,5 +1,7 @@
 2.4.1
 
+ *) Remove an assert on WIN that was triggering when spawn() failed.
+
  *) Provide the NO_SUEXEC_FOR_AP_USER_N_GROUP macro for building
     mod_fastcgi with the AP13 suexec behaviour (don't use suexec
     if httpd's user and group match that needed for the application).
