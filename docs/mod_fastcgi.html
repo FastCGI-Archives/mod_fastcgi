@@ -1,6 +1,6 @@
 <!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">
 <HTML>
-   <!-- $Id: mod_fastcgi.html,v 1.27 2001/11/06 00:47:09 robs Exp $ -->
+   <!-- $Id: mod_fastcgi.html,v 1.28 2001/11/17 01:22:13 robs Exp $ -->
    <HEAD>
       <TITLE>
          Apache module mod_fastcgi
@@ -124,7 +124,27 @@
          or via a mechanism that is not FastCGI protocol aware will also be directed to the main server log. If
          Apache&#39;s <A HREF="http://httpd.apache.org/docs/mod/core.html#loglevel"><CODE>LogLevel</CODE></A> is set to
          <CODE>info</CODE> additional informational messages are printed to the logs, these messages may be especially
-         helpful while debugging a configuration..
+         helpful while debugging a configuration.
+      </P>
+      <P>
+         Under Unix, expect your FastCGI application to see SIGPIPE, SIGUSR1, and SIGTERM. The latest FastCGI C, C++
+         and Perl application library installs default handlers if none are installed by the application. If an http
+         client aborts a request before it completes, mod_fastcgi does too - this results in a SIGPIPE to the FastCGI
+         application. At a minimum, SIGPIPE should be ignored (applications spawned by mod_fastcgi have this setup
+         automatically). Ideally, it should result in an early abort of the request handling within your application
+         and a return to the top of the FastCGI accept() loop. Apache uses SIGUSR1 to request a &quot;graceful&quot;
+         process restart/shutdown. It is sent to Apache&#39;s process group (which includes applications spawned by
+         mod_fastcgi). Ideally, it should result in a FastCGI application finishing the current request, if any, and
+         then an exit. The mod_fastcgi process manager isn&#39;t particularly patient though (there&#39;s room for
+         improvement here) and since it has to shutdown too, sends a SIGTERM to all of the FastCGI applications it is
+         responsible for. Apache will restart the process manager and it will restart its managed applications (as if
+         the server was just started). SIGTERM is, well, SIGTERM - your application should exit quickly.
+      </P>
+      <P>
+         Under Windows, there are no signals. A shutdown event is used instead. This is setup by mod_fastcgi and
+         honored by the latest version of the C, C++, and Perl application library. If your using a library which
+         doesn&#39;t support this, your application will not get shutdown during an Apache restart/shutdown
+         (there&#39;s room for improvement here).
       </P>
       <P>
          To pass per-request environment variables to FastCGI applications, have a look at: <A HREF=
@@ -183,13 +203,13 @@
          performed.
       </P>
       <P>
-         <CODE>mod_fastcgi</CODE> sends nearly all of the standard environment variables typically available to
-         CGI/FastCGI request handlers including some explicitly precluded by the FastCGI specification; I didn&#39;t
-         see the point in leaving them out. All headers returned by a FastCGI authentication application in a
-         successful response (Status: 200) are passed to sub-processes (CGI/FastCGI invocations) as environment
-         variables rather than just those prefixed by <CODE>Variable-</CODE> as the FastCGI specification calls for; I
-         didn&#39;t see the point in leaving them out either. FastCGI specification compliant authorizer behavior can
-         be obtained by using the <CODE>-compat</CODE> option to the Auth server directives.
+         Authorizers under <CODE>mod_fastcgi</CODE> are sent nearly all of the standard environment variables typically
+         available to CGI/FastCGI request handlers including some explicitly precluded by the FastCGI specification
+         (for authorizers); I didn&#39;t see the point in leaving them out. All headers returned by a FastCGI
+         Authorizer in a successful response (Status: 200) are passed to sub-processes (CGI/FastCGI invocations) as
+         environment variables rather than just those prefixed by <CODE>Variable-</CODE> as the FastCGI specification
+         calls for; I didn&#39;t see the point in leaving them out either. FastCGI specification compliant authorizer
+         behavior can be obtained by using the <CODE>-compat</CODE> option to the Auth server directives.
       </P>
       <P>
          Custom failure responses from FastCGI authorizer applications are not supported (speak up if you need this).
