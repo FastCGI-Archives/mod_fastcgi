@@ -1,5 +1,8 @@
 2.2.13
 
+ *) Eliminate the need for SetHandler or AddHandler with static or 
+    external applications.
+
  *) Limit PM requests to start a dynamic application
     to 5sec to prevent endless spinning (this is a drop-dead
     limit that should only occur if the socket/named_pipe directory

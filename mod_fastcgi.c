@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.141 2002/10/12 00:23:27 robs Exp $
+ *  $Id: mod_fastcgi.c,v 1.142 2002/10/12 01:52:22 robs Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -99,7 +99,7 @@ fcgi_server *fcgi_servers = NULL;         /* AppClasses */
 char *fcgi_socket_dir = NULL;             /* default FastCgiIpcDir */
 
 char *fcgi_dynamic_dir = NULL;            /* directory for the dynamic
-                                                  * fastcgi apps' sockets */
+                                           * fastcgi apps' sockets */
 
 #ifdef WIN32
 
@@ -2478,7 +2478,7 @@ static int content_handler(request_rec *r)
     int ret;
 
 #ifdef APACHE2
-    if (strcmp(r->handler, "fastcgi-script"))
+    if (strcmp(r->handler, FASTCGI_HANDLER_NAME))
         return DECLINED;
 #endif
 
@@ -2730,6 +2730,20 @@ AccessFailed:
     return (res == OK) ? HTTP_FORBIDDEN : res;
 }
 
+static int 
+fixups(request_rec * r)
+{
+    if (fcgi_util_fs_get_by_id(r->filename, 
+                               fcgi_util_get_server_uid(r->server), 
+                               fcgi_util_get_server_gid(r->server)))
+    {
+        r->handler = FASTCGI_HANDLER_NAME;
+        return OK;
+    }
+
+    return DECLINED;
+}
+
 #ifndef APACHE2
 
 # define AP_INIT_RAW_ARGS(directive, func, mconfig, where, help) \
@@ -2793,6 +2807,7 @@ static void register_hooks(apr_pool_t * p)
     ap_hook_check_user_id(check_user_authentication, NULL, NULL, APR_HOOK_MIDDLE);
     ap_hook_access_checker(check_access, NULL, NULL, APR_HOOK_MIDDLE);
     ap_hook_auth_checker(check_user_authorization, NULL, NULL, APR_HOOK_MIDDLE);
+    ap_hook_fixups(fixups, NULL, NULL, APR_HOOK_MIDDLE); 
 }
 
 module AP_MODULE_DECLARE_DATA fastcgi_module =
@@ -2810,7 +2825,7 @@ module AP_MODULE_DECLARE_DATA fastcgi_module =
 
 handler_rec fastcgi_handlers[] = {
     { FCGI_MAGIC_TYPE, content_handler },
-    { "fastcgi-script", content_handler },
+    { FASTCGI_HANDLER_NAME, content_handler },
     { NULL }
 };
 
@@ -2828,7 +2843,7 @@ module MODULE_VAR_EXPORT fastcgi_module = {
     check_user_authorization,  /* [6] authorize user_id */
     check_access,              /* [4] check access (based on src & http headers) */
     NULL,                      /* [7] check/set MIME type */
-    NULL,                      /* [8] fixups */
+    fixups,                    /* [8] fixups */
     NULL,                      /* [10] logger */
     NULL,                      /* [3] header-parser */
     fcgi_child_init,           /* process initialization */
