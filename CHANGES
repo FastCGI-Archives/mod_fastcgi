@@ -1,5 +1,8 @@
 2.2.13
 
+ *) Eliminate the logging of "incomplete headers (0 bytes) received from 
+    server" when a client aborts. 
+
  *) [WIN32] Fix a delay in handling large POSTs to named pipe based
     servers. Philip Gladstone [philip@okena.com]
 
