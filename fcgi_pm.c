@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_pm.c,v 1.35 2000/07/31 00:33:42 robs Exp $
+ * $Id: fcgi_pm.c,v 1.36 2000/08/03 16:47:32 robs Exp $
  */
 
 
@@ -1438,7 +1438,7 @@ void fcgi_pm_main(void *dummy)
     setup_signals();
 
     if (fcgi_suexec) {
-        ap_log_error(FCGI_LOG_INFO_NOERRNO, fcgi_apache_main_server,
+        ap_log_error(FCGI_LOG_NOTICE_NOERRNO, fcgi_apache_main_server,
             "FastCGI: suEXEC mechanism enabled (wrapper: %s)", fcgi_suexec);
     }
 #endif
