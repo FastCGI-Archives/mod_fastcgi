@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.50 1998/10/25 03:43:10 roberts Exp $
+ *  $Id: mod_fastcgi.c,v 1.51 1998/10/25 03:47:15 roberts Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -837,6 +837,8 @@ typedef struct _FastCgiServerInfo {
     time_t restartTime;             /* most recent time when the process
                                      * manager started a process in this
                                      * class. */
+    int initStartDelay;             /* min number of seconds to wait between
+                                     * starting of AppClass processes at init */
     int restartDelay;               /* number of seconds to wait between
                                      * restarts after failure.  Can be zero.
                                      */
@@ -1316,6 +1318,7 @@ static FastCgiServerInfo *CreateFcgiServerInfo(int numInstances, char *ePath)
     serverInfoPtr->envp = NULL;
     serverInfoPtr->listenQueueDepth = FCGI_DEFAULT_LISTEN_Q;
     serverInfoPtr->numProcesses = numInstances;
+    serverInfoPtr->initStartDelay = 0;
     serverInfoPtr->restartDelay = FCGI_DEFAULT_RESTART_DELAY;
     serverInfoPtr->restartOnExit = FALSE;
     serverInfoPtr->numRestarts = 0;
@@ -1764,6 +1767,7 @@ const char *AppClassCmd(cmd_parms *cmd, void *dummy, char *arg)
     char *namePtr;
     char *valuePtr;
     int numProcesses = 1;
+    int initStartDelay = 0;
     int restartDelay = FCGI_DEFAULT_RESTART_DELAY;
     int processPriority = FCGI_DEFAULT_PRIORITY;
     int listenQueueDepth = FCGI_DEFAULT_LISTEN_Q;
@@ -1847,6 +1851,17 @@ const char *AppClassCmd(cmd_parms *cmd, void *dummy, char *arg)
                 goto BadValueReturn;
             }
             restartDelay = n;
+            continue;
+        } else if((strcmp(argv[i], "-init-start-delay") == 0)) {
+            if((i + 1) == argc) {
+                goto MissingValueReturn;
+            }
+            i++;
+            n = strtol(argv[i], &cvtPtr, 10);
+            if(*cvtPtr != '\0' || n < 0) {
+                goto BadValueReturn;
+            }
+            initStartDelay = n;
             continue;
         } else if((strcmp(argv[i], "-priority") == 0)) {
             if((i + 1) == argc) {
@@ -1957,6 +1972,7 @@ const char *AppClassCmd(cmd_parms *cmd, void *dummy, char *arg)
     }
     DStringAppend(&serverInfoPtr->execPath, execPath, -1);
     serverInfoPtr->restartOnExit = TRUE;
+    serverInfoPtr->initStartDelay = initStartDelay;
     serverInfoPtr->restartDelay = restartDelay;
     serverInfoPtr->processPriority = processPriority;
     serverInfoPtr->listenQueueDepth = listenQueueDepth;
@@ -2548,7 +2564,7 @@ int RemoveRecords(void)
     time_t now = time(NULL);
     int listenFd;
 
-    user[32] = group[32] = NULL;
+    user[32] = group[32] = '\0';
 
     /* Obtain the data from the mbox file */
     if((fd = open(mbox, O_RDWR))<0) {
@@ -3320,13 +3336,20 @@ void FastCgiProcMgr(void *data)
             for(i = 0; i < numChildren; i++) {
                 if((s->procInfo[i].pid <= 0) &&
                     (s->procInfo[i].state == STATE_NEEDS_STARTING)) {
-                    time_t restartTime = s->restartTime + s->restartDelay;
+                    time_t restartTime;
                     time_t now = time(NULL);
+
                     /* start dynamic apps immediately */
                     if(s->directive == APP_CLASS_DYNAMIC) {
                         restartTime = now;
+                    } else {
+                        if (s->procInfo[i].pid == 0) {
+                            restartTime = s->restartTime + s->initStartDelay;
+                        } else {
+                            restartTime = s->restartTime + s->restartDelay;
+                        }
                     }
-                    if(s->procInfo[i].pid == 0 || restartTime <= now) {
+                    if(restartTime <= now) {
                         int restart = (s->procInfo[i].pid < 0);
                         if(restart) {
                             s->numRestarts++;
@@ -4754,7 +4777,7 @@ SuexecCheck(char *file, char *user, char *group)
     gr = getgrnam(group);
     if (gr == NULL) {
         if (strspn(group, "1234567890") == strlen(group)) {
-        	gid = atoi(group);
+            gid = atoi(group);
         } else {
             sprintf(resultBuf,
                 "mod_fastcgi: getgrnam(%s) failed and '%s' is not numeric",
