@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_util.c,v 1.27 2002/10/21 23:54:24 robs Exp $
+ * $Id: fcgi_util.c,v 1.28 2002/10/22 01:02:18 robs Exp $
  */
 
 #include "fcgi.h"
@@ -11,6 +11,11 @@
 #include <unistd.h>
 #include <grp.h>
 #include <pwd.h>
+
+#if APR_HAVE_ARPA_INET_H
+#include <arpa/inet.h>
+#endif
+
 #include "unixd.h"
 #endif
 

@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_config.c,v 1.43 2002/10/21 23:55:46 robs Exp $
+ * $Id: fcgi_config.c,v 1.44 2002/10/22 01:02:18 robs Exp $
  */
 
 #define CORE_PRIVATE
@@ -520,7 +520,7 @@ const char *fcgi_config_set_wrapper(cmd_parms *cmd, void *dummy, const char *arg
     const char *err = NULL;
     const char * const name = cmd->cmd->name;
     pool * const tp = cmd->temp_pool;
-    char * wrapper;
+    char * wrapper = NULL;
 
     err = fcgi_config_set_fcgi_uid_n_gid(1);
     if (err != NULL)

@@ -1,11 +1,15 @@
 /*
- * $Id: fcgi_buf.c,v 1.15 2002/03/12 13:06:29 robs Exp $
+ * $Id: fcgi_buf.c,v 1.16 2002/10/22 01:02:18 robs Exp $
  */
 
 #include "fcgi.h"
 
 #ifdef WIN32
-#pragma warning( disable : 4127 ) 
+#pragma warning( disable : 4127 )
+#else
+#ifdef APACHE2
+#include <unistd.h>
+#endif
 #endif
 
 /*******************************************************************************

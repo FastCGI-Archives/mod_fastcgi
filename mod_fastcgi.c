@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.144 2002/10/19 02:09:29 robs Exp $
+ *  $Id: mod_fastcgi.c,v 1.145 2002/10/22 01:02:18 robs Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -70,6 +70,18 @@
 
 
 #include "fcgi.h"
+
+#ifdef APACHE2
+#ifndef WIN32
+
+#include <unistd.h>
+
+#if APR_HAVE_CTYPE_H
+#include <ctype.h>
+#endif
+
+#endif
+#endif
 
 #ifndef timersub
 #define	timersub(a, b, result)                              \
@@ -355,22 +367,22 @@ static apcb_t init_module(server_rec *s, pool *p)
     return APCB_OK;
 }
 
+#ifdef WIN32
 #ifdef APACHE2
 static apcb_t fcgi_child_exit(void * dc)
 #else
 static apcb_t fcgi_child_exit(server_rec *dc0, pool *dc1)
 #endif 
 {
-#ifdef WIN32
     /* Signal the PM thread to exit*/
     SetEvent(fcgi_event_handles[TERM_EVENT]);
 
     /* Waiting on pm thread to exit */
     WaitForSingleObject(fcgi_pm_thread, INFINITE);
-#endif
 
     return APCB_OK;
 }
+#endif /* WIN32 */
 
 #ifdef APACHE2
 static void fcgi_child_init(apr_pool_t * p, server_rec * dc)
@@ -2267,7 +2279,7 @@ static int do_work(request_rec * const r, fcgi_request * const fr)
         sink_client_data(fr);
     }
 
-    while (rv == 0 && BufferLength(fr->serverInputBuffer) || BufferLength(fr->clientOutputBuffer))
+    while (rv == 0 && (BufferLength(fr->serverInputBuffer) || BufferLength(fr->clientOutputBuffer)))
     {
         if (fcgi_protocol_dequeue(rp, fr)) 
         {
@@ -2864,7 +2876,11 @@ module MODULE_VAR_EXPORT fastcgi_module = {
     NULL,                      /* [10] logger */
     NULL,                      /* [3] header-parser */
     fcgi_child_init,           /* process initialization */
+#ifdef WIN32
     fcgi_child_exit,           /* process exit/cleanup */
+#else
+    NULL,
+#endif
     NULL                       /* [1] post read-request handling */
 };
 

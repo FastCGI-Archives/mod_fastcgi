@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_protocol.c,v 1.23 2002/07/23 00:54:18 robs Exp $
+ * $Id: fcgi_protocol.c,v 1.24 2002/10/22 01:02:18 robs Exp $
  */
 
 #include "fcgi.h"
@@ -406,10 +406,12 @@ int fcgi_protocol_dequeue(pool *p, fcgi_request *fr)
                     {
                         if (start != end)
                         {
-                        	*end = '\0';
-                        	ap_log_rerror(FCGI_LOG_ERR_NOERRNO, fr->r, "FastCGI: server \"%s\" stderr: %s", fr->fs_path, start);
-                        } 
-                        end += strspn(++end, "\r\n");
+                            *end = '\0';
+                            ap_log_rerror(FCGI_LOG_ERR_NOERRNO, fr->r, 
+                                "FastCGI: server \"%s\" stderr: %s", fr->fs_path, start);
+                        }
+                        end++;
+                        end += strspn(end, "\r\n");
                         fr->fs_stderr_len -= (end - start);
                         start = end;
                     }
@@ -424,7 +426,8 @@ int fcgi_protocol_dequeue(pool *p, fcgi_request *fr)
                         else if (fr->fs_stderr_len == FCGI_SERVER_MAX_STDERR_LINE_LEN)
                         {
                             /* Full buffer, dump it and complain */
-                            ap_log_rerror(FCGI_LOG_ERR_NOERRNO, fr->r, "FastCGI: server \"%s\" stderr: %s", fr->fs_path, fr->fs_stderr);
+                            ap_log_rerror(FCGI_LOG_ERR_NOERRNO, fr->r, 
+                               "FastCGI: server \"%s\" stderr: %s", fr->fs_path, fr->fs_stderr);
                             ap_log_rerror(FCGI_LOG_WARN_NOERRNO, fr->r,
                                 "FastCGI: too much stderr received from server \"%s\", "
                                 "increase FCGI_SERVER_MAX_STDERR_LINE_LEN (%d) and rebuild "
@@ -440,7 +443,8 @@ int fcgi_protocol_dequeue(pool *p, fcgi_request *fr)
                 if (!fr->readingEndRequestBody) {
                     if (fr->dataLen != sizeof(FCGI_EndRequestBody)) {
                         ap_log_rerror(FCGI_LOG_ERR_NOERRNO, fr->r,
-                            "FastCGI: comm with server \"%s\" aborted: protocol error: invalid FCGI_END_REQUEST size: "
+                            "FastCGI: comm with server \"%s\" aborted: protocol error: "
+                            "invalid FCGI_END_REQUEST size: "
                             "%d != sizeof(FCGI_EndRequestBody)(%d)",
                             fr->fs_path, fr->dataLen, sizeof(FCGI_EndRequestBody));
                         return HTTP_INTERNAL_SERVER_ERROR;
