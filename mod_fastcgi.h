@@ -1,11 +1,16 @@
 /*
- * $Id: mod_fastcgi.h,v 1.15 1999/06/09 03:12:40 roberts Exp $
+ * $Id: mod_fastcgi.h,v 1.16 1999/09/03 19:04:44 roberts Exp $
  */
 
 #ifndef MOD_FASTCGI_H
 #define MOD_FASTCGI_H
 
 #define MOD_FASTCGI_VERSION "2.2.3"
+
+/*
+ * # of idle seconds allowed to pass while connected to a FastCGI before aborting
+ */
+#define FCGI_DEFAULT_IDLE_TIMEOUT 30
 
 #define FCGI_DEFAULT_LISTEN_Q 100          /* listen queue (backlog) depth */
 #define FCGI_DEFAULT_RESTART_DELAY 5       /* delay between restarts */
@@ -54,11 +59,14 @@
                                             * seconds a server should wait in
                                             * attempt to connect to fcgi app
                                             * before sending CONN_TIMEOUT */
-#define FCGI_DEFAULT_APP_CONN_TIMEOUT 15   /* specified time interval, in
-                                            * which attempt is made to connect
-                                            * to fcgi app.  If this interval
-                                            * is exceeded, server returns a
-                                            * SERVER_ERROR message to client */
+
+/*
+ * # of sec to wait in a non-blocking connect() to the FastCGI application 
+ * before aborting the request, or 0 to indicate that blocking connect()s 
+ * should be used.  Non-blocking connect()s are problematic on many platforms.
+ */
+#define FCGI_DEFAULT_APP_CONN_TIMEOUT 0
+
 #define FCGI_DEFAULT_PROCESS_SLACK 5       /* if this number combined with the
                                             * number of the currently running
                                             * processes exceeds dynamicMaxProcs, then

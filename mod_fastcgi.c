@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.75 1999/08/15 20:45:35 roberts Exp $
+ *  $Id: mod_fastcgi.c,v 1.76 1999/09/03 19:04:43 roberts Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -86,6 +86,17 @@
 
 #include "fcgi.h"
 
+#ifndef timersub
+#define	timersub(a, b, result)                              \
+do {                                                        \
+    (result)->tv_sec = (a)->tv_sec - (b)->tv_sec;           \
+    (result)->tv_usec = (a)->tv_usec - (b)->tv_usec;        \
+    if ((result)->tv_usec < 0) {                            \
+        --(result)->tv_sec;                                 \
+        (result)->tv_usec += 1000000;                       \
+    }                                                       \
+} while (0)
+#endif
 
 /*
  * Global variables
@@ -126,7 +137,7 @@ u_int dynamicListenQueueDepth = FCGI_DEFAULT_LISTEN_Q;
 u_int dynamicInitStartDelay = DEFAULT_INIT_START_DELAY;
 u_int dynamicRestartDelay = FCGI_DEFAULT_RESTART_DELAY;
 array_header *dynamic_pass_headers = NULL;
-
+u_int dynamic_idle_timeout = FCGI_DEFAULT_IDLE_TIMEOUT;
 
 /*******************************************************************************
  * Construct a message and append it to the fcgi_dynamic_mbox.
@@ -886,20 +897,6 @@ ConnectionComplete:
     }
 #endif
 
-    if (fr->dynamic) {
-        if (gettimeofday(&(fr->queueTime),NULL) < 0)
-            return "gettimeofday() failed";
-
-        /* Improvise the non-blocking connect() CONN_TIMEOUT handling */
-        if (dynamicAppConnectTimeout == 0) {
-            int queue_wait_sec = fr->queueTime.tv_sec - fr->startTime.tv_sec;
-            if (queue_wait_sec > dynamicPleaseStartDelay) {
-                send_to_pm(rp, CONN_TIMEOUT, fr->fs_path, fr->user, fr->group,
-                    (unsigned long)queue_wait_sec*1000000, 0, 0);
-            }
-        }
-    }
-
     return NULL;
 }
 
@@ -934,10 +931,10 @@ static void log_fcgi_server_stderr(void *data)
  */
 static int do_work(request_rec *r, fcgi_request *fr)
 {
-    struct timeval  timeOut, *timeOutPtr;
+    struct timeval  timeOut, dynamic_last_activity_time;
     fd_set  read_set, write_set;
-    int     status;
-    int     numFDs;
+    int     status = 0, idle_timeout;
+    int     numFDs, dynamic_first_read = fr->dynamic ? 1 : 0;
     int     doClientWrite;
     int     envSent = FALSE;    /* has the complete ENV been buffered? */
     char    **envp = NULL;      /* pointer used by fcgi_protocol_queue_env() */
@@ -977,6 +974,17 @@ static int do_work(request_rec *r, fcgi_request *fr)
     }
 
     numFDs = fr->fd + 1;
+    idle_timeout = fr->dynamic ? dynamic_idle_timeout : fr->fs->idle_timeout;
+    
+    if (dynamic_first_read) {
+        dynamic_last_activity_time = fr->startTime;
+        
+        if (dynamicAppConnectTimeout) {
+            struct timeval qwait;
+            timersub(&fr->queueTime, &fr->startTime, &qwait);
+            dynamic_first_read = qwait.tv_sec / dynamicPleaseStartDelay + 1;
+        }
+    }
 
     /* @@@ We never reset the timer in this loop, most folks don't mess w/
      * Timeout directive which means we've got the 5 min default which is way
@@ -988,6 +996,13 @@ static int do_work(request_rec *r, fcgi_request *fr)
     ap_block_alarms();
     ap_register_cleanup(rp, (void *)fr, log_fcgi_server_stderr, ap_null_cleanup);
     ap_unblock_alarms();
+
+    /* The socket is writeable, so get the first write out of the way */
+    if (fcgi_buf_get_to_fd(fr->serverOutputBuffer, fr->fd) < 0) {
+            ap_log_rerror(FCGI_LOG_ERR, r,
+                "FastCGI: comm with server \"%s\" aborted: write failed", fr->fs_path);
+            return server_error(fr);
+    }
 
     while (fr->keepReadingFromFcgiApp
             || BufferLength(fr->serverInputBuffer) > 0
@@ -1023,29 +1038,88 @@ static int do_work(request_rec *r, fcgi_request *fr)
              * wait indefinitely for the FastCGI app; the app might
              * be doing server push.
              */
-            if (BufferLength(fr->clientOutputBuffer) > 0) {
-                /* Reset on each pass, since they might be changed by select() */
+	    if (BufferLength(fr->clientOutputBuffer) > 0) {
                 timeOut.tv_sec = 0;
-                timeOut.tv_usec = 100000;   /* 0.1 sec */
-                timeOutPtr = &timeOut;
-            } else {
-                /* we've got the apache hard_timeout() alarm set,
-                   so select() will fail with EINTR as a drop dead TO,
-                   i.e. its OK to set this to null.
-                   ***TODO: but if the app hasn't accept()ed w/in
-                   appConnTimeout, shouldn't we abort? */
-                timeOutPtr = NULL;
+                timeOut.tv_usec = 100000;        /* 0.1 sec */
+            }
+	    else if (dynamic_first_read) {
+                int delay;
+                struct timeval qwait;
+        
+                if (gettimeofday(&fr->queueTime, NULL) < 0) {
+                    ap_log_rerror(FCGI_LOG_ERR, r, "FastCGI: gettimeofday() failed");
+                    return server_error(fr);
+		}
+
+                /* Check for idle_timeout */
+                if (status) {
+                    dynamic_last_activity_time = fr->queueTime;
+                }
+                else {
+                    struct timeval idle_time;
+                    timersub(&fr->queueTime, &dynamic_last_activity_time, &idle_time);
+                    if (idle_time.tv_sec > idle_timeout) {
+                        ap_log_rerror(FCGI_LOG_ERR, r,
+                            "FastCGI: comm with server \"%s\" aborted: idle timeout (%d sec)", 
+                            fr->fs_path, idle_timeout);
+                        return server_error(fr);
+                    }
+                }
+
+                timersub(&fr->queueTime, &fr->startTime, &qwait);
+
+                delay = dynamic_first_read * dynamicPleaseStartDelay;
+                if (qwait.tv_sec < delay) {
+                    timeOut.tv_sec = delay;
+                    timeOut.tv_usec = 100000;  /* fudge for select() slop */
+                    timersub(&timeOut, &qwait, &timeOut);
+                }
+                else {
+                    /* Killed time somewhere.. client read? */
+                    send_to_pm(rp, CONN_TIMEOUT, fr->fs_path, fr->user, fr->group,
+                        (unsigned long)(qwait.tv_sec*1000000 + qwait.tv_usec), 0, 0);
+                    dynamic_first_read = qwait.tv_sec / dynamicPleaseStartDelay + 1;
+                    timeOut.tv_sec = dynamic_first_read * dynamicPleaseStartDelay;
+                    timeOut.tv_usec = 100000;  /* fudge for select() slop */
+                    timersub(&timeOut, &qwait, &timeOut);
+                }
+            }
+            else {
+                timeOut.tv_sec = idle_timeout;
+                timeOut.tv_usec = 0;
             }
 
-            if ((status = ap_select(numFDs, &read_set, &write_set, NULL, timeOutPtr)) < 0) {
+            if ((status = ap_select(numFDs, &read_set, &write_set, NULL, &timeOut)) < 0) {
                 ap_log_rerror(FCGI_LOG_ERR, r,
                     "FastCGI: comm with server \"%s\" aborted: select() failed", fr->fs_path);
                 return server_error(fr);
             }
 
             if (status == 0) {
-                /* select() timed out, go ahead and write to client */
-                doClientWrite = TRUE;
+                if (BufferLength(fr->clientOutputBuffer) > 0) {
+                    doClientWrite = TRUE;
+                }
+                else if (dynamic_first_read) {
+                    struct timeval qwait;
+                    
+                    if (gettimeofday(&fr->queueTime, NULL) < 0) {
+                    	ap_log_rerror(FCGI_LOG_ERR, r, "FastCGI: gettimeofday() failed");
+                    	return server_error(fr);
+		    }
+	
+                    timersub(&fr->queueTime, &fr->startTime, &qwait);
+                    
+                    send_to_pm(rp, CONN_TIMEOUT, fr->fs_path, fr->user, fr->group,
+                        (unsigned long)(qwait.tv_sec*1000000 + qwait.tv_usec), 0, 0);
+                    
+                    dynamic_first_read = qwait.tv_sec / dynamicPleaseStartDelay + 1;
+                }
+                else {
+                    ap_log_rerror(FCGI_LOG_ERR, r,
+                        "FastCGI: comm with server \"%s\" aborted: idle timeout (%d sec)", 
+                        fr->fs_path, idle_timeout);
+                    return server_error(fr);
+                }
             }
 
 #if defined(SIGPIPE) && MODULE_MAGIC_NUMBER < 19990320
@@ -1055,6 +1129,11 @@ static int do_work(request_rec *r, fcgi_request *fr)
 
             /* Read from the FastCGI server */
             if (FD_ISSET(fr->fd, &read_set)) {
+                
+                if (dynamic_first_read) {
+                    dynamic_first_read = 0;
+                }
+
                 if ((status = fcgi_buf_add_fd(fr->serverInputBuffer, fr->fd)) < 0) {
                     ap_log_rerror(FCGI_LOG_ERR, r,
                         "FastCGI: comm with server \"%s\" aborted: read failed", fr->fs_path);

@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_config.c,v 1.11 1999/08/15 21:18:04 roberts Exp $
+ * $Id: fcgi_config.c,v 1.12 1999/09/03 19:04:40 roberts Exp $
  */
 
 #include "fcgi.h"
@@ -168,7 +168,10 @@ void fcgi_config_reset_globals(void* dummy)
     fcgi_config_set_fcgi_uid_n_gid(0);
     fcgi_suexec = NULL;
     fcgi_socket_dir = DEFAULT_SOCK_DIR;
-    /* fcgi_dynamic_total_proc_count = 0; */
+    
+    fcgi_dynamic_total_proc_count = 0;
+    fcgi_dynamic_epoch = 0;
+    fcgi_dynamic_last_analyzed = 0;
 
     dynamicMaxProcs = FCGI_DEFAULT_MAX_PROCS;
     dynamicMinProcs = FCGI_DEFAULT_MIN_PROCS;
@@ -188,6 +191,7 @@ void fcgi_config_reset_globals(void* dummy)
     dynamicInitStartDelay = DEFAULT_INIT_START_DELAY;
     dynamicRestartDelay = FCGI_DEFAULT_RESTART_DELAY;
     dynamic_pass_headers = NULL;
+    dynamic_idle_timeout = FCGI_DEFAULT_IDLE_TIMEOUT;
 }
 
 /*******************************************************************************
@@ -505,6 +509,10 @@ const char *fcgi_config_new_static_server(cmd_parms *cmd, void *dummy, const cha
             if ((err = get_u_int(tp, &arg, &s->appConnectTimeout, 0)))
                 return invalid_value(tp, name, fs_path, option, err);
         }
+        else if (strcasecmp(option, "-idle-timeout") == 0) {
+            if ((err = get_u_int(tp, &arg, &s->idle_timeout, 1)))
+                return invalid_value(tp, name, fs_path, option, err);
+        }
         else if (strcasecmp(option, "-port") == 0) {
             if ((err = get_u_int(tp, &arg, &s->port, 1)))
                 return invalid_value(tp, name, fs_path, option, err);
@@ -626,6 +634,10 @@ const char *fcgi_config_new_external_server(cmd_parms *cmd, void *dummy, const c
             if ((err = get_u_int(tp, &arg, &s->appConnectTimeout, 0)))
                 return invalid_value(tp, name, fs_path, option, err);
         }
+        else if (strcasecmp(option, "-idle-timeout") == 0) {
+            if ((err = get_u_int(tp, &arg, &s->idle_timeout, 1)))
+                return invalid_value(tp, name, fs_path, option, err);
+        }
         else if (strcasecmp(option, "-pass-header") == 0) {
             if ((err = get_pass_header(p, &arg, &s->pass_headers)))
                 return invalid_value(tp, name, fs_path, option, err);
@@ -742,6 +754,10 @@ const char *fcgi_config_set_config(cmd_parms *cmd, void *dummy, const char *arg)
         }
         else if (strcasecmp(option, "-appConnTimeout") == 0) {
             if ((err = get_u_int(tp, &arg, &dynamicAppConnectTimeout, 0)))
+                return invalid_value(tp, name, NULL, option, err);
+        }
+        else if (strcasecmp(option, "-idle-timeout") == 0) {
+            if ((err = get_u_int(tp, &arg, &dynamic_idle_timeout, 1)))
                 return invalid_value(tp, name, NULL, option, err);
         }
         else if (strcasecmp(option, "-listen-queue-depth") == 0) {

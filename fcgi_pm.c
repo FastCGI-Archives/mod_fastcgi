@@ -1,13 +1,13 @@
 /*
- * $Id: fcgi_pm.c,v 1.7 1999/09/01 02:40:54 roberts Exp $
+ * $Id: fcgi_pm.c,v 1.8 1999/09/03 19:04:41 roberts Exp $
  */
 
 #include "fcgi.h"
 
-static int fcgi_dynamic_total_proc_count = 0;    /* number of running apps */
-static time_t fcgi_dynamic_epoch = 0;            /* last time kill_procs was
+int fcgi_dynamic_total_proc_count = 0;    /* number of running apps */
+time_t fcgi_dynamic_epoch = 0;            /* last time kill_procs was
                                                   * invoked by process mgr */
-static time_t fcgi_dynamic_last_analyzed = 0;    /* last time calculation was
+time_t fcgi_dynamic_last_analyzed = 0;    /* last time calculation was
                                                   * made for the dynamic procs*/
 
 /* Information about a process we are doing a blocking kill of.  */
@@ -319,7 +319,7 @@ FailedSystemCallExit:
     return(0);          
 }
 
-static void reduce_priveleges()
+static void reduce_priveleges(void)
 {
     char *name;
     
@@ -717,7 +717,7 @@ CleanupReturn:
  *
  *----------------------------------------------------------------------
  */
-static void dynamic_kill_idle_fs_procs()
+static void dynamic_kill_idle_fs_procs(void)
 {
     fcgi_server *s;
     struct FuncData *funcData = NULL;

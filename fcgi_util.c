@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_util.c,v 1.4 1999/06/18 02:59:16 roberts Exp $
+ * $Id: fcgi_util.c,v 1.5 1999/09/03 19:04:42 roberts Exp $
  */
 
 #include "fcgi.h"
@@ -299,6 +299,7 @@ fcgi_util_fs_new(pool *p)
     /* Initialize anything who's init state is not zeroizzzzed */
     s->listenQueueDepth = FCGI_DEFAULT_LISTEN_Q;
     s->appConnectTimeout = FCGI_DEFAULT_APP_CONN_TIMEOUT;
+    s->idle_timeout = FCGI_DEFAULT_IDLE_TIMEOUT;
     s->initStartDelay = DEFAULT_INIT_START_DELAY;
     s->restartDelay = FCGI_DEFAULT_RESTART_DELAY;
     s->restartOnExit = FALSE;
