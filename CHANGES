@@ -1,5 +1,10 @@
 Changes with mod_fastcgi 2.2.2
 
+ *) Allow the -initial-env argument to be used to pass variables from the 
+    Apache process environment to the FastCGI server (by specifying a 
+    variable name without the "=" or a value).  [suggested by 
+    Martin Lichtin <lichtin@oanda.com>]
+
  *) Cleanup some debug macros.
 
  *) Improved script stderr handling.  [based on suggestions by 

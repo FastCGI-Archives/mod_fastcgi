@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_config.c,v 1.6 1999/03/06 04:09:45 roberts Exp $
+ * $Id: fcgi_config.c,v 1.7 1999/04/22 04:45:17 roberts Exp $
  */
 
 #include "fcgi.h"
@@ -87,14 +87,16 @@ static const char *get_env_var(pool *p, const char **arg, const char **envp, int
     if (*val == '\0')
         return "\"\"";
 
-    if (strchr(val, '=') == NULL)
-        return ap_pstrcat(p, "\"", val, "\" must contain an '='", NULL);
-
     if (*envc >= MAX_INIT_ENV_VARS)
         return "too many variables, must be <= MAX_INIT_ENV_VARS";
 
-    *(envp + *envc) = val;
+    if (strchr(val, '=') == NULL)
+        *(envp + *envc) = ap_pstrcat(p, val, "=", getenv(val), NULL);
+    else
+        *(envp + *envc) = val;
+        
     (*envc)++;
+    
     return NULL;
 }
 
