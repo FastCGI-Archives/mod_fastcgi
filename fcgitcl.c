@@ -3,7 +3,7 @@
  *
  * Tcl dynamic string library definition.
  *
- * $Id: fcgitcl.c,v 1.2 1998/02/24 17:11:44 roy Exp $
+ * $Id: fcgitcl.c,v 1.3 1998/07/28 16:16:36 roberts Exp $
  */
 
 #include "conf.h"                       /* apache code */
@@ -87,7 +87,7 @@ Tcl_DStringAppend(Tcl_DString *dsPtr, char *string, int length)
 
     if (newSize >= dsPtr->spaceAvl) {
         dsPtr->spaceAvl = newSize*2;
-        newString = (char *) Malloc((unsigned) dsPtr->spaceAvl);
+        newString = (char *) fcgi_Malloc((unsigned) dsPtr->spaceAvl);
         memcpy((void *)newString, (void *) dsPtr->string,
                 (size_t) dsPtr->length);
         if (dsPtr->string != dsPtr->staticSpace) {
@@ -144,7 +144,7 @@ Tcl_DStringSetLength(Tcl_DString *dsPtr, int length)
         char *newString;
 
         dsPtr->spaceAvl = length+1;
-        newString = (char *) Malloc((unsigned) dsPtr->spaceAvl);
+        newString = (char *) fcgi_Malloc((unsigned) dsPtr->spaceAvl);
 
         /*
          * SPECIAL NOTE: must use memcpy, not strcpy, to copy the string

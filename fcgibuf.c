@@ -3,7 +3,7 @@
  * 
  * Ring buffer library.
  *
- * $Id: fcgibuf.c,v 1.4 1998/07/24 15:31:48 roberts Exp $
+ * $Id: fcgibuf.c,v 1.5 1998/07/28 16:16:34 roberts Exp $
  */
 
 #include "conf.h"                       /* apache code */
@@ -93,7 +93,7 @@ Buffer *BufferCreate(int size)
 {
     Buffer *bufPtr;
 
-    bufPtr = (Buffer *)Malloc(sizeof(Buffer) + size);
+    bufPtr = (Buffer *)fcgi_Malloc(sizeof(Buffer) + size);
     bufPtr->size = size;
     BufferReset(bufPtr);
     return bufPtr;
@@ -118,7 +118,7 @@ Buffer *BufferCreate(int size)
 void BufferDelete(Buffer *bufPtr)
 {
     BufferCheck(bufPtr);
-    Free(bufPtr);
+    fcgi_Free(bufPtr);
 }
 
 /*

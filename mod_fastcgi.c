@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.40 1998/07/27 13:18:41 roberts Exp $
+ *  $Id: mod_fastcgi.c,v 1.41 1998/07/28 16:16:37 roberts Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -134,7 +134,7 @@ typedef gid_t long;
 
 static FILE* errorLog = (FILE *)-1;
 
-void *Malloc(size_t size)
+void *fcgi_Malloc(size_t size)
 {
     void *result;
 
@@ -145,7 +145,7 @@ void *Malloc(size_t size)
     return result;
 }
 
-static void *Realloc(void *old_blk, size_t size)
+static void *fcgi_Realloc(void *old_blk, size_t size)
 {
     void *result;
 
@@ -155,7 +155,7 @@ static void *Realloc(void *old_blk, size_t size)
     return result;
 }
 
-void Free(void *ptr)
+void fcgi_Free(void *ptr)
 {
     if(ptr != NULL) {
         free(ptr);
@@ -200,7 +200,7 @@ typedef struct _OS_IpcAddr {
 
 OS_IpcAddress OS_InitIpcAddr(void)
 {
-    OS_IpcAddr *ipcAddrPtr = (OS_IpcAddr *)Malloc(sizeof(OS_IpcAddr));
+    OS_IpcAddr *ipcAddrPtr = (OS_IpcAddr *)fcgi_Malloc(sizeof(OS_IpcAddr));
     ipcAddrPtr->addrType = TYPE_UNKNOWN;
     ipcAddrPtr->port = -1;
     DStringInit(&ipcAddrPtr->bindPath);
@@ -290,7 +290,7 @@ int OS_CreateLocalIpcFd(
     /*
      * Build the domain socket address.
      */
-    addrPtr = (struct sockaddr_un *) Malloc(sizeof(struct sockaddr_un));
+    addrPtr = (struct sockaddr_un *) fcgi_Malloc(sizeof(struct sockaddr_un));
     ipcAddrPtr->serverAddr = (struct sockaddr *) addrPtr;
     if (OS_BuildSockAddrUn(
             makeSocketName(execPath, bindPath,
@@ -358,8 +358,8 @@ void OS_FreeIpcAddr(OS_IpcAddress ipcAddress)
     if (ipcAddress == NULL)
         return;
     DStringFree(&ipcAddrPtr->bindPath);
-    Free(ipcAddrPtr->serverAddr);
-    Free(ipcAddrPtr);
+    fcgi_Free(ipcAddrPtr->serverAddr);
+    fcgi_Free(ipcAddrPtr);
 }
 
 /*
@@ -384,7 +384,7 @@ int OS_CreateRemoteIpcFd(
 {
     OS_IpcAddr *ipcAddrPtr = (OS_IpcAddr *) ipcAddress;
     struct sockaddr_in *addrPtr = (struct sockaddr_in *)
-                                  Malloc(sizeof(struct sockaddr_in));
+                                  fcgi_Malloc(sizeof(struct sockaddr_in));
     int resultSock = -1;
     int flag = 1;
 
@@ -424,7 +424,7 @@ GET_IPC_ERROR_EXIT:
         OS_Close(resultSock);
     }
     if(addrPtr != NULL) {
-        Free(addrPtr);
+        fcgi_Free(addrPtr);
         ipcAddrPtr->serverAddr = NULL;
         ipcAddrPtr->port = -1;
         ipcAddrPtr->addrType = TYPE_UNKNOWN;
@@ -512,7 +512,7 @@ int OS_CreateLocalIpcAddr(
     /*
      * Build the domain socket address.
      */
-    addrPtr = (struct sockaddr_un *) Malloc(sizeof(struct sockaddr_un));
+    addrPtr = (struct sockaddr_un *) fcgi_Malloc(sizeof(struct sockaddr_un));
     ipcAddrPtr->serverAddr = (struct sockaddr *) addrPtr;
     if(OS_BuildSockAddrUn(makeSocketName(execPath, bindPath,
             extension, &ipcAddrPtr->bindPath, dynamic),
@@ -558,7 +558,7 @@ void OS_CreateInetIpc(
     ipcAddrPtr->addrType = TYPE_TCP;
     ipcAddrPtr->port = portIn;
 
-    addrPtr = (struct sockaddr_in *) Malloc(sizeof(struct sockaddr_in));
+    addrPtr = (struct sockaddr_in *) fcgi_Malloc(sizeof(struct sockaddr_in));
     memset(addrPtr, 0, sizeof(struct sockaddr_in));
     ipcAddrPtr->addrLen = sizeof(struct sockaddr_in);
     addrPtr->sin_family = AF_INET;
@@ -579,14 +579,14 @@ void OS_CreateInetIpc(
 
 static char **OS_EnvironInit(int envCount)
 {
-    return Malloc(sizeof(char *) * envCount);
+    return fcgi_Malloc(sizeof(char *) * envCount);
 }
 
 static void OS_EnvString(char **envPtr, char *name, char *value)
 {
     char *buf;
     ASSERT(name != NULL && value != NULL);
-    buf = Malloc(strlen(name) + strlen(value) + 2);
+    buf = fcgi_Malloc(strlen(name) + strlen(value) + 2);
     sprintf(buf, "%s=%s", name, value);
     ASSERT(*envPtr == NULL);
     *envPtr = buf;
@@ -596,10 +596,10 @@ static void OS_EnvironFree(char **envHead)
 {
     char **envPtr = envHead;
     while(*envPtr != NULL) {
-        Free(*envPtr);
+        fcgi_Free(*envPtr);
         envPtr++;
     }
-    Free(envHead);
+    fcgi_Free(envHead);
 }
 
 /*
@@ -636,7 +636,7 @@ int WS_Access(const char *path, struct stat *statBuf,
     struct passwd *usr;
 
     if(statBuf==NULL) {
-        statBuf = (struct stat *)Malloc(sizeof(struct stat));
+        statBuf = (struct stat *)fcgi_Malloc(sizeof(struct stat));
         if(stat(path, statBuf) < 0) {
             return -1;
         }
@@ -1015,10 +1015,10 @@ static char *CreateDynamicDirAndMbox(uid_t uid, gid_t gid)
     int len = strlen(ipcDir);
     int fd;
 
-    ipcDynamicDir = Malloc(len+9);
+    ipcDynamicDir = fcgi_Malloc(len+9);
     strcpy(ipcDynamicDir, ipcDir);
     strcat(ipcDynamicDir, "/dynamic");
-    mbox = Malloc(len+9+5);
+    mbox = fcgi_Malloc(len+9+5);
     strcpy(mbox, ipcDynamicDir);
     strcat(mbox, "/mbox");
 
@@ -1045,7 +1045,7 @@ static char *CreateDynamicDirAndMbox(uid_t uid, gid_t gid)
     chown(ipcDynamicDir, uid, gid);
 DoMbox:
     /* delete everything in the directory */
-    dpentry = Malloc(strlen(ipcDynamicDir)+255);
+    dpentry = fcgi_Malloc(strlen(ipcDynamicDir)+255);
     strcpy(dpentry, ipcDynamicDir);
     strcat(dpentry, "/");
     if((dp=opendir(ipcDynamicDir)) == NULL) {
@@ -1110,7 +1110,7 @@ const char *FastCgiIpcDirCmd(cmd_parms *cmd, void *dummy, char *arg)
         return "FastCgiIpcDir: Need read/write/exec permission on directory\n";
     }
 
-    ipcDir = Malloc(len + 1);
+    ipcDir = fcgi_Malloc(len + 1);
     strcpy(ipcDir, arg);
     while(len > 1 && ipcDir[len-1] == '/') {
         ipcDir[len-1] = '\0';
@@ -1233,7 +1233,7 @@ MakeLockFileName(char *execName)
     char *hashedPath, *lockName;
 
     hashedPath = GetHashedPath(execName);
-    lockName = Malloc(strlen(ipcDynamicDir)+strlen(hashedPath)+7);
+    lockName = fcgi_Malloc(strlen(ipcDynamicDir)+strlen(hashedPath)+7);
     strcpy(lockName, ipcDynamicDir);
     strcat(lockName, "/");
     strcat(lockName, hashedPath);
@@ -1306,7 +1306,7 @@ static FastCgiServerInfo *CreateFcgiServerInfo(int numInstances, char *ePath)
     /*
      * Create an info structure for the FastCGI server
      */
-    serverInfoPtr = (FastCgiServerInfo *) Malloc(sizeof(FastCgiServerInfo));
+    serverInfoPtr = (FastCgiServerInfo *) fcgi_Malloc(sizeof(FastCgiServerInfo));
     DStringInit(&serverInfoPtr->execPath);
     serverInfoPtr->envp = NULL;
     serverInfoPtr->listenQueueDepth = FCGI_DEFAULT_LISTEN_Q;
@@ -1336,7 +1336,7 @@ static FastCgiServerInfo *CreateFcgiServerInfo(int numInstances, char *ePath)
     serverInfoPtr->avgQueueTime = 0;
 
     serverInfoPtr->procInfo =
-      (FcgiProcessInfo *) Malloc(sizeof(FcgiProcessInfo) * numInstances);
+      (FcgiProcessInfo *) fcgi_Malloc(sizeof(FcgiProcessInfo) * numInstances);
 
     procInfoPtr = serverInfoPtr->procInfo;
     for(i = 0; i < numInstances; i++) {
@@ -1407,7 +1407,7 @@ static void FreeFcgiServerInfo(FastCgiServerInfo *serverInfoPtr)
                 strerror(errno));
             fflush(errorLog);
         }
-        Free(lockFileName);
+        fcgi_Free(lockFileName);
 
         ipcAddrPtr = (OS_IpcAddr *)serverInfoPtr->ipcAddr;
         if (unlink(MakeSocketName(DStringValue(&serverInfoPtr->execPath),
@@ -1433,7 +1433,7 @@ static void FreeFcgiServerInfo(FastCgiServerInfo *serverInfoPtr)
         OS_Close(serverInfoPtr->listenFd);
         serverInfoPtr->listenFd = -1;
     }
-    Free(serverInfoPtr->procInfo);
+    fcgi_Free(serverInfoPtr->procInfo);
     serverInfoPtr->procInfo = NULL;
     if(serverInfoPtr->envp != NULL) {
         OS_EnvironFree(serverInfoPtr->envp);
@@ -1460,7 +1460,7 @@ static void FreeFcgiServerInfo(FastCgiServerInfo *serverInfoPtr)
             tmpPtr->next = serverInfoPtr->next;
         }
     }
-    Free(serverInfoPtr);
+    fcgi_Free(serverInfoPtr);
 }
 
 /*
@@ -1524,7 +1524,7 @@ char **ParseApacheRawArgs(char *rawArgs, int *argcPtr)
     if(*rawArgs == '\0') {
         goto Done;
     }
-    input = Malloc(strlen(rawArgs) + 1);
+    input = fcgi_Malloc(strlen(rawArgs) + 1);
     strcpy(input, rawArgs);
 
     /*
@@ -1553,7 +1553,7 @@ char **ParseApacheRawArgs(char *rawArgs, int *argcPtr)
             break;
         }
     }
-    argv = Malloc(sizeof(char *) * argc);
+    argv = fcgi_Malloc(sizeof(char *) * argc);
 
     /*
      * Make a second pass over the input to fill in argv.
@@ -1766,7 +1766,7 @@ const char *AppClassCmd(cmd_parms *cmd, void *dummy, char *arg)
     char *bindname = NULL;
     int portNumber = -1;
     int affinity = FALSE;
-    char *errMsg = Malloc(1024);
+    char *errMsg = fcgi_Malloc(1024);
 
     /*
      * If this is the first call to AppClassCmd since a
@@ -1970,9 +1970,9 @@ const char *AppClassCmd(cmd_parms *cmd, void *dummy, char *arg)
             serverInfoPtr->procInfo[i].listenFd = listenFd;
         }
     }
-    Free(argv[1]);
-    Free(argv);
-    Free(errMsg);
+    fcgi_Free(argv[1]);
+    fcgi_Free(argv);
+    fcgi_Free(errMsg);
     return NULL;
 
 MissingValueReturn:
@@ -1989,8 +1989,8 @@ ErrorReturn:
         OS_EnvironFree(envHead);
     }
     if(argv != NULL) {
-        Free(argv[1]);
-        Free(argv);
+        fcgi_Free(argv[1]);
+        fcgi_Free(argv);
     }
     return errMsg;
 }
@@ -2028,7 +2028,7 @@ const char *ExternalAppClassCmd(cmd_parms *cmd, void *dummy, char *arg)
     FastCgiServerInfo *serverInfoPtr = NULL;
     int configResult = -1;
     int i;
-    char *errMsg = Malloc(1024);
+    char *errMsg = fcgi_Malloc(1024);
 
     /*
      * If this is the first call to ExternalAppClassCmd since a
@@ -2136,8 +2136,8 @@ ErrorReturn:
         FreeFcgiServerInfo(serverInfoPtr);
     }
     if(argv != NULL) {
-        Free(argv[1]);
-        Free(argv);
+        fcgi_Free(argv[1]);
+        fcgi_Free(argv);
     }
     return errMsg;
 }
@@ -2159,7 +2159,7 @@ const char *FCGIConfigCmd(cmd_parms *cmd, void *dummy, char *arg)
     int argc;
     char **argv = NULL;
     int i, n;
-    char *errMsg = Malloc(1024);
+    char *errMsg = fcgi_Malloc(1024);
     char *cvtPtr;
     double d;
 
@@ -2322,8 +2322,8 @@ const char *FCGIConfigCmd(cmd_parms *cmd, void *dummy, char *arg)
         }
     } /* for */
     /* all done */
-    Free(argv);
-    Free(errMsg);
+    fcgi_Free(argv);
+    fcgi_Free(errMsg);
     return NULL;
 
 MissingValueReturn:
@@ -2335,7 +2335,7 @@ BadValueReturn:
     goto ErrorReturn;
 ErrorReturn:
     if(argv != NULL) {
-        Free(argv);
+        fcgi_Free(argv);
     }
     return errMsg;
 }
@@ -2528,7 +2528,7 @@ int RemoveRecords(void)
         recs = -1;
         goto NothingToDo;
     }
-    buf = Malloc(statbuf.st_size+1);
+    buf = fcgi_Malloc(statbuf.st_size+1);
     if(statbuf.st_size==0) {
         recs = 0;
         goto NothingToDo;
@@ -2739,7 +2739,7 @@ NothingToDo:
 
 CleanupReturn:
     if (buf!=NULL) {
-        Free(buf);
+        fcgi_Free(buf);
         buf = NULL;
     }
     fflush(errorLog);
@@ -2883,7 +2883,7 @@ void KillDynamicProcs()
                      * corresponding lock file does not exist, then
                      * that means we are in big trouble here
                      */
-                    Free(lockFileName);
+                    fcgi_Free(lockFileName);
                     continue;
                 }
                 if(WriteLock(lockFd)<0) {
@@ -2896,7 +2896,7 @@ void KillDynamicProcs()
                      * that fork() is not very costly and this
                      * situation occurs very rarely, which it should
                      */
-                    funcData = Malloc(sizeof(struct FuncData));
+                    funcData = fcgi_Malloc(sizeof(struct FuncData));
                     funcData->lockFileName = lockFileName;
                     funcData->pid = s->procInfo[i].pid;
                     /*
@@ -2907,8 +2907,8 @@ void KillDynamicProcs()
                      */
                     if((pid=fork())<0) {
                         close(lockFd);
-                        Free(funcData->lockFileName);
-                        Free(funcData);
+                        fcgi_Free(funcData->lockFileName);
+                        fcgi_Free(funcData);
                         return;
                     } else if(pid==0) {
                         /* child */
@@ -2920,14 +2920,14 @@ void KillDynamicProcs()
                     } else {
                         /* parent */
                         close(lockFd);
-                        Free(funcData->lockFileName);
-                        Free(funcData);
+                        fcgi_Free(funcData->lockFileName);
+                        fcgi_Free(funcData);
                     }
                 } else {
                     kill(s->procInfo[i].pid, SIGTERM);
                     Unlock(lockFd);
                     close(lockFd);
-                    Free(lockFileName);
+                    fcgi_Free(lockFileName);
                     break;
                 }
             }
@@ -4443,8 +4443,8 @@ BadHeader:
     if((p = strpbrk(name, "\r\n")) != NULL) {
         *p = '\0';
     }
-    Free(infoPtr->errorMsg);
-    infoPtr->errorMsg = Malloc(FCGI_ERRMSG_LEN + strlen(name));
+    fcgi_Free(infoPtr->errorMsg);
+    infoPtr->errorMsg = fcgi_Malloc(FCGI_ERRMSG_LEN + strlen(name));
     sprintf(infoPtr->errorMsg,
             "mod_fastcgi: Malformed response header from app: '%s'", name);
     goto ErrorReturn;
@@ -4456,8 +4456,8 @@ DuplicateNotAllowed:
     goto ErrorReturn;
 
 BadStatusValue:
-    Free(infoPtr->errorMsg);
-    infoPtr->errorMsg = Malloc(FCGI_ERRMSG_LEN + strlen(value));
+    fcgi_Free(infoPtr->errorMsg);
+    infoPtr->errorMsg = fcgi_Malloc(FCGI_ERRMSG_LEN + strlen(value));
     sprintf(infoPtr->errorMsg,
             "mod_fastcgi: Invalid Status value '%s'", value);
     goto ErrorReturn;
@@ -4621,14 +4621,14 @@ static int ConnectToFcgiApp(WS_Request *reqPtr, FastCgiInfo *infoPtr)
         ipcAddrPtr = (OS_IpcAddr *) OS_InitIpcAddr();
         /* Fill in the serverAddr structure, even though the ProcMgr
          * is responsible for creating a socket. */
-        addrPtr = (struct sockaddr_un *) Malloc(sizeof(struct sockaddr_un));
+        addrPtr = (struct sockaddr_un *) fcgi_Malloc(sizeof(struct sockaddr_un));
         ipcAddrPtr->serverAddr = (struct sockaddr *) addrPtr;
         if(OS_BuildSockAddrUn(MakeSocketName(reqPtr->filename,
                 NULL, -1, &ipcAddrPtr->bindPath, 1),
                 addrPtr, &ipcAddrPtr->addrLen) != 0) {
             sprintf(infoPtr->errorMsg,
                     "mod_fastcgi: Socket path name is too long: ");
-            infoPtr->errorMsg = Realloc(infoPtr->errorMsg,
+            infoPtr->errorMsg = fcgi_Realloc(infoPtr->errorMsg,
                     strlen(infoPtr->errorMsg) + strlen(reqPtr->filename) + 1);
             strcat(infoPtr->errorMsg, reqPtr->filename);
             goto Error;
@@ -4791,7 +4791,7 @@ SystemError:
       if (msg == NULL) {
           msg = "errno out of range";
       }
-      infoPtr->errorMsg = Realloc(infoPtr->errorMsg,
+      infoPtr->errorMsg = fcgi_Realloc(infoPtr->errorMsg,
           strlen(infoPtr->errorMsg) + strlen(msg) + 1);
       strcat(infoPtr->errorMsg, msg);
     }
@@ -5059,7 +5059,7 @@ SystemError:
     if (msg == NULL) {
         msg = "errno out of range";
     }
-    infoPtr->errorMsg = Realloc(infoPtr->errorMsg,
+    infoPtr->errorMsg = fcgi_Realloc(infoPtr->errorMsg,
         strlen(infoPtr->errorMsg) + strlen(msg) + 1);
     strcat(infoPtr->errorMsg, msg);
 }
@@ -5107,12 +5107,12 @@ void FcgiCleanUp(FastCgiInfo *infoPtr)
     BufferDelete(infoPtr->reqInbufPtr);
     BufferDelete(infoPtr->reqOutbufPtr);
     BufferDelete(infoPtr->erBufPtr);
-    Free(infoPtr->errorMsg);
+    fcgi_Free(infoPtr->errorMsg);
     DStringFree(infoPtr->header);
     DStringFree(infoPtr->errorOut);
-    Free(infoPtr->header);
-    Free(infoPtr->errorOut);
-    Free(infoPtr);
+    fcgi_Free(infoPtr->header);
+    fcgi_Free(infoPtr->errorOut);
+    fcgi_Free(infoPtr);
 }
 
 /*
@@ -5227,14 +5227,14 @@ static int FastCgiHandler(WS_Request *reqPtr)
      * Allocate and initialize FastCGI private data to augment the request
      * structure.
      */
-    infoPtr = (FastCgiInfo *) Malloc(sizeof(FastCgiInfo));
+    infoPtr = (FastCgiInfo *) fcgi_Malloc(sizeof(FastCgiInfo));
     infoPtr->serverPtr = serverInfoPtr;
     infoPtr->inbufPtr = BufferCreate(SERVER_BUFSIZE);
     infoPtr->outbufPtr = BufferCreate(SERVER_BUFSIZE);
     infoPtr->gotHeader = FALSE;
     infoPtr->reqInbufPtr = BufferCreate(SERVER_BUFSIZE);
     infoPtr->reqOutbufPtr = BufferCreate(SERVER_BUFSIZE);
-    infoPtr->errorMsg =  Malloc(FCGI_ERRMSG_LEN);
+    infoPtr->errorMsg =  fcgi_Malloc(FCGI_ERRMSG_LEN);
     infoPtr->parseHeader = SCAN_CGI_READING_HEADERS;
     infoPtr->header = (DString *) malloc(sizeof(DString));
     infoPtr->errorOut = (DString *) malloc(sizeof(DString));
