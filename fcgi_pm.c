@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_pm.c,v 1.77 2002/08/20 03:01:43 robs Exp $
+ * $Id: fcgi_pm.c,v 1.78 2002/09/21 14:22:46 robs Exp $
  */
 
 
@@ -1681,6 +1681,12 @@ void fcgi_pm_main(void *dummy)
                         {
                             s->bad = 0;
                             s->numFailures = 0;
+                            ap_log_error(FCGI_LOG_WARN_NOERRNO, fcgi_apache_main_server,
+                                "FastCGI:%s server \"%s\" has remained"
+                                " running for more than %d seconds, its restart"
+                                " interval has been restored to %d seconds",
+                                (s->directive == APP_CLASS_DYNAMIC) ? " (dynamic)" : "",
+                                s->fs_path, RUNTIME_SUCCESS_INTERVAL, s->restartDelay);
                         }
                         else
                         {
@@ -1697,11 +1703,24 @@ void fcgi_pm_main(void *dummy)
                             if (j >= numChildren)
                             {
                                 s->bad = 1;
+                                ap_log_error(FCGI_LOG_WARN_NOERRNO, fcgi_apache_main_server,
+                                    "FastCGI:%s server \"%s\" has failed to remain"
+                                    " running for %d seconds given %d attempts, its restart"
+                                    " interval has been backed off to %d seconds",
+                                    (s->directive == APP_CLASS_DYNAMIC) ? " (dynamic)" : "",
+                                    s->fs_path, RUNTIME_SUCCESS_INTERVAL, MAX_FAILED_STARTS,
+                                    FAILED_STARTS_DELAY);
                             }
                             else
                             {
                                 s->bad = 0;
                                 s->numFailures = 0;
+                                ap_log_error(FCGI_LOG_WARN_NOERRNO, fcgi_apache_main_server,
+                                    "FastCGI:%s server \"%s\" has remained"
+                                    " running for more than %d seconds, its restart"
+                                    " interval has been restored to %d seconds",
+                                    (s->directive == APP_CLASS_DYNAMIC) ? " (dynamic)" : "",
+                                    s->fs_path, RUNTIME_SUCCESS_INTERVAL, s->restartDelay);
                             }
                         }
                     }
