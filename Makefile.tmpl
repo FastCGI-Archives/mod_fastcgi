@@ -3,7 +3,7 @@
 #
 #   Apache v1.3's Configure uses this to create a Makefile 
 # 
-# $Id: Makefile.tmpl,v 1.3 1999/02/09 03:07:57 roberts Exp $
+# $Id: Makefile.tmpl,v 1.4 1999/09/24 02:12:33 roberts Exp $
 
 LIB=libfastcgi.$(LIBEXT)
 
@@ -42,15 +42,16 @@ depend:
 # Dependencies
 
 $(OBJS): fcgi.h
-fcgi.h: mod_fastcgi.h fcgi_protocol.h
-fcgi_protocol.o: fcgi_protocol.h
-mod_fastcgi.o:   $(INCDIR)/httpd.h                \
-                 $(INCDIR)/http_config.h          \
-		 $(INCDIR)/http_request.h         \
-                 $(INCDIR)/http_core.h            \
-                 $(INCDIR)/http_protocol.h        \
-                 $(INCDIR)/http_main.h 	          \
-                 $(INCDIR)/http_log.h  	          \
-                 $(INCDIR)/util_script.h          \
-                 $(INCDIR)/http_conf_globals.h    \
-                 $(INCDIR)/util_md5.h  
+
+fcgi.h:  mod_fastcgi.h    \
+         fcgi_protocol.h  \
+     $(INCDIR)/httpd.h                \
+     $(INCDIR)/http_config.h          \
+     $(INCDIR)/http_request.h         \
+     $(INCDIR)/http_core.h            \
+     $(INCDIR)/http_protocol.h        \
+     $(INCDIR)/http_main.h 	          \
+     $(INCDIR)/http_log.h  	          \
+     $(INCDIR)/util_script.h          \
+     $(INCDIR)/http_conf_globals.h    \
+     $(INCDIR)/util_md5.h  
