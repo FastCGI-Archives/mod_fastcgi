@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_protocol.c,v 1.14 2000/04/27 02:27:35 robs Exp $
+ * $Id: fcgi_protocol.c,v 1.15 2000/04/27 15:14:28 robs Exp $
  */
 
 
@@ -12,7 +12,7 @@
  * that the data bytes (specified by 'len') are queued immediately following
  * this header.
  */
-static void queue_header(fcgi_request *fr, int type, int len)
+static void queue_header(fcgi_request *fr, unsigned char type, unsigned int len)
 {
     FCGI_Header header;
 
@@ -23,10 +23,10 @@ static void queue_header(fcgi_request *fr, int type, int len)
     /* Assemble and queue the packet header. */
     header.version = FCGI_VERSION;
     header.type = type;
-    header.requestIdB1 = (fr->requestId >> 8) & 0xff;
-    header.requestIdB0 = (fr->requestId) & 0xff;
-    header.contentLengthB1 = len/256;  /* MSB */
-    header.contentLengthB0 = len%256;  /* LSB */
+    header.requestIdB1 = (unsigned char) (fr->requestId >> 8);
+    header.requestIdB0 = (unsigned char) fr->requestId;
+    header.contentLengthB1 = (unsigned char) (len / 256);  /* MSB */
+    header.contentLengthB0 = (unsigned char) (len % 256);  /* LSB */
     header.paddingLength = 0;
     header.reserved = 0;
     fcgi_buf_add_block(fr->serverOutputBuffer, (char *) &header, sizeof(FCGI_Header));
@@ -35,13 +35,13 @@ static void queue_header(fcgi_request *fr, int type, int len)
 /*******************************************************************************
  * Build a FCGI_BeginRequest message body.
  */
-static void build_begin_request(int role, int keepConnection,
+static void build_begin_request(unsigned int role, unsigned char keepConnection,
         FCGI_BeginRequestBody *body)
 {
     ap_assert((role >> 16) == 0);
-    body->roleB1 = (role >>  8) & 0xff;
-    body->roleB0 = (role      ) & 0xff;
-    body->flags = (keepConnection) ? FCGI_KEEP_CONN : 0;
+    body->roleB1 = (unsigned char) (role >>  8);
+    body->roleB0 = (unsigned char) role;
+    body->flags = (unsigned char) ((keepConnection) ? FCGI_KEEP_CONN : 0);
     memset(body->reserved, 0, sizeof(body->reserved));
 }
 
@@ -70,22 +70,25 @@ static void build_env_header(int nameLen, int valueLen,
     unsigned char *startHeaderBuffPtr = headerBuffPtr;
 
     ap_assert(nameLen >= 0);
-    if(nameLen < 0x80) {
-        *headerBuffPtr++ = nameLen;
+
+    if (nameLen < 0x80) {
+        *headerBuffPtr++ = (unsigned char) nameLen;
     } else {
-        *headerBuffPtr++ = (nameLen >> 24) | 0x80;
-        *headerBuffPtr++ = (nameLen >> 16);
-        *headerBuffPtr++ = (nameLen >> 8);
-        *headerBuffPtr++ = nameLen;
+        *headerBuffPtr++ = (unsigned char) ((nameLen >> 24) | 0x80);
+        *headerBuffPtr++ = (unsigned char) (nameLen >> 16);
+        *headerBuffPtr++ = (unsigned char) (nameLen >> 8);
+        *headerBuffPtr++ = (unsigned char) nameLen;
     }
+
     ap_assert(valueLen >= 0);
-    if(valueLen < 0x80) {
-        *headerBuffPtr++ = valueLen;
+
+    if (valueLen < 0x80) {
+        *headerBuffPtr++ = (unsigned char) valueLen;
     } else {
-        *headerBuffPtr++ = (valueLen >> 24) | 0x80;
-        *headerBuffPtr++ = (valueLen >> 16);
-        *headerBuffPtr++ = (valueLen >> 8);
-        *headerBuffPtr++ = valueLen;
+        *headerBuffPtr++ = (unsigned char) ((valueLen >> 24) | 0x80);
+        *headerBuffPtr++ = (unsigned char) (valueLen >> 16);
+        *headerBuffPtr++ = (unsigned char) (valueLen >> 8);
+        *headerBuffPtr++ = (unsigned char) valueLen;
     }
     *headerLenPtr = headerBuffPtr - startHeaderBuffPtr;
 }
@@ -197,7 +200,7 @@ int fcgi_protocol_queue_env(request_rec *r, fcgi_request *fr, env_status *env)
         env->pass = prep;
     }
 
-    while (**env->envp) {
+    while (*env->envp) {
         switch (env->pass) 
         {
         case prep:
@@ -222,7 +225,7 @@ int fcgi_protocol_queue_env(request_rec *r, fcgi_request *fr, env_status *env)
         case name:
             charCount = fcgi_buf_add_block(fr->serverOutputBuffer, *env->envp, env->nameLen);
             if (charCount != env->nameLen) {
-                **env->envp += charCount;
+                *env->envp += charCount;
                 env->nameLen -= charCount;
                 return (FALSE);
             }

@@ -69,7 +69,7 @@ LINK32=link.exe
 # PROP Ignore_Export_Lib 0
 # PROP Target_Dir ""
 # ADD BASE CPP /nologo /MTd /W3 /Gm /GX /Zi /Od /D "WIN32" /D "_DEBUG" /D "_WINDOWS" /YX /FD /c
-# ADD CPP /nologo /MTd /W3 /Gm /GX /ZI /Od /I "D:\Documents and Settings\robs\My Documents\Apache\apache_1.3.11\src\include" /D "WIN32" /D "_DEBUG" /D "_WINDOWS" /FR /YX /FD /c
+# ADD CPP /nologo /MTd /W4 /Gm /GX /ZI /Od /I "D:\Documents and Settings\robs\My Documents\Apache\apache_1.3.11\src\include" /D "WIN32" /D "_DEBUG" /D "_WINDOWS" /FR /YX /FD /c
 # ADD BASE MTL /nologo /D "_DEBUG" /mktyplib203 /o "NUL" /win32
 # ADD MTL /nologo /D "_DEBUG" /mktyplib203 /o "NUL" /win32
 # ADD BASE RSC /l 0x409 /d "_DEBUG"
@@ -79,7 +79,8 @@ BSC32=bscmake.exe
 # ADD BSC32 /nologo
 LINK32=link.exe
 # ADD BASE LINK32 kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib /nologo /subsystem:windows /dll /debug /machine:I386 /pdbtype:sept
-# ADD LINK32 "D:\Documents and Settings\robs\My Documents\Apache\apache_1.3.11\src\CoreD\ApacheCore.lib" kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib ws2_32.lib /nologo /subsystem:windows /dll /incremental:yes /pdb:" Debug/mod_fastcgi.pdb" /debug /machine:I386 /pdbtype:sept
+# ADD LINK32 "D:\Documents and Settings\robs\My Documents\Apache\apache_1.3.11\src\CoreD\ApacheCore.lib" kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib ws2_32.lib /nologo /subsystem:windows /dll /pdb:" Debug/mod_fastcgi.pdb" /debug /machine:I386 /pdbtype:sept
+# SUBTRACT LINK32 /pdb:none
 
 !ENDIF 
 

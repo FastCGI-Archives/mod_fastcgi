@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_buf.c,v 1.4 2000/04/27 02:27:35 robs Exp $
+ * $Id: fcgi_buf.c,v 1.5 2000/04/27 15:14:27 robs Exp $
  */
 
 #include "fcgi.h"
@@ -62,9 +62,10 @@ int fcgi_buf_add_fd(Buffer *buf, SOCKET fd)
 int fcgi_buf_add_fd(Buffer *buf, int fd)
 #endif
 {
-    size_t len;
 #ifdef WIN32
-    DWORD bytesRead;
+    DWORD len;
+#else
+    size_t len;
 #endif
 
     fcgi_buf_check(buf);
@@ -88,12 +89,8 @@ int fcgi_buf_add_fd(Buffer *buf, int fd)
     do
 #ifdef WIN32
     {
-        if (!ReadFile((HANDLE) fd, buf->end, len, &bytesRead, NULL)) {
-            int err = GetLastError();
-            len = recv(fd, buf->end, len, 0);
-        }
-        else {
-            len = bytesRead;
+		if (!ReadFile((HANDLE) fd, buf->end, len, &len, NULL)) {
+            errno = GetLastError();
         }
     }
 #else
@@ -190,9 +187,10 @@ int fcgi_buf_get_to_fd(Buffer *buf, SOCKET fd)
 int fcgi_buf_get_to_fd(Buffer *buf, int fd)
 #endif
 {
-    size_t len;
 #ifdef WIN32
-    DWORD bytesWritten;
+    DWORD len;
+#else
+    size_t len;
 #endif
 
     fcgi_buf_check(buf);
@@ -210,15 +208,9 @@ int fcgi_buf_get_to_fd(Buffer *buf, int fd)
     do
 #ifdef WIN32
     {
-        int err;
-
-        if (!WriteFile((HANDLE) fd, (LPVOID) buf->begin, len, &bytesWritten, NULL)) {
-            err =GetLastError();
-
-            len = send(fd, buf->begin, len, 0);
+        if (!WriteFile((HANDLE) fd, (LPVOID) buf->begin, len, &len, NULL)) {
+            errno =GetLastError();
         }
-        else
-            len = bytesWritten;
     }
 #else
         len = write(fd, buf->begin, len);
@@ -313,7 +305,7 @@ Return:
 /*******************************************************************************
  * Return the data block start address and the length of the block.
  */
-void fcgi_buf_get_block_info(Buffer *buf, char **beginPtr, int *countPtr)
+void fcgi_buf_get_block_info(Buffer *buf, char **beginPtr, size_t *countPtr)
 {
     fcgi_buf_check(buf);
     *beginPtr = buf->begin;
@@ -339,7 +331,7 @@ void fcgi_buf_toss(Buffer *buf, size_t count)
 /*******************************************************************************
  * Return the free data block start address and the length of the block.
  */
-void fcgi_buf_get_free_block_info(Buffer *buf, char **endPtr, int *countPtr)
+void fcgi_buf_get_free_block_info(Buffer *buf, char **endPtr, size_t *countPtr)
 {
     fcgi_buf_check(buf);
     *endPtr = buf->end;
@@ -480,7 +472,7 @@ void fcgi_buf_get_to_buf(Buffer *dest, Buffer *src, int len)
     fcgi_buf_check(src);
     fcgi_buf_check(dest);
 
-    while (1) {
+    for (;;) {
         if (len == 0)
             return;
 

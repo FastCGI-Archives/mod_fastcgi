@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.88 2000/04/27 02:27:36 robs Exp $
+ *  $Id: mod_fastcgi.c,v 1.89 2000/04/27 15:14:28 robs Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -615,7 +615,7 @@ DuplicateNotAllowed:
 static int read_from_client_n_queue(fcgi_request *fr)
 {
     char *end;
-    int count;
+    unsigned int count;
     long int countRead;
 
     while (BufferFree(fr->clientInputBuffer) > 0 || BufferFree(fr->serverOutputBuffer) > 0) {
@@ -643,7 +643,7 @@ static int read_from_client_n_queue(fcgi_request *fr)
 static int write_to_client(fcgi_request *fr)
 {
     char *begin;
-    int count;
+    unsigned int count;
 
     fcgi_buf_get_block_info(fr->clientOutputBuffer, &begin, &count);
     if (count == 0)
@@ -664,7 +664,7 @@ static int write_to_client(fcgi_request *fr)
         return -1;
     }
 #else
-    if (ap_bwrite(fr->r->connection->client, begin, count) != count) {
+    if (ap_bwrite(fr->r->connection->client, begin, count) != (int) count) {
         ap_log_rerror(FCGI_LOG_INFO, fr->r,
             "FastCGI: client stopped connection before send body completed");
         return -1;
@@ -778,7 +778,6 @@ static void close_connection_to_fs(fcgi_request *fr)
  */
 static const char *open_connection_to_fs(fcgi_request *fr)
 {
-    int fd_flags = 0;
     struct timeval  tval;
     fd_set          write_fds, read_fds;
     int             status;
@@ -786,11 +785,13 @@ static const char *open_connection_to_fs(fcgi_request *fr)
     pool * const rp = r->pool;
     const char *socket_path = NULL;
     struct sockaddr *socket_addr = NULL;
-    int socket_addr_len;
-    const char *err = NULL;
+    int socket_addr_len = 0;
 #ifdef WIN32
     unsigned long ioctl_arg;
     int errcode;
+#else
+    int fd_flags = 0;
+    const char *err = NULL;
 #endif
 
     /* Create the connection point */
@@ -1096,7 +1097,7 @@ static void log_fcgi_server_stderr(void *data)
  */
 static int do_work(request_rec *r, fcgi_request *fr)
 {
-    struct timeval  timeOut, dynamic_last_activity_time;
+    struct timeval  timeOut, dynamic_last_activity_time = {0, 0};
     fd_set  read_set, write_set;
     int     status = 0, idle_timeout;
     int     numFDs, dynamic_first_read = fr->dynamic ? 1 : 0;
@@ -1221,7 +1222,7 @@ static int do_work(request_rec *r, fcgi_request *fr)
                 if (fcgi_util_gettimeofday(&fr->queueTime) < 0) {
                     ap_log_rerror(FCGI_LOG_ERR, r, "FastCGI: gettimeofday() failed");
                     return server_error(fr);
-		}
+				}
 
                 /* Check for idle_timeout */
                 if (status) {
@@ -1303,7 +1304,7 @@ static int do_work(request_rec *r, fcgi_request *fr)
                     if (fcgi_util_gettimeofday(&fr->queueTime) < 0) {
                     	ap_log_rerror(FCGI_LOG_ERR, r, "FastCGI: gettimeofday() failed");
                     	return server_error(fr);
-		    }
+					}
 
                     timersub(&fr->queueTime, &fr->startTime, &qwait);
 
@@ -1494,7 +1495,6 @@ static fcgi_request *create_fcgi_request(request_rec * const r, const char *fs_p
     fr->exitStatusSet = FALSE;
     fr->requestId = 1; /* anything but zero is OK here */
     fr->eofSent = FALSE;
-    fr->fd = -1;
     fr->role = FCGI_RESPONDER;
     fr->expectingClientContent = FALSE;
     fr->keepReadingFromFcgiApp = TRUE;
@@ -1502,10 +1502,12 @@ static fcgi_request *create_fcgi_request(request_rec * const r, const char *fs_p
     fr->fs_path = fs_path;
     fr->authHeaders = ap_make_table(p, 10);
 #ifdef WIN32
+    fr->fd = INVALID_SOCKET;
     fr->dynamic = ((fs == NULL) || (fs->directive == APP_CLASS_DYNAMIC)) ? TRUE : FALSE;
     fr->using_npipe_io = FALSE;
 #else
     fr->dynamic = (fs == NULL) ? TRUE : FALSE;
+    fr->fd = -1;
 #endif
 
     set_uid_n_gid(r, &fr->user, &fr->group);

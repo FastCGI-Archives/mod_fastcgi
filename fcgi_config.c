@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_config.c,v 1.18 2000/04/27 02:27:35 robs Exp $
+ * $Id: fcgi_config.c,v 1.19 2000/04/27 15:14:27 robs Exp $
  */
 
 #include "fcgi.h"
@@ -14,6 +14,7 @@ static const char *get_host_n_port(pool *p, const char **arg,
         const char **host, u_short *port)
 {
     char *cvptr, *portStr;
+    long tmp;
 
     *host = ap_getword_conf(p, arg);
     if (**host == '\0')
@@ -27,9 +28,11 @@ static const char *get_host_n_port(pool *p, const char **arg,
     *portStr++ = '\0';
 
     /* Convert port number */
-    *port = (u_int)strtol(portStr, &cvptr, 10);
-    if (*cvptr != '\0' || *port < 1 || *port > 65535)
+    tmp = (u_short) strtol(portStr, &cvptr, 10);
+    if (*cvptr != '\0' || tmp < 1 || tmp > USHRT_MAX)
         return ap_pstrcat(p, "bad port number \"", portStr, "\"", NULL);
+
+    *port = (unsigned short) tmp;
 
     return NULL;
 }
@@ -55,8 +58,8 @@ static const char *get_u_short(pool *p, const char **arg,
         return ap_pstrcat(p, "\"", txt, "\" must be a positive integer", NULL);
 	}
     
-	if (tmp < min) {
-        return ap_psprintf(p, "\"%u\" must be >= %u", *num, min);
+	if (tmp < min || tmp > USHRT_MAX) {
+        return ap_psprintf(p, "\"%u\" must be >= %u and < %u", *num, min, USHRT_MAX);
 	}
 
 	*num = (u_short) tmp;

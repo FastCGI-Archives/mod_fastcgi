@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_util.c,v 1.9 2000/04/27 02:27:35 robs Exp $
+ * $Id: fcgi_util.c,v 1.10 2000/04/27 15:14:28 robs Exp $
  */
 
 #include "fcgi.h"
@@ -447,11 +447,11 @@ fcgi_util_fs_create_procs(pool *p, int num)
  *----------------------------------------------------------------------
  */
 
+#ifndef WIN32
 int 
 fcgi_util_lock_fd(int fd, int cmd, int type, off_t offset, int whence, off_t len)
 {
     int res = 0;
-#ifndef WIN32
     struct flock lock;
 
     lock.l_type = type;       /* F_RDLCK, F_WRLCK, F_UNLCK */
@@ -464,9 +464,9 @@ fcgi_util_lock_fd(int fd, int cmd, int type, off_t offset, int whence, off_t len
 
     /* This is OK only if there is a hard_timeout() in effect! */
     while ((res = fcntl(fd, cmd, &lock)) == -1 && errno == EINTR);
-#endif    
     return res;
 }
+#endif    
 
 int fcgi_util_gettimeofday(struct timeval *Time) {
 #ifdef WIN32

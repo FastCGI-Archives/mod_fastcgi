@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_pm.c,v 1.21 2000/04/27 02:27:35 robs Exp $
+ * $Id: fcgi_pm.c,v 1.22 2000/04/27 15:14:27 robs Exp $
  */
 
 
@@ -547,7 +547,6 @@ static void dynamic_read_msgs(int read_ready)
     char group[MAX_GID_CHAR_LEN + 1];
     unsigned long q_usec = 0UL, req_usec = 0UL;
 #else
-    char *buf=NULL;
     fcgi_pm_job *joblist = NULL;
     fcgi_pm_job *cjob = NULL;
     SECURITY_ATTRIBUTES sa;
@@ -1194,7 +1193,7 @@ static void dynamic_kill_idle_fs_procs(void)
 }
 
 #ifdef WIN32
-void child_wait_thread(void *data) {
+void child_wait_thread(void *dummy) {
     fcgi_server *s;
     DWORD dwRet = WAIT_TIMEOUT;
     int numChildren;
@@ -1316,7 +1315,7 @@ void fcgi_pm_main(void *dummy)
 {
     fcgi_server *s;
     unsigned int i;
-	int read_ready;
+	int read_ready = 0;
 #ifndef WIN32
     int callWaitPid, callDynamicProcs;
 #endif

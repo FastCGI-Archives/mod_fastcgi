@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi.h,v 1.20 2000/04/27 02:27:35 robs Exp $
+ * $Id: fcgi.h,v 1.21 2000/04/27 15:14:27 robs Exp $
  */
 
 #ifndef FCGI_H
@@ -203,7 +203,7 @@ typedef struct {
     Buffer *erBufPtr;
     int exitStatus;
     int exitStatusSet;
-    int requestId;
+    unsigned int requestId;
     int eofSent;
     int role;                       /* FastCGI Role: Authorizer or Responder */
     int dynamic;                    /* whether or not this is a dynamic app */
@@ -353,9 +353,9 @@ int fcgi_buf_add_fd(Buffer *buf, int fd);
 int fcgi_buf_get_to_fd(Buffer *bufPtr, int fd);
 #endif
 
-void fcgi_buf_get_block_info(Buffer *bufPtr, char **beginPtr, int *countPtr);
+void fcgi_buf_get_block_info(Buffer *bufPtr, char **beginPtr, size_t *countPtr);
 void fcgi_buf_toss(Buffer *bufPtr, size_t count);
-void fcgi_buf_get_free_block_info(Buffer *bufPtr, char **endPtr, int *countPtr);
+void fcgi_buf_get_free_block_info(Buffer *bufPtr, char **endPtr, size_t *countPtr);
 void fcgi_buf_add_update(Buffer *bufPtr, size_t count);
 int fcgi_buf_add_block(Buffer *bufPtr, char *data, size_t datalen);
 int fcgi_buf_add_string(Buffer *bufPtr, char *str);
@@ -401,8 +401,10 @@ char *fcgi_util_socket_hash_filename(pool *p, const char *path,
 const char *fcgi_util_socket_make_path_absolute(pool * const p,
     const char *const file, const int dynamic);
 const char *fcgi_util_socket_get_lock_filename(pool *p, const char *socket_path);
+#ifndef WIN32
 const char *fcgi_util_socket_make_domain_addr(pool *p, struct sockaddr_un **socket_addr,
     int *socket_addr_len, const char *socket_path);
+#endif
 const char *fcgi_util_socket_make_inet_addr(pool *p, struct sockaddr_in **socket_addr,
     int *socket_addr_len, const char *host, unsigned short port);
 const char *fcgi_util_check_access(pool *tp,
