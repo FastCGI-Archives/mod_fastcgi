@@ -1,6 +1,6 @@
 <!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">
 <HTML>
-   <!-- $Id: mod_fastcgi.html,v 1.25 2001/07/11 15:20:16 robs Exp $ -->
+   <!-- $Id: mod_fastcgi.html,v 1.26 2001/09/07 11:54:38 robs Exp $ -->
    <HEAD>
       <TITLE>
          Apache module mod_fastcgi
@@ -523,12 +523,14 @@
          </DT>
          <DD>
             The maximum number of dynamic FastCGI application instances allowed to run for any one FastCGI application.
+            It must be &lt;= to -maxProcesses (this is not programmatically enforced).
          </DD>
          <DT>
             <CODE><B>-maxProcesses <EM>n</EM></B> (50)</CODE>
          </DT>
          <DD>
-            The maximum total number of dynamic FastCGI application instances allowed to run at any one time.
+            The maximum total number of dynamic FastCGI application instances allowed to run at any one time. It must
+            be &gt;= to -maxClassProcesses (this is not programmatically enforced).
          </DD>
          <DT>
             <CODE><B>-minProcesses <EM>n</EM></B> (5)</CODE>
