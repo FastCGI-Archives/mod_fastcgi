@@ -157,7 +157,7 @@ Introduction
 
     2. Build the module
 
-         > nmake -f Makefile.nt [debug | release]
+         > nmake -f Makefile.nt CFG=[debug | release]
 
   To build mod_fastcgi as a project you'll need M$ VC++ 6.0:
 
