@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.80 1999/09/13 03:19:33 roberts Exp $
+ *  $Id: mod_fastcgi.c,v 1.81 1999/09/14 15:25:09 roberts Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -162,8 +162,8 @@ static int write_to_mbox(pool * const p, const char id, const char * const fs_pa
                 id, fs_path, user, group, qsecs);
                 break;
         case REQ_COMPLETE:
-                sprintf(buf, "%c %s %lu %lu %lu\n",
-                id, fs_path, qsecs, start_time, now);
+                sprintf(buf, "%c %s %s %s %lu %lu %lu\n",
+                id, fs_path, user, group, qsecs, start_time, now);
                 break;
     }
 
@@ -265,7 +265,7 @@ static void send_to_pm(pool * const rp, const char id,
 	 	    return;
 		}
             }
-	    ap_log_error(FCGI_LOG_WARN, fcgi_apache_main_server, 
+	    ap_log_error(FCGI_LOG_WARN, fcgi_apache_main_server,
 		"FastCGI: can't notify process manager, kill(SIGUSR2) failed 1000 times!");
         }
     }
@@ -987,10 +987,10 @@ static int do_work(request_rec *r, fcgi_request *fr)
 
     numFDs = fr->fd + 1;
     idle_timeout = fr->dynamic ? dynamic_idle_timeout : fr->fs->idle_timeout;
-    
+
     if (dynamic_first_read) {
         dynamic_last_activity_time = fr->startTime;
-        
+
         if (dynamicAppConnectTimeout) {
             struct timeval qwait;
             timersub(&fr->queueTime, &fr->startTime, &qwait);
@@ -1057,7 +1057,7 @@ static int do_work(request_rec *r, fcgi_request *fr)
 	    else if (dynamic_first_read) {
                 int delay;
                 struct timeval qwait;
-        
+
                 if (gettimeofday(&fr->queueTime, NULL) < 0) {
                     ap_log_rerror(FCGI_LOG_ERR, r, "FastCGI: gettimeofday() failed");
                     return server_error(fr);
@@ -1072,7 +1072,7 @@ static int do_work(request_rec *r, fcgi_request *fr)
                     timersub(&fr->queueTime, &dynamic_last_activity_time, &idle_time);
                     if (idle_time.tv_sec > idle_timeout) {
                         ap_log_rerror(FCGI_LOG_ERR, r,
-                            "FastCGI: comm with server \"%s\" aborted: idle timeout (%d sec)", 
+                            "FastCGI: comm with server \"%s\" aborted: idle timeout (%d sec)",
                             fr->fs_path, idle_timeout);
                         return server_error(fr);
                     }
@@ -1113,22 +1113,22 @@ static int do_work(request_rec *r, fcgi_request *fr)
                 }
                 else if (dynamic_first_read) {
                     struct timeval qwait;
-                    
+
                     if (gettimeofday(&fr->queueTime, NULL) < 0) {
                     	ap_log_rerror(FCGI_LOG_ERR, r, "FastCGI: gettimeofday() failed");
                     	return server_error(fr);
 		    }
-	
+
                     timersub(&fr->queueTime, &fr->startTime, &qwait);
-                    
+
                     send_to_pm(rp, CONN_TIMEOUT, fr->fs_path, fr->user, fr->group,
                         (unsigned long)(qwait.tv_sec*1000000 + qwait.tv_usec), 0, 0);
-                    
+
                     dynamic_first_read = qwait.tv_sec / dynamicPleaseStartDelay + 1;
                 }
                 else {
                     ap_log_rerror(FCGI_LOG_ERR, r,
-                        "FastCGI: comm with server \"%s\" aborted: idle timeout (%d sec)", 
+                        "FastCGI: comm with server \"%s\" aborted: idle timeout (%d sec)",
                         fr->fs_path, idle_timeout);
                     return server_error(fr);
                 }
@@ -1141,7 +1141,7 @@ static int do_work(request_rec *r, fcgi_request *fr)
 
             /* Read from the FastCGI server */
             if (FD_ISSET(fr->fd, &read_set)) {
-                
+
                 if (dynamic_first_read) {
                     dynamic_first_read = 0;
                 }

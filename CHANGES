@@ -1,9 +1,12 @@
 Changes with mod_fastcgi 2.2.3
 
+ *) Fix bugs that prevented dynamic processes from being shutdown when
+    the load subsided.  Lars Heete [heete@do.isst.fhg.de]
+
  *) Prevent dynamic processes from being scheduled to be started before
     the init-start-delay or restart-delay period expires.  This prevents
 	the queuing of process start requests while an application which has
-	a long initialization period starts up. 
+	a long initialization period starts up.
 
  *) When suexec is enabled, allow the process manager to become root again in
     order to signal applications it spawned.
@@ -14,9 +17,9 @@ Changes with mod_fastcgi 2.2.3
 
  *) Fix demand-based dynamic process spawing (uses a more portable approach).
 
- *) Add -idle-timeout arg to FastCgiServer, FastCgiExternalServer, and 
+ *) Add -idle-timeout arg to FastCgiServer, FastCgiExternalServer, and
     FastCgiConfig.  mod_fastcgi will now abort a connection if inactive for
-	longer than this period.  It applies to the initiation of connections as 
+	longer than this period.  It applies to the initiation of connections as
 	well (and thus is similar to appConnTimeout).  Default is 30 seconds.
 
  *) appConnTimeout is 0 by default now resulting in blocking connect()s.  This
@@ -59,34 +62,34 @@ Changes with mod_fastcgi 2.2.2
 
  *) Minor tweaks for RUSSIAN_APACHE.  [Sergey Gershtein <sg@mplik.ru>]
 
- *) Dynamic updates: 
- 
+ *) Dynamic updates:
+
     Always restart a failed dynamic application if it is the last instance.
     This means there once started there will always be at least one process
-    instance of a dynamic application.  
-    
+    instance of a dynamic application.
+
     Send PLEASE_START to the PM when a connect() results in an ECONNREFUSED.
     ECONNREFUSED means the listen queue is full (or there isn't one).  Asking
     the PM to start (another) application instance may help empty it faster.
-    
+
     Change two sleep() calls to select() based snoozes because alarm() is in
     effect and sleep() and alarm() don't always play nice together.
-    
+
     Fixed a couple of error messages.
 
  *) Fix -listen-queue-depth arg on FastCgiConfig (dynamic).  Previously it
     was ignored and the default was always used.
 
- *) Allow the -initial-env argument to be used to pass variables from the 
-    Apache process environment to the FastCGI server (by specifying a 
-    variable name without the "=" or a value).  [suggested by 
+ *) Allow the -initial-env argument to be used to pass variables from the
+    Apache process environment to the FastCGI server (by specifying a
+    variable name without the "=" or a value).  [suggested by
     Martin Lichtin <lichtin@oanda.com>]
 
  *) Cleanup some debug macros.
 
- *) Improved script stderr handling.  [based on suggestions by 
+ *) Improved script stderr handling.  [based on suggestions by
     David Birnbaum <davidb@chelsea.net>]
-    
+
  *) Added IRIX and FreeBSD to the list of supported platforms and other minor
     updates to the INSTALL doc.
 
@@ -95,37 +98,37 @@ Changes with mod_fastcgi 2.2.2
     This should help eliminate the FAQ - Why do I see "Connection Refused"
     messages in the log?
 
- *) Fix a bug in FastCgiExternalServer that broke support for external servers 
+ *) Fix a bug in FastCgiExternalServer that broke support for external servers
     on other hosts.  [Dave Neuer <dneuer@futuristics.net>]
 
 Changes with mod_fastcgi 2.2.1
 
  *) Updates to the INSTALL doc to describe building as a DSO.
- 
+
  *) If the FastCgiIpcDir directive was in use and "httpd -t" was issued while
     Apache was running ("apachectl restart" does this), the contents of the
-    dynamic directory (dynamic sockets and the mbox) would be blown away 
+    dynamic directory (dynamic sockets and the mbox) would be blown away
     (a 2.1b1 bug).
 
  *) Add an extern declaration for ap_sys_siglist (its exposed but not in any
     Apache header file) to prevent a compile error on systems without
     SYS_SIGLIST defined.
-    
+
  *) During auth requests, the subprocess_env table was left holding variables
     sent to the auth FastCGI server (including REMOTE_PASSWD!) which means they
     were passed to other processing phases (such as CGI/FastCGI).  The
     subprocess_env is now restored to its pre-auth condition.
-    
- *) Added a FastCGI Authorizer Role compatibility mode which implements the 
+
+ *) Added a FastCGI Authorizer Role compatibility mode which implements the
     specification to the tee.  Use -compat arg with any of the Auth server
     directives.  This is intended for new and existing FastCGI authorizer
     applications that require compatibility with other server implementations.
-    
- *) Fix logging from the process manager.  Previously, all calls to the 
+
+ *) Fix logging from the process manager.  Previously, all calls to the
     logging routines used NULL for the server_rec.  This works fine in a dev
     environment, but results in most of these messages being tossed by
     log_error_core() because DEFAULT_LOGLEVEL is too low.  Odd logic.
-        
+
  *) Always setup fr->header so that in the event the FastCGI server
     doesn't get a valid FastCGI protocol header over the wire, we
     can still print our error message to the log from do_work().
@@ -194,9 +197,9 @@ Changes with mod_fastcgi 2.2.0
     The old behaviour can revived with the -flush argument to AppClass.
 
  *) I renamed some of the directives for consistency (the old names
-    still work).  
-        
-        AppClass -> FastCgiServer,  
+    still work).
+
+        AppClass -> FastCgiServer,
         FCGIConfig -> FastCgiConfig,
         ExternalAppClass -> FastCgiExternalServer
 
@@ -244,7 +247,7 @@ From: Stanley Gambarin <stanleyg@cs.bu.edu>
 
 Apache[X1.03.01]/mod_fastcgi[02.00.04] 19970908 unsupported
 From: Stanley Gambarin <stanleyg@cs.bu.edu>
-  
+
  *) More changes to the installation scripts.  Theoretically we
     should be able to to use the same Makefile/installation script
     for both Apache 1.2.x and 1.3.x.  Need some sort of the abstraction
@@ -254,21 +257,21 @@ Apache[X1.03.01]/mod_fastcgi[02.00.03] 19970905 unsupported
 From: Stanley Gambarin <stanleyg@cs.bu.edu>
 
  *) Created Makefile to compile the module into the archive library,
-    just like the proxy module.  Also initial draft of the installation 
+    just like the proxy module.  Also initial draft of the installation
     script, which should work for both 1.2 and 1.3 sources of Apache.
 
 Apache[01.02.04]/mod_fastcgi[02.00.02] 19970903 unsupported
 From: Stanley Gambarin <stanleyg@cs.bu.edu>
 
  *) More source reorg.  Separated out some header files.  Need much
-    more work on this.  Updated the TODO file.  Added fcgivers.h and 
+    more work on this.  Updated the TODO file.  Added fcgivers.h and
     CHANGES	file to track the history.
 
 Apache[01.02.04]/mod_fastcgi[02.00.01] 19970902 unsupported
 From: Stanley Gambarin <stanleyg@cs.bu.edu>
 
  *) Source reorganization.  This is done to provide a basis for later
-    functionality implementation.  See TODO file for more information 
+    functionality implementation.  See TODO file for more information
     of what possible future enhancements are possible/desired.
 
 Apache[01.02.04]/mod_fastcgi[02.00.00] 19970902 unsupported
@@ -280,14 +283,14 @@ From:  David MacKenzie <djm@va.pubnix.com>
     user specified in the User and Group directives has read, write, and
     execute permissions on them.  Those permissions had been explicitly
     denied by creating them as "root".
-      
+
  *) Some documentation was garbled or incomplete.
 
  *) When a FastCGI application can't be execl'd, the code used a
     value of errno that may have been stomped on by intervening system
-    calls.  That happened on BSD/OS 2.1, where the error_log was 
-    reporting errno=25 (NOTTY) instead of the correct errno=13 (EACCES).  
-    An intervening stdio call was setting errno as a side-effect, which 
+    calls.  That happened on BSD/OS 2.1, where the error_log was
+    reporting errno=25 (NOTTY) instead of the correct errno=13 (EACCES).
+    An intervening stdio call was setting errno as a side-effect, which
     it has the right to do.
 
  *) Erroneous fprintf arguments, a missing return value, an unused
@@ -302,19 +305,19 @@ From:  David MacKenzie <djm@va.pubnix.com>
     hadn't been requested for weeks.
 
  *) The test for whether to keep looking for dynamic app victims to
-    kill was backwards, so no dynamic apps were ever selected as 
+    kill was backwards, so no dynamic apps were ever selected as
     victims.
 
  *) The killInterval and updateInterval were being ignored; the
-    sigsuspend() forced recalculations only when a child died, 
+    sigsuspend() forced recalculations only when a child died,
     instead of at the intervals specified.
 
  *) When a dynamic app couldn't be started, the program SEGV'd when
     trying to free the ipcAddrPtr twice.
 
  *) Remove the dead lock file and socket when cleaning up after a
-  	server whose last child has been killed, so the FastCGIHandler 
-    isn't fooled into thinking there is still a process serving 
+  	server whose last child has been killed, so the FastCGIHandler
+    isn't fooled into thinking there is still a process serving
     that app.
 
  *) Make file locking robust in the presence of signals.
@@ -377,7 +380,7 @@ What's New: Version 2.0b1, 16 Apr 1997
 What's New: Version 1.4.3, 15 Jan 1997
 
  *) Fixed compilation warnings for various platforms, as well as
-	conditional compilation for OS/2.  
+	conditional compilation for OS/2.
 
 What's New: Version 1.4.2, 12 Dec 1996
 
@@ -385,14 +388,14 @@ What's New: Version 1.4.2, 12 Dec 1996
 	will proceed under this version of Apache web server.
 
  *) As the result of porting, the "include virtual" construct of SSI
-	will now work correctly using either <Location> or <Directory> 
+	will now work correctly using either <Location> or <Directory>
 	directive.
 
 What's New: Version 1.4.1, 4 Dec 1996
 
  *) Checks have been removed from the ScanCGIHeaders that provided
-    for the presence of both Status and Location headers as being 
-    an error.  Contradictory to CGI/1.1 Internet Draft, both of 
+    for the presence of both Status and Location headers as being
+    an error.  Contradictory to CGI/1.1 Internet Draft, both of
     these headers are used by the current CGI applications.
 
 What's New: Version 1.4, 22 Nov 1996
@@ -524,7 +527,7 @@ What's New: Version 1.2, 3 June 1996
     class processes
 
  *) Modify GetFromStream() by having it call an OS dependent
-    function GetStreamSize(FILE *) which uses FILE internal data member. 
+    function GetStreamSize(FILE *) which uses FILE internal data member.
     Linux users might need to modify GetStreamSize().
 
 What's New: Version 1.1, 10 May 1996
@@ -535,7 +538,7 @@ What's New: Version 1.1, 10 May 1996
 	terminated due to a signal".
 
  *) The mod_fastcgi module should use the standard Apache error logging
-	facility instead of writing to stderr. 
+	facility instead of writing to stderr.
 
 Version 1.0, 30 April 1996
 

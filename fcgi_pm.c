@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_pm.c,v 1.13 1999/09/14 11:11:28 roberts Exp $
+ * $Id: fcgi_pm.c,v 1.14 1999/09/14 15:25:07 roberts Exp $
  */
 
 #include "fcgi.h"
@@ -20,7 +20,7 @@ static int seteuid_root(void)
 {
     int rc = seteuid((uid_t)0);
     if (rc == -1) {
-        ap_log_error(FCGI_LOG_ALERT, fcgi_apache_main_server, 
+        ap_log_error(FCGI_LOG_ALERT, fcgi_apache_main_server,
             "FastCGI: seteuid(0) failed");
     }
     return rc;
@@ -76,7 +76,7 @@ static void kill_fs_procs(pool *p, fcgi_server *s)
         const char *lockFileName = fcgi_util_socket_get_lock_filename(p, s->socket_path);
 
         if (unlink(lockFileName) != 0) {
-            ap_log_error(FCGI_LOG_ERR, fcgi_apache_main_server, 
+            ap_log_error(FCGI_LOG_ERR, fcgi_apache_main_server,
                 "FastCGI: unlink() failed to remove lock file \"%s\" for (dynamic) server \"%s\"",
                 lockFileName, s->fs_path);
         }
@@ -85,9 +85,9 @@ static void kill_fs_procs(pool *p, fcgi_server *s)
     /* Remove the socket file */
     if (s->socket_path != NULL && s->directive != APP_CLASS_EXTERNAL) {
         if (unlink(s->socket_path) != 0) {
-            ap_log_error(FCGI_LOG_ERR, fcgi_apache_main_server, 
+            ap_log_error(FCGI_LOG_ERR, fcgi_apache_main_server,
                 "FastCGI: unlink() failed to remove socket file \"%s\" for%s server \"%s\"",
-                s->socket_path, 
+                s->socket_path,
                 (s->directive == APP_CLASS_DYNAMIC) ? " (dynamic)" : "", s->fs_path);
         }
     }
@@ -119,7 +119,7 @@ static const char *bind_n_listen(pool *p, struct sockaddr *socket_addr,
 #ifndef __EMX__
         /* If we're root, we're gonna setuid/setgid, so we need to chown */
         if (geteuid() == 0 &&
-                chown(((struct sockaddr_un *)socket_addr)->sun_path, 
+                chown(((struct sockaddr_un *)socket_addr)->sun_path,
                       ap_user_id, ap_group_id) != 0)
             return "chown() of socket failed";
 #endif
@@ -275,7 +275,7 @@ static int spawn_fs_process(
     *childPid = fork();
     if (*childPid < 0)
         return -1;
-    
+
     if (*childPid != 0)
         return 0;
 
@@ -306,12 +306,12 @@ static int spawn_fs_process(
     /* Open the listenFd on spec'd fd */
     if (listenFd != FCGI_LISTENSOCK_FILENO)
         dup2(listenFd, FCGI_LISTENSOCK_FILENO);
-    
+
     /* Close all other open fds, except stdout/stderr.  Leave these two open so
      * FastCGI applications don't have to find and fix ALL 3rd party libs that
      * write to stdout/stderr inadvertantly.  For now, just leave 'em open to the
-     * main server error_log - @@@ provide a directive control where this goes. 
-     */    
+     * main server error_log - @@@ provide a directive control where this goes.
+     */
     ap_error_log2stderr(fcgi_apache_main_server);
     dup2(STDERR_FILENO, STDOUT_FILENO);
     for (i = 0; i < MAX_OPEN_FDS; i++) {
@@ -319,8 +319,8 @@ static int spawn_fs_process(
             close(i);
         }
     }
-    
-    /* Ignore SIGPIPE by default rather than terminate.  The fs SHOULD 
+
+    /* Ignore SIGPIPE by default rather than terminate.  The fs SHOULD
      * install its own handler. */
     signal(SIGPIPE, SIG_IGN);
 
@@ -334,7 +334,7 @@ static int spawn_fs_process(
         do {
             execle(fcgi_suexec, fcgi_suexec, user, group, shortName, NULL, envPtr);
         } while (errno == EINTR);
-    } 
+    }
     else {
         do {
             execle(programName, programName, NULL, envPtr);
@@ -346,24 +346,24 @@ static int spawn_fs_process(
     /* We had to close all files but the FCGI listener socket in order to
      * exec the application.  So we must reopen the log file. */
     ap_open_logs(fcgi_apache_main_server, fcgi_config_pool);
-    
+
 FailedSystemCallExit:
     ap_log_error(FCGI_LOG_ERR, fcgi_apache_main_server,
         "FastCGI: can't start server \"%s\" (pid %ld), %s failed",
         programName, (long) getpid(), failedSysCall);
     exit(-1);
-    
+
     /* avoid an irrelevant compiler warning */
-    return(0);          
+    return(0);
 }
 
 static void reduce_priveleges(void)
 {
     char *name;
-    
+
     if (geteuid() != 0)
         return;
-        
+
 #ifndef __EMX__
     /* Get username if passed as a uid */
     if (ap_user_name[0] == '#') {
@@ -389,11 +389,11 @@ static void reduce_priveleges(void)
     }
 
     /* See Apache PR2580. Until its resolved, do it the same way CGI is done.. */
-     
+
     /* Initialize supplementary groups */
     if (initgroups(name, ap_group_id) == -1) {
         ap_log_error(FCGI_LOG_ALERT, fcgi_apache_main_server,
-            "FastCGI: process manager exiting, initgroups(%s,%u) failed", 
+            "FastCGI: process manager exiting, initgroups(%s,%u) failed",
             name, (unsigned)ap_group_id);
         exit(1);
     }
@@ -409,7 +409,7 @@ static void reduce_priveleges(void)
     }
     else {
         if (setuid(ap_user_id) == -1) {
-            ap_log_error(FCGI_LOG_ALERT, fcgi_apache_main_server, 
+            ap_log_error(FCGI_LOG_ALERT, fcgi_apache_main_server,
                 "FastCGI: process manager exiting, setuid(%u) failed", (unsigned)ap_user_id);
             exit(1);
         }
@@ -428,9 +428,9 @@ static void schedule_start(fcgi_server *s, int proc)
 {
     s->procs[proc].state = STATE_NEEDS_STARTING;
     if (proc == dynamicMaxClassProcs - 1) {
-        ap_log_error(FCGI_LOG_WARN_NOERRNO, fcgi_apache_main_server, 
+        ap_log_error(FCGI_LOG_WARN_NOERRNO, fcgi_apache_main_server,
             "FastCGI: scheduled the %sstart of the last (dynamic) server "
-            "\"%s\" process: reached dynamicMaxClassProcs (%d)", 
+            "\"%s\" process: reached dynamicMaxClassProcs (%d)",
             s->procs[proc].pid ? "re" : "", s->fs_path, dynamicMaxClassProcs);
     }
 }
@@ -472,13 +472,13 @@ static int dynamic_read_mbox(void)
 
     /* Obtain the data from the fcgi_dynamic_mbox file */
     if ((fd = ap_popenf(tp, fcgi_dynamic_mbox, O_RDWR, S_IRUSR | S_IWUSR)) < 0) {
-        ap_log_error(FCGI_LOG_ALERT, fcgi_apache_main_server, 
+        ap_log_error(FCGI_LOG_ALERT, fcgi_apache_main_server,
             "FastCGI: openf() of fcgi_dynamic_mbox \"%s\" failed", fcgi_dynamic_mbox);
         goto CleanupReturn;
     }
     fcgi_wait_for_shared_write_lock(fd);
     if (fstat(fd, &statbuf) < 0) {
-        ap_log_error(FCGI_LOG_ALERT, fcgi_apache_main_server, 
+        ap_log_error(FCGI_LOG_ALERT, fcgi_apache_main_server,
             "FastCGI: fstat() of fcgi_dynamic_mbox \"%s\" failed", fcgi_dynamic_mbox);
         goto NothingToDo;
     }
@@ -488,12 +488,12 @@ static int dynamic_read_mbox(void)
         goto NothingToDo;
     }
     if (read(fd, (void *)buf, statbuf.st_size) < statbuf.st_size) {
-        ap_log_error(FCGI_LOG_ALERT, fcgi_apache_main_server, 
+        ap_log_error(FCGI_LOG_ALERT, fcgi_apache_main_server,
             "FastCGI: read() from fcgi_dynamic_mbox \"%s\" failed", fcgi_dynamic_mbox);
         goto NothingToDo;
     }
     if (ftruncate(fd, 0) < 0) {
-        ap_log_error(FCGI_LOG_ALERT, fcgi_apache_main_server, 
+        ap_log_error(FCGI_LOG_ALERT, fcgi_apache_main_server,
             "FastCGI: ftruncate() of fcgi_dynamic_mbox \"%s\" failed", fcgi_dynamic_mbox);
         goto NothingToDo;
     }
@@ -527,7 +527,7 @@ NothingToDo:
     if (recs==0) {
         goto CleanupReturn;
     }
-    
+
     /* Update data structures for processing */
     for (ptr1 = buf; ptr1 != NULL; ptr1 = ptr2) {
         if((ptr2 = strchr(ptr1, '\n'))!=NULL) {
@@ -606,7 +606,7 @@ NothingToDo:
                        O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
             if (fd < 0) {
                 ap_log_error(FCGI_LOG_CRIT, fcgi_apache_main_server,
-                    "FastCGI: can't create (dynamic) server \"%s\": can't open lock file \"%s\": popenf() failed", 
+                    "FastCGI: can't create (dynamic) server \"%s\": can't open lock file \"%s\": popenf() failed",
                     execName, lockPath);
                 goto BagNewServer;
             }
@@ -706,11 +706,11 @@ NothingToDo:
                 /* If we've started one recently, don't register another */
                 time_passed  = now - s->restartTime;
 
-                if (time_passed < s->initStartDelay 
-                     && time_passed < s->restartDelay) 
+                if (time_passed < s->initStartDelay
+                     && time_passed < s->restartDelay)
                 {
                     continue;
-                } 
+                }
 
                 if ((fcgi_dynamic_total_proc_count + 1) > dynamicMaxProcs) {
                     /*
@@ -718,7 +718,7 @@ NothingToDo:
                      * terminated beforehand, probably need
                      * to increase ProcessSlack parameter
                      */
-                    ap_log_error(FCGI_LOG_WARN_NOERRNO, fcgi_apache_main_server, 
+                    ap_log_error(FCGI_LOG_WARN_NOERRNO, fcgi_apache_main_server,
                         "FastCGI: can't schedule the start of another (dynamic) server \"%s\" process: "
                         "exceeded dynamicMaxProcs (%d)", s->fs_path, dynamicMaxProcs);
                     continue;
@@ -845,7 +845,7 @@ static void dynamic_kill_idle_fs_procs(void)
 
         for(i = 0; i < dynamicMaxClassProcs; i++) {
             if(s->procs[i].state == STATE_VICTIM) {
-                lockFileName = fcgi_util_socket_get_lock_filename(tp, s->fs_path);
+                lockFileName = fcgi_util_socket_get_lock_filename(tp, s->socket_path);
                 if ((lockFd = ap_popenf(tp, lockFileName, O_RDWR, 0))<0) {
                     /*
                      * If we need to kill an application and the
@@ -915,7 +915,7 @@ int fcgi_pm_main(void *dummy, child_info *info)
     const char *err;
 
     reduce_priveleges();
-    
+
     change_process_name("fcgi-pm");
 
     /*
@@ -939,7 +939,7 @@ int fcgi_pm_main(void *dummy, child_info *info)
             (signal(SIGALRM, signal_handler) == SIG_ERR) ||
             (signal(SIGUSR2, signal_handler) == SIG_ERR) ||
             (signal(SIGUSR1, signal_handler) == SIG_ERR) ||
-            (signal(SIGHUP, signal_handler) == SIG_ERR)) 
+            (signal(SIGHUP, signal_handler) == SIG_ERR))
     {
         ap_log_error(FCGI_LOG_ALERT, fcgi_apache_main_server,
             "FastCGI: process manager exiting, signal() failed");
@@ -947,10 +947,10 @@ int fcgi_pm_main(void *dummy, child_info *info)
     }
 
     if (fcgi_suexec) {
-        ap_log_error(FCGI_LOG_INFO_NOERRNO, fcgi_apache_main_server, 
+        ap_log_error(FCGI_LOG_INFO_NOERRNO, fcgi_apache_main_server,
             "FastCGI: suEXEC mechanism enabled (wrapper: %s)", fcgi_suexec);
     }
-    
+
     /* Initialize AppClass */
     tp = ap_make_sub_pool(fcgi_config_pool);
     for(s = fcgi_servers; s != NULL; s = s->next) {
@@ -981,8 +981,8 @@ int fcgi_pm_main(void *dummy, child_info *info)
             s->procs[i].state = STATE_NEEDS_STARTING;
     }
     ap_destroy_pool(tp);
-    
-    ap_log_error(FCGI_LOG_NOTICE_NOERRNO, fcgi_apache_main_server, 
+
+    ap_log_error(FCGI_LOG_NOTICE_NOERRNO, fcgi_apache_main_server,
         "FastCGI: process manager initialized (pid %ld)", (long)getpid());
 
     /*
@@ -1027,10 +1027,10 @@ int fcgi_pm_main(void *dummy, child_info *info)
             }
             for (i = 0; i < numChildren; i++) {
                 if ((s->procs[i].pid <= 0) &&
-                    (s->procs[i].state == STATE_NEEDS_STARTING)) 
+                    (s->procs[i].state == STATE_NEEDS_STARTING))
                 {
                     time_t restartTime;
-                    
+
                     now = time(NULL);
 
                     if (s->procs[i].pid == 0) {
@@ -1057,7 +1057,7 @@ int fcgi_pm_main(void *dummy, child_info *info)
                                 "FastCGI: can't start%s server \"%s\": spawn_fs_process() failed",
                                 (s->directive == APP_CLASS_DYNAMIC) ? " (dynamic)" : "",
                                 s->fs_path);
-                            
+
                             /* do not restart failed dynamic apps */
                             if (s->directive != APP_CLASS_DYNAMIC) {
                                 sleepSeconds = min(sleepSeconds,
@@ -1082,7 +1082,7 @@ int fcgi_pm_main(void *dummy, child_info *info)
                             ap_log_error(FCGI_LOG_WARN_NOERRNO, fcgi_apache_main_server,
                                 "FastCGI:%s server \"%s\" (uid %ld, gid %ld) %sstarted (pid %ld)",
                                 (s->directive == APP_CLASS_DYNAMIC) ? " (dynamic)" : "",
-                                s->fs_path, (long)s->uid, (long)s->gid, 
+                                s->fs_path, (long)s->uid, (long)s->gid,
                                 restart ? "re" : "", (long)s->procs[i].pid);
                         }
                         else {
@@ -1147,9 +1147,9 @@ int fcgi_pm_main(void *dummy, child_info *info)
             continue;
         }
 
-        /* We've caught SIGCHLD, so find out who it was using waitpid,  
+        /* We've caught SIGCHLD, so find out who it was using waitpid,
          * write a log message and update its data structure. */
-         
+
         for (;;) {
             if (caught_sigterm())
                 goto ProcessSigTerm;
@@ -1172,13 +1172,13 @@ int fcgi_pm_main(void *dummy, child_info *info)
                         goto ChildFound;
                 }
             }
-            
+
             /* @@@ This (comment) needs to go away when dynamic gets cleaned up.
              * If we get to this point, we have detected the
              * termination of the process that was spawned off by
              * the process manager to do a blocking kill above. */
             continue;
-            
+
 ChildFound:
             s->procs[i].pid = -1;
 
@@ -1186,19 +1186,19 @@ ChildFound:
                 /* Always restart static apps */
                 s->procs[i].state = STATE_NEEDS_STARTING;
                 s->numFailures++;
-            } 
+            }
             else {
                 s->numProcesses--;
                 fcgi_dynamic_total_proc_count--;
-                
+
                 if (s->procs[i].state == STATE_VICTIM) {
                     s->procs[i].state = STATE_KILLED;
                     continue;
-                } 
+                }
                 else {
                     /* A dynamic app died or exited without provacation from the PM */
                     s->numFailures++;
-                    
+
                     if (dynamicAutoRestart || s->numProcesses <= 0)
                         s->procs[i].state = STATE_NEEDS_STARTING;
                     else
@@ -1207,28 +1207,28 @@ ChildFound:
             }
 
             if (WIFEXITED(waitStatus)) {
-                ap_log_error(FCGI_LOG_WARN_NOERRNO, fcgi_apache_main_server, 
+                ap_log_error(FCGI_LOG_WARN_NOERRNO, fcgi_apache_main_server,
                     "FastCGI:%s server \"%s\" (pid %d) terminated by calling exit with status '%d'",
                     (s->directive == APP_CLASS_DYNAMIC) ? " (dynamic)" : "",
                     s->fs_path, (int)childPid, WEXITSTATUS(waitStatus));
-            } 
+            }
             else if (WIFSIGNALED(waitStatus)) {
-                ap_log_error(FCGI_LOG_WARN_NOERRNO, fcgi_apache_main_server, 
+                ap_log_error(FCGI_LOG_WARN_NOERRNO, fcgi_apache_main_server,
                     "FastCGI:%s server \"%s\" (pid %d) terminated due to uncaught signal '%d' (%s)%s",
                     (s->directive == APP_CLASS_DYNAMIC) ? " (dynamic)" : "",
                     s->fs_path, (int)childPid, WTERMSIG(waitStatus), SYS_SIGLIST[WTERMSIG(waitStatus)],
 #ifdef WCOREDUMP
                     WCOREDUMP(waitStatus) ? ", a core file may have been generated" : "");
 #else
-                    "");                    
-#endif                    
+                    "");
+#endif
             }
             else if (WIFSTOPPED(waitStatus)) {
-                ap_log_error(FCGI_LOG_WARN_NOERRNO, fcgi_apache_main_server, 
+                ap_log_error(FCGI_LOG_WARN_NOERRNO, fcgi_apache_main_server,
                     "FastCGI:%s server \"%s\" (pid %d) stopped due to uncaught signal '%d' (%s)",
                     (s->directive == APP_CLASS_DYNAMIC) ? " (dynamic)" : "",
                     s->fs_path, (int)childPid, WTERMSIG(waitStatus), SYS_SIGLIST[WTERMSIG(waitStatus)]);
-            } 
+            }
         } /* for (;;), waitpid() */
     } /* for (;;), the whole shoot'n match */
 
