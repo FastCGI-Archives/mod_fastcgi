@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_pm.c,v 1.49 2001/02/19 06:16:27 robs Exp $
+ * $Id: fcgi_pm.c,v 1.50 2001/03/05 14:20:20 robs Exp $
  */
 
 
@@ -680,8 +680,8 @@ static void schedule_start(fcgi_server *s, int proc)
     /* If we've started one recently, don't register another */
     time_t time_passed = now - s->restartTime;
 
-    if ((s->procs[proc].pid && time_passed < (int) s->restartDelay)
-        || (s->procs[proc].pid == 0 && time_passed < (int) s->initStartDelay))
+    if ((s->procs[proc].pid && (time_passed < (int) s->restartDelay))
+        || ((s->procs[proc].pid == 0) && (time_passed < (int) s->initStartDelay)))
     {
         FCGIDBG6("ignore_job: slot=%d, pid=%ld, time_passed=%ld, initStartDelay=%ld, restartDelay=%ld", proc, s->procs[proc].pid, time_passed, s->initStartDelay, s->restartDelay);
         return;
@@ -1358,7 +1358,7 @@ void child_wait_thread(void *dummy) {
                                 /* dynamic app shouldn't have died or dynamicAutoUpdate killed it*/
                                 s->numFailures++;
 
-                                if (dynamicAutoRestart) {
+                                if (dynamicAutoRestart || (s->numProcesses <= 0 && dynamicThreshold1 == 0)) {
                                     s->procs[i].state = STATE_NEEDS_STARTING;
                                 }
                                 else {
