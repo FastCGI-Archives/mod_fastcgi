@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.42 1998/08/04 17:04:04 roberts Exp $
+ *  $Id: mod_fastcgi.c,v 1.43 1998/08/05 15:15:55 roberts Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -634,18 +634,18 @@ int WS_Access(const char *path, struct stat *statBuf,
     char **names;
     struct group *grp;
     struct passwd *usr;
+    static struct stat staticStatBuf;
 
-    if(statBuf==NULL) {
-        statBuf = (struct stat *)fcgi_Malloc(sizeof(struct stat));
-        if(stat(path, statBuf) < 0) {
+    if (statBuf==NULL) {
+        statBuf = &staticStatBuf;
+        if (stat(path, statBuf) < 0) {
             return -1;
         }
     }
     /*
-     * If the user owns this file, check the owner bits.
+     * If the uid owns the file, check the owner bits.
      */
     if(uid == statBuf->st_uid) {
-        WS_SET_errno(EACCES);
         if((mode & R_OK) && !(statBuf->st_mode & S_IRUSR)) {
             goto no_access;
         }
@@ -664,10 +664,9 @@ int WS_Access(const char *path, struct stat *statBuf,
 #endif
 
     /*
-     * If the user's group owns this file, check the group bits.
+     * If the gid is same as the file's group, check the group bits.
      */
     if(gid == statBuf->st_gid) {
-        WS_SET_errno(EACCES);
         if((mode & R_OK) && !(statBuf->st_mode & S_IRGRP))
             goto no_access;
 
@@ -681,35 +680,27 @@ int WS_Access(const char *path, struct stat *statBuf,
     }
 
     /*
-     * Get the group information for the file group owner.  If the
-     * user is a member of that group, apply the group permissions.
+     * Get the user membership for the file's group.  If the
+     * uid is a member, check the group bits.
      */
     grp = getgrgid(statBuf->st_gid);
-    if(grp == NULL) {
-        return -1;
-    }
-
     usr = getpwuid(uid);
-    if(usr == NULL) {
-        return -1;
-    }
-
-    for(names = grp->gr_mem; *names != NULL; names++) {
-        if(!strcmp(*names, usr->pw_name)) {
-            WS_SET_errno(EACCES);
-            if((mode & R_OK) && !(statBuf->st_mode & S_IRGRP)) {
-                goto no_access;
+    if (grp && usr) {
+        for (names = grp->gr_mem; *names != NULL; names++) {
+            if (!strcmp(*names, usr->pw_name)) {
+                if ((mode & R_OK) && !(statBuf->st_mode & S_IRGRP)) {
+                    goto no_access;
+                }
+                if ((mode & W_OK) && !(statBuf->st_mode & S_IWGRP)) {
+                    goto no_access;
+                }
+                if ((mode & X_OK) && !(statBuf->st_mode & S_IXGRP)) {
+                    goto no_access;
+                }
+                return 0;
             }
-            if((mode & W_OK) && !(statBuf->st_mode & S_IWGRP)) {
-                goto no_access;
-            }
-            if((mode & X_OK) && !(statBuf->st_mode & S_IXGRP)) {
-                goto no_access;
-            }
-            return 0;
         }
     }
-
     /*
      * If no matching user or group information, use 'other'
      * access information.
