@@ -1,5 +1,17 @@
 Changes with mod_fastcgi 2.2.3
 
+ *) Fix dynamic server "Connection Refused" handling.
+
+ *) Fix demand-based dynamic process spawing (uses a more portable approach).
+
+ *) Add -idle-timeout arg to FastCgiServer, FastCgiExternalServer, and 
+    FastCgiConfig.  mod_fastcgi will now abort a connection if inactive for
+	longer than this period.  It applies to the initiation of connections as 
+	well (and thus is similar to appConnTimeout).  Default is 30 seconds.
+
+ *) appConnTimeout is 0 by default now resulting in blocking connect()s.  This
+    is more platform portable/predicable.
+
  *) Leave STDOUT and STDERR open to the main server error_log.  This should
     eliminate a pile of protocol errors and having to track down 3rd party
     libs writing to stderr inadvertantly.  This doesn't mean these shouldn't

@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.76 1999/09/03 19:04:43 roberts Exp $
+ *  $Id: mod_fastcgi.c,v 1.77 1999/09/08 03:49:43 roberts Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -808,7 +808,7 @@ static const char *open_connection_to_fs(fcgi_request *fr)
      * With dynamic I can at least make sure the PM knows this is occuring */
     if (fr->dynamic && errno == ECONNREFUSED) {
         /* @@@ This might be better as some other "kind" of message */
-        send_to_pm(rp, PLEASE_START, fr->fs_path, fr->user, fr->group, 0, 0, 0);
+        send_to_pm(rp, CONN_TIMEOUT, fr->fs_path, fr->user, fr->group, 0, 0, 0);
 
         errno = ECONNREFUSED;
     }

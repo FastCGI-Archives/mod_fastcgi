@@ -1,6 +1,6 @@
 <!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">
 <html>
-<!-- $Id: mod_fastcgi.html,v 1.12 1999/06/18 02:47:33 roberts Exp $ -->
+<!-- $Id: mod_fastcgi.html,v 1.13 1999/09/08 03:49:44 roberts Exp $ -->
 
 <head>
 <title>Apache module mod_fastcgi</title>
@@ -19,7 +19,7 @@ FastCGI is a language independent, scalable, open extension to CGI that provides
 performance and persistence without the limitations of server specific APIs.</p>
 
 <p>FastCGI applications are not limited to a particular development language (the protocol
-is open).&nbsp; FastCGI application libraries currently exist for Perl, C, Java, Python,
+is open).&nbsp; FastCGI application libraries currently exist for Perl, C/C++, Java, Python,
 and TCL.</p>
 
 <p>FastCGI applications use (TCP or Unix) sockets to communicate with the web server.
@@ -92,9 +92,14 @@ the specified extension(s) as FastCGI applications:</p>
   <h2>Notes</h2>
   <p><code>mod_fastcgi</code> logs FastCGI application error (stderr) output to the server
   log associated with the request.&nbsp; Errors reported by the FastCGI process manager,
-  fcgi-pm, are reported to the main server log (typically, logs/error_log).&nbsp; If
+  fcgi-pm, are reported to the main server log (typically, logs/error_log).&nbsp;
+  Data written to stdout or stderr before entering the FastCGI <em>accept</em>
+  loop or via a mechanism that is not FastCGI protocol aware will also be
+  directed to the main server log.&nbsp; If
   Apache's <a href="http://www.apache.org/docs/mod/core.html#loglevel"><code>LogLevel</code></a>
-  is set to <code>info</code> additional informational messages are printed to the log.</p>
+  is set to <code>info</code> additional informational messages are printed to the
+  logs, these messages may be especially helpful while debugging a
+  configuration..</p>
   <p>To pass per-request environment variables to FastCGI applications, have a look at: <a
   href="http://www.apache.org/docs/mod/mod_env.html"><code>mod_env</code></a> (<code>SetEnv</code>,
   <code>PassEnv</code>, <code>UnSetEnv</code>), <a
@@ -104,34 +109,45 @@ the specified extension(s) as FastCGI applications:</p>
   your feeling adventurous).</p>
   <p>FastCGI application output is buffered by default.&nbsp; This is not the case for CGI
   scripts (under Apache 1.3).&nbsp; To override the default behavior, use the -flush
-  option.&nbsp; Non-parsed header (nph-) scripts will be rejected by FastCGI simply as
+  option.&nbsp; Non-parsed header (nph-) scripts will be rejected by mod_fastcgi
+  simply as
   warning the behavior is different (create a symbolic link to the script without the
   &quot;nph-&quot; prefix if this poses a problem).</p>
   <p>Redirects are handled similar to CGI.&nbsp; Location headers with values that begin
   with &quot;/&quot; are treated as internal-redirects; otherwise, they are treated as
   external redirects (302).</p>
   <p>Session affinity (as well as distribution) should be achievable outside of <code>mod_fastcgi</code>
-  using <code>mod_rewrite</code>.&nbsp; If you get this working, please post the details to <a
+  using <a
+  href="http://www.apache.org/docs/mod/mod_rewrite.html"><code>mod_rewrite</code></a>.&nbsp; If you get this working, please post the details to <a
   href="mailto:fastcgi-developers@idle.com">fastcgi-developers@idle.com</a> so they can be
   included here.</p>
   <h2>FastCGI Specification Compliance</h2>
   <p>The FastCGI specification is not implemented in its entirety and I've deviated a bit as
   well resulting in some Apache specific features.</p>
-  <p>The Filter and Log Roles are not supported.&nbsp; The Filter Role has no place in
+  <p>The file descriptors for stdout and stderr are left open.&nbsp; This is
+  prohibited by the specification.&nbsp; I can't see any reason to require that
+  they be closed, and leaving them open prevents FastCGI applications which were
+  not completely ported to FastCGI from failing miserably.&nbsp; This does not
+  mean the applications shouldn't be fixed such that this doesn't occur, but is
+  invaluable when using a 3rd party library (without source code) which expects
+  to be able to write to stderr.&nbsp; Anything written to stdout or stderr in
+  this manner will be directed to the main server log.</p>
+  <p>The Filter and Log Roles are not supported.&nbsp; The Filter Role has
+  little value in
   Apache until the output of one handler can be piped into another (Apache 2.0 is expected
-  to support this).&nbsp; The Log Role has some value, but I just haven't implemented it (if
-  you have interest in it speak up).&nbsp; </p>
-  <p>Multiplexed requests are not supported. &nbsp; This means that each request requires
+  to support this).&nbsp; The Log Role has some value, but Apache's &quot;piped
+  logs&quot; feature is similar (and is even more CPU friendly). </p>
+  <p>Multiplexed requests are not supported. &nbsp; This does NOT mean FastCGI
+  applications can't be multithreaded.&nbsp; It means that each request requires
   its own independent connect()/accept().&nbsp; The protocol supports the concept of a
   connection simultaneously shared by multiple requests.&nbsp; The FastCGI application
   library which provides the FastCGI protocol support within FastCGI applications does not
   currently support it (and thus doesn't have to be supported here).&nbsp; This may become a
   higher priority when <code>mod_fastcgi</code> is ported to NT (Apache is threaded on
-  NT).&nbsp; </p>
-  <p>I don't believe any other existing FastCGI server implementation supports these
-  features.</p>
-  <p>The Authorizer Role has three variations corresponding to each three related Apache
-  specific request handling phases:&nbsp; Authentication, Authorization, and Access Control.
+  NT which makes shared persistent multiplexed connection more reasonable to
+  consider).&nbsp; </p>
+  <p>The Authorizer Role has three variations corresponding to each three
+  specific Apache request handling phases:&nbsp; Authentication, Authorization, and Access Control.
   &nbsp; <code>mod_fastcgi</code> sets up the (Apache specific) environment variable
   &quot;FCGI_APACHE_ROLE&quot; to indicate which Apache authorizer phase is being performed.</p>
   <p><code>mod_fastcgi</code> sends nearly all of the standard environment variables
@@ -143,9 +159,10 @@ the specified extension(s) as FastCGI applications:</p>
   calls for; I didn't see the point in leaving them out either.&nbsp; FastCGI specification
   compliant authorizer behavior can be obtained by using the &quot;<code>-compat</code>&quot;
   option to the Auth server directives.</p>
-  <p>Custom failure responses from FastCGI authorizer applications are not (yet?)
-  supported.&nbsp; See the <a href="http://www.apache.org/docs/mod/core.html#errordocument">ErrorDocument</a>
-  directive for a workaround (a FastCGI application can serve the document).</p>
+  <p>Custom failure responses from FastCGI authorizer applications are not
+  supported (speak up if you need this).&nbsp; See the <a href="http://www.apache.org/docs/mod/core.html#errordocument">ErrorDocument</a>
+  directive for a workaround (hint: a CGI/FastCGI application can serve the
+  error document).</p>
   <h2><a name="directives">Directives</a></h2>
   <ul>
     <li><a HREF="#FastCgiServer"><code>FastCgiServer</code></a></li>
@@ -184,23 +201,28 @@ the specified extension(s) as FastCGI applications:</p>
   <p>By default, the Process Manager will start one instance of the application with the
   default configuration specified (in parenthesis) below.&nbsp; Should a static application
   instance die for any reason <code>mod_fastcgi</code> will spawn another to replace it and
-  log the event.</p>
+  log the event (at the <code>warn</code> <a href="http://www.apache.org/docs/mod/core.html#loglevel"><code>LogLevel</code></a>).</p>
   <p><em>Option</em> can be one of (case insensitive):</p>
-  <dt><code><b>-appConnTimeout <em>n</em></b>&nbsp;(15 seconds)</code></dt>
-  <dd>The number of seconds to wait for a connection to the FastCGI application to complete.
-    If the timeout expires, a&nbsp; SERVER_ERROR results.&nbsp; This is the amount of time
-    used in a <code>select()</code> to write to the file descriptor returned by a non-blocking
-    <code>connect().</code>&nbsp; Unix sockets appear to be handled differently than TCP
-    sockets on many platforms.&nbsp; TCP sockets will become writeable as soon as a slot in
-    the listen-queue is obtained (the three-way handshake completes), but before the
-    connection is <code>accept()</code>ed by the application.&nbsp; Unix sockets appear to
-    need the connection to be <code>accept()</code>ed before becoming writeable.&nbsp; If set
-    to 0, a blocking <code>connect()</code> is used and the timeout is OS dependent. &nbsp;
-    Non-blocking <code>connect()</code>s can be troublesome and will likely become optional
-    rather than the default in the next release.</dd>
-  <dt><code><b>-initial-env <em>name[=value</b><strong>]</strong> none</em></code></dt>
-  <dd>A name-value pair to be passed in the initial environment when instances of the
-    application are spawned.&nbsp; To pass a variable from the Apache environment, don't
+  <dt><code><b>-appConnTimeout <em>n</em></b>&nbsp;(0 seconds)</code></dt>
+  <dd>The number of seconds to wait for a connection to the FastCGI application to
+    complete or 0 to indicate a blocking <code>connect()</code> should be
+    used.&nbsp; If the timeout expires, a&nbsp; SERVER_ERROR results.&nbsp; For
+    non-zero values, this is the amount of time used in a <code>select()</code> 
+    to write to the file descriptor returned by a non-blocking
+    <code>connect().</code>&nbsp; Non-blocking <code>connect()</code>s are troublesome
+    on many platforms.&nbsp; See also -idle-timeout, it produces similar results
+    but in a more portable manner.</dd>
+  <dt><code><b>-idle-timeout <em>n</em></b>&nbsp;(30 seconds)</code></dt>
+  <dd>The number of seconds of FastCGI application inactivity allowed before the
+    request is aborted and the event is logged (at the <code>error</code> <a href="http://www.apache.org/docs/mod/core.html#loglevel"><code>LogLevel</code></a>).&nbsp;
+    The inactivity timer applies only as long as a connection is pending with
+    the FastCGI application.&nbsp; If a request is queued to an application, but
+    the application doesn't respond (by writing and flushing) within this
+    period, the request will be aborted.&nbsp; If communication is complete with
+    the application but incomplete with the client (the response is buffered),
+    the timeout does not apply.</dd>
+  <dt><code><b>-initial-env <em>name[=value</b><strong>]</strong> none</em></b><em><strong>]</strong> none</em></code></dt>
+  <dd>A name-value pair to be passed in the FastCGI application's&nbsp; <i> initial</i> environment.&nbsp; To pass a variable from Apache's environment, don't
     provide the &quot;=&quot; (if the variable isn't actually in the environment, it will be
     defined without a value).&nbsp; To define a variable without a value, provide the
     &quot;=&quot; without any value.&nbsp; The option can be used repeatedly.</dd>
@@ -216,6 +238,10 @@ the specified extension(s) as FastCGI applications:</p>
     load fluctuations without rejecting requests; it does not increase throughput. &nbsp;
     Adding additional application instances may increase throughput/performance, depending
     upon the application and the host. </dd>
+  <dt><code><b>-pass-header <em>header </em></b><em> none</em></code></dt>
+  <dd>The name of an HTTP Request Header to be passed in the <i>request</i>
+    environment.&nbsp; This option makes available the contents of headers which
+    are normally not available (e.g. Authorization) to a CGI environment. </dd>
   <dt><code><b>-processes <em>n</em> </b>(1)</code></dt>
   <dd>The number of instances of the application to spawn at server initialization. </dd>
   <dt><code><b>-priority <em>n</em></b> (0)</code></dt>
@@ -254,29 +280,35 @@ the specified extension(s) as FastCGI applications:</p>
       <td>server config</td>
     </tr>
   </table>
-  <p>The <code>FastCgiConfig</code> directive defines the default parameters for dynamic
-  FastCGI applications.&nbsp; It currently has a &quot;server config&quot; context, which
-  means there can be only one FastCgiConfig directive.&nbsp; Eventually it will have a
-  &quot;directory&quot; context.&nbsp; This directive does not affect static or external
+  <p>The <code>FastCgiConfig</code> directive defines the default parameters for
+  <i>all</i> dynamic
+  FastCGI applications.&nbsp; This directive does not affect static or external
   applications in any way.</p>
   <p>Dynamic applications are not started at server initialization, but upon demand. &nbsp;
   If the demand is heavy, additional application instances are started.&nbsp; As the demand
   fades, application instances are killed off.&nbsp; Many of the options govern this
   process.</p>
   <p><em>Option</em> can be one of (case insensitive):</p>
-  <dt><code><b>-appConnTimeout <em>n</em></b>&nbsp;(15 seconds)</code></dt>
-  <dd>The number of seconds to wait for a connection to the FastCGI application to complete.
-    If the timeout expires, a&nbsp; SERVER_ERROR results.&nbsp; The <code>startDelay</code>
-    must be smaller than <code>appConnTimeout</code> to be effective.&nbsp; This is the amount
-    of time used in a <code>select()</code> to write to the file descriptor returned by a
-    non-blocking <code>connect().</code>&nbsp; Unix sockets appear to be handled differently
-    than TCP sockets on many platforms.&nbsp; TCP sockets will become writeable as soon as a
-    slot in the listen-queue is obtained (the three-way handshake completes), but before the
-    connection is <code>accept()</code>ed by the application.&nbsp; Unix sockets appear to
-    need the connection to be <code>accept()</code>ed before becoming writeable.&nbsp; If set
-    to 0, a blocking <code>connect()</code> is used and the timeout is OS dependent. &nbsp;
-    Non-blocking <code>connect()</code>s can be troublesome and will likely become optional
-    rather than the default in the next release.</dd>
+  <dt><code><b>-appConnTimeout <em>n</em></b>&nbsp;(0 seconds)</code></dt>
+  <dd>The number of seconds to wait for a connection to the FastCGI application to
+    complete or 0 to indicate a blocking <code>connect()</code> should be
+    used.&nbsp;
+    If the timeout expires, a&nbsp; SERVER_ERROR results.&nbsp; For non-zero
+    values, this is the amount of time used in a <code>select()</code>  to write
+    to the file descriptor returned by a non-blocking
+    <code>connect().</code>&nbsp;
+    Non-blocking <code>connect()</code>s are troublesome on many
+    platforms.&nbsp; See also -idle-timeout, it produces similar results but in
+    a more portable manner.</dd>
+  <dt><code><b>-idle-timeout <em>n</em></b>&nbsp;(30 seconds)</code></dt>
+  <dd>The number of seconds of FastCGI application inactivity allowed before the
+    request is aborted and the event is logged (at the <code>error</code> <a href="http://www.apache.org/docs/mod/core.html#loglevel"><code>LogLevel</code></a>).&nbsp;
+    The inactivity timer applies only as long as a connection is pending with
+    the FastCGI application.&nbsp; If a request is queued to an application, but
+    the application doesn't respond (by writing and flushing) within this
+    period, the request will be aborted.&nbsp; If communication is complete with
+    the application but incomplete with the client (the response is buffered),
+    the timeout does not apply.</dd>
   <dt><code><strong>-autoUpdate</strong> <em>none</em></code></dt>
   <dd>This option causes mod_fastcgi to check the age of the application on disk before
     processing each request.&nbsp; If the application is more recent, the process manager is
@@ -324,6 +356,10 @@ the specified extension(s) as FastCGI applications:</p>
     currently running, this attribute will be used to decide whether one of them should be
     terminated.&nbsp; If only one instance remains, <code>singleTHreshhold</code> is used
     instead.</dd>
+  <dt><code><b>-pass-header <em>header </em></b><em> none</em></code></dt>
+  <dd>The name of an HTTP Request Header to be passed in the <i>request</i>
+    environment.&nbsp; This option makes available the contents of headers which
+    are normally not available (e.g. Authorization) to a CGI environment. </dd>
   <dt><code><b>-priority <em>n</em></b> (0)</code></dt>
   <dd>The process priority to be assigned to the application instances (using <code>setpriority()</code>).</dd>
   <dt><code><b>-processSlack <em>n</em></b> (5 seconds)</code></dt>
@@ -378,17 +414,28 @@ the specified extension(s) as FastCGI applications:</p>
   href="http://www.apache.org/docs/mod/core.html#serverroot">ServerRoot</a>. </p>
   <p>External FastCGI applications are not started by the process manager, they are presumed
   to be started and managed &quot;external&quot; to Apache and mod_fastcgi.&nbsp; The
-  FastCGI devkit provides a simple tool for starting FastCGI applications independent of the
-  server.</p>
-  <dt><code><b>-appConnTimeout <em>n</em></b>&nbsp;(15 seconds)</code></dt>
-  <dd>The number of seconds to wait for a connection to the FastCGI application to complete.
-    If the timeout expires, a&nbsp; SERVER_ERROR results.&nbsp; This is the amount of time
-    used in a <code>select()</code> to write to the file descriptor returned by a non-blocking
-    <code>connect().</code>&nbsp; Unix sockets appear to be handled differently than TCP
-    sockets on many platforms.&nbsp; TCP sockets will become writeable as soon as a slot in
-    the listen-queue is obtained (the three-way handshake completes), but before the
-    connection is <code>accept()</code>ed by the application.&nbsp; Unix sockets appear to
-    need the connection to be <code>accept()</code>ed before becoming writeable.</dd>
+  FastCGI devkit provides a simple tool, <code>cgi-fcgi</code>,&nbsp; for starting FastCGI applications independent of the
+  server (applications can also be <i>self-starting</i>, see the devkit).</p>
+  <dt><code><b>-appConnTimeout <em>n</em></b>&nbsp;(0 seconds)</code></dt>
+  <dd>The number of seconds to wait for a connection to the FastCGI application to
+    complete or 0 to indicate a blocking <code>connect()</code> should be
+    used.&nbsp;
+    If the timeout expires, a&nbsp; SERVER_ERROR results.&nbsp; For non-zero
+    values, this is the amount of time used in a <code>select()</code>  to write
+    to the file descriptor returned by a non-blocking
+    <code>connect().</code>&nbsp;
+    Non-blocking <code>connect()</code>s are troublesome on many
+    platforms.&nbsp; See also -idle-timeout, it produces similar results but in
+    a more portable manner.</dd>
+  <dt><code><b>-idle-timeout <em>n</em></b>&nbsp;(30 seconds)</code></dt>
+  <dd>The number of seconds of FastCGI application inactivity allowed before the
+    request is aborted and the event is logged (at the <code>error</code> <a href="http://www.apache.org/docs/mod/core.html#loglevel"><code>LogLevel</code></a>).&nbsp;
+    The inactivity timer applies only as long as a connection is pending with
+    the FastCGI application.&nbsp; If a request is queued to an application, but
+    the application doesn't respond (by writing and flushing) within this
+    period, the request will be aborted.&nbsp; If communication is complete with
+    the application but incomplete with the client (the response is buffered),
+    the timeout does not apply.</dd>
   <dt><code><strong>-flush</strong>&nbsp;<em>none</em></code></dt>
   <dd>Force a write to the client as data is received from the application.&nbsp; By default, <code>mod_fastcgi</code>
     buffers data in order to free the application as quickly as possible.</dd>
@@ -396,6 +443,10 @@ the specified extension(s) as FastCGI applications:</p>
   <dd>The hostname or IP address and TCP port number (1-65535) the application uses for
     communication with the web server. The <code>-socket</code> and <code>-host</code> options
     are mutually exclusive.</dd>
+  <dt><code><b>-pass-header <em>header </em></b><em>none</em></code></dt>
+  <dd>The name of an HTTP Request Header to be passed in the <i>request</i>
+    environment.&nbsp; This option makes available the contents of headers which
+    are normally not available (e.g. Authorization) to a CGI environment. </dd>
   <dt><code><b>-socket<em> filename</em>&nbsp;</b><em>none</em></code></dt>
   <dd>The filename of the Unix domain socket the application uses for communication with the
     web server.&nbsp; The filename is relative to the <code>FastCgiIpcDir</code>.&nbsp; The <code>-socket</code>
