@@ -1,9 +1,9 @@
 # Based on Microsoft Developer Studio Generated NMAKE File, Based on mod_fastcgi.dsp
 #
-# $Id: Makefile.nt,v 1.1 2000/04/27 04:41:35 robs Exp $
+# $Id: Makefile.nt,v 1.2 2000/05/10 05:19:04 robs Exp $
 #
 
-APACHE_SRC_DIR=D:\Documents and Settings\robs\My Documents\Apache\apache_1.3.11\src
+APACHE_SRC_DIR=D:\Documents and Settings\robs\My Documents\Apache\apache_1.3.12\src
 
 !IF "$(CFG)" == ""
 CFG=debug
