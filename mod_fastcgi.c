@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.78 1999/09/10 02:05:23 roberts Exp $
+ *  $Id: mod_fastcgi.c,v 1.79 1999/09/10 04:37:42 roberts Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -119,7 +119,7 @@ char *fcgi_dynamic_dir = NULL;            /* directory for the dynamic
 char *fcgi_dynamic_mbox = NULL;           /* file through which the fcgi
                                                   * procs communicate with WS */
 
-const char * const fcgi_empty_env = NULL;
+char *fcgi_empty_env = NULL;
 
 u_int dynamicMaxProcs = FCGI_DEFAULT_MAX_PROCS;
 u_int dynamicMinProcs = FCGI_DEFAULT_MIN_PROCS;
@@ -131,7 +131,7 @@ u_int dynamicThreshhold1 = FCGI_DEFAULT_THRESHHOLD_1;
 u_int dynamicThreshholdN = FCGI_DEFAULT_THRESHHOLD_N;
 u_int dynamicPleaseStartDelay = FCGI_DEFAULT_START_PROCESS_DELAY;
 u_int dynamicAppConnectTimeout = FCGI_DEFAULT_APP_CONN_TIMEOUT;
-const char **dynamicEnvp = &fcgi_empty_env;
+char **dynamicEnvp = &fcgi_empty_env;
 u_int dynamicProcessSlack = FCGI_DEFAULT_PROCESS_SLACK;
 int dynamicAutoRestart = FCGI_DEFAULT_RESTART_DYNAMIC;
 int dynamicAutoUpdate = FCGI_DEFAULT_AUTOUPDATE;

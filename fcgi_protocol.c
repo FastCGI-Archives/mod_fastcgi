@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_protocol.c,v 1.8 1999/08/15 20:45:34 roberts Exp $
+ * $Id: fcgi_protocol.c,v 1.9 1999/09/10 04:37:40 roberts Exp $
  */
 
 
@@ -401,7 +401,7 @@ int fcgi_protocol_dequeue(pool *p, fcgi_request *fr)
                         ap_log_rerror(FCGI_LOG_ERR_NOERRNO, fr->r,
                             "FastCGI: server \"%s\" stderr: %s...", fr->fs_path, fr->fs_stderr);
                         *fr->fs_stderr = '\0';
-                        ap_log_rerror(FCGI_LOG_WARNING_NOERRNO, fr->r,
+                        ap_log_rerror(FCGI_LOG_WARN_NOERRNO, fr->r,
                             "FastCGI: too much stderr received from server \"%s\", %d bytes discarded, "
                             "increase FCGI_SERVER_MAX_STDERR_LINE_LEN (%d) and rebuild "
                             "or use \"\\n\" to terminate lines",

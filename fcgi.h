@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi.h,v 1.15 1999/09/10 02:05:20 roberts Exp $
+ * $Id: fcgi.h,v 1.16 1999/09/10 04:37:38 roberts Exp $
  */
 
 #ifndef FCGI_H
@@ -63,7 +63,7 @@ typedef struct _FastCgiServerInfo {
     const char *fs_path;            /* pathname of executable */
 	array_header *pass_headers;		/* names of headers to pass in the env */
 	u_int idle_timeout;             /* fs idle secs allowed before aborting */
-    const char **envp;              /* if NOT NULL, this is the env to send
+    char **envp;              /* if NOT NULL, this is the env to send
                                      * to the fcgi app when starting a server
                                      * managed app. */
     u_int listenQueueDepth;         /* size of listen queue for IPC */
@@ -203,7 +203,7 @@ typedef struct
 #define	FCGI_LOG_ALERT    __FILE__,__LINE__,APLOG_ALERT		/* action must be taken immediately */
 #define	FCGI_LOG_CRIT     __FILE__,__LINE__,APLOG_CRIT		/* critical conditions */
 #define	FCGI_LOG_ERR      __FILE__,__LINE__,APLOG_ERR		/* error conditions */
-#define	FCGI_LOG_WARNING  __FILE__,__LINE__,APLOG_WARNING	/* warning conditions */
+#define	FCGI_LOG_WARN     __FILE__,__LINE__,APLOG_WARNING	/* warning conditions */
 #define	FCGI_LOG_NOTICE   __FILE__,__LINE__,APLOG_NOTICE	/* normal but significant condition */
 #define	FCGI_LOG_INFO     __FILE__,__LINE__,APLOG_INFO		/* informational */
 #define	FCGI_LOG_DEBUG    __FILE__,__LINE__,APLOG_DEBUG		/* debug-level messages */
@@ -212,7 +212,7 @@ typedef struct
 #define	FCGI_LOG_ALERT_NOERRNO    __FILE__,__LINE__,APLOG_ALERT|APLOG_NOERRNO
 #define	FCGI_LOG_CRIT_NOERRNO     __FILE__,__LINE__,APLOG_CRIT|APLOG_NOERRNO
 #define	FCGI_LOG_ERR_NOERRNO      __FILE__,__LINE__,APLOG_ERR|APLOG_NOERRNO
-#define	FCGI_LOG_WARNING_NOERRNO  __FILE__,__LINE__,APLOG_WARNING|APLOG_NOERRNO
+#define	FCGI_LOG_WARN_NOERRNO     __FILE__,__LINE__,APLOG_WARNING|APLOG_NOERRNO
 #define	FCGI_LOG_NOTICE_NOERRNO   __FILE__,__LINE__,APLOG_NOTICE|APLOG_NOERRNO
 #define	FCGI_LOG_INFO_NOERRNO     __FILE__,__LINE__,APLOG_INFO|APLOG_NOERRNO
 #define	FCGI_LOG_DEBUG_NOERRNO    __FILE__,__LINE__,APLOG_DEBUG|APLOG_NOERRNO
@@ -347,7 +347,7 @@ extern char *fcgi_dynamic_dir;            /* directory for the dynamic
                                            * fastcgi apps' sockets */
 extern char *fcgi_dynamic_mbox;           /* file through which the fcgi */
 
-extern const char * const fcgi_empty_env;
+extern char *fcgi_empty_env;
 
 extern int fcgi_dynamic_total_proc_count;
 extern time_t fcgi_dynamic_epoch;
@@ -363,7 +363,7 @@ extern u_int dynamicThreshhold1;
 extern u_int dynamicThreshholdN;
 extern u_int dynamicPleaseStartDelay;
 extern u_int dynamicAppConnectTimeout;
-extern const char **dynamicEnvp;
+extern char **dynamicEnvp;
 extern u_int dynamicProcessSlack;
 extern int dynamicAutoRestart;
 extern int dynamicAutoUpdate;

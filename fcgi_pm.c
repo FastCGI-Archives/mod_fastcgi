@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_pm.c,v 1.10 1999/09/10 03:04:42 roberts Exp $
+ * $Id: fcgi_pm.c,v 1.11 1999/09/10 04:37:40 roberts Exp $
  */
 
 #include "fcgi.h"
@@ -79,7 +79,7 @@ static const char *bind_n_listen(pool *p, struct sockaddr *socket_addr,
 
     /* Bind it to the socket_addr */
     if (bind(sock, socket_addr, socket_addr_len) != 0)
-        return ap_pstrcat(p, "bind() failed: ", strerror(errno), NULL);
+        return "bind() failed";
 
     /* Twiddle ownership and permissions */
     if (socket_addr->sa_family == AF_UNIX) {
@@ -88,16 +88,16 @@ static const char *bind_n_listen(pool *p, struct sockaddr *socket_addr,
         if (geteuid() == 0 &&
                 chown(((struct sockaddr_un *)socket_addr)->sun_path, 
                       ap_user_id, ap_group_id) != 0)
-            return ap_pstrcat(p, "chown() of socket failed: ", strerror(errno), NULL);
+            return "chown() of socket failed";
 #endif
         if (chmod(((struct sockaddr_un *)socket_addr)->sun_path,
                   S_IRUSR | S_IWUSR) != 0)
-            return ap_pstrcat(p, "chmod() of socket failed: ", strerror(errno), NULL);
+            return "chmod() of socket failed";
     }
 
     /* Set to listen */
     if (listen(sock, backlog) != 0)
-        return ap_pstrcat(p, "listen() failed: ", strerror(errno), NULL);
+        return "listen() failed";
 
     return NULL;
 }
@@ -231,7 +231,7 @@ static int spawn_fs_process(
         int listenFd,
         int priority,
         const char *programName,
-        const char **envPtr,
+        char **envPtr,
         const char *user,
         const char *group)
 {
@@ -665,7 +665,7 @@ NothingToDo:
             case CONN_TIMEOUT:
                 if ((s->numProcesses + 1) > dynamicMaxClassProcs) {
                     /* Can't do anything here, log error */
-                    ap_log_error(FCGI_LOG_WARNING_NOERRNO, fcgi_apache_main_server, 
+                    ap_log_error(FCGI_LOG_WARN_NOERRNO, fcgi_apache_main_server, 
                         "FastCGI: can't schedule the start of another (dynamic) server \"%s\" process: "
                         "exceeded dynamicMaxClassProcs (%d)", s->fs_path, dynamicMaxClassProcs);
                     continue;
@@ -676,7 +676,7 @@ NothingToDo:
                      * terminated beforehand, probably need
                      * to increase ProcessSlack parameter
                      */
-                    ap_log_error(FCGI_LOG_WARNING_NOERRNO, fcgi_apache_main_server, 
+                    ap_log_error(FCGI_LOG_WARN_NOERRNO, fcgi_apache_main_server, 
                         "FastCGI: can't schedule the start of another (dynamic) server \"%s\" process: "
                         "exceeded dynamicMaxProcs (%d)", s->fs_path, dynamicMaxProcs);
                     continue;
@@ -930,7 +930,7 @@ int fcgi_pm_main(void *dummy, child_info *info)
     ap_destroy_pool(tp);
     
     ap_log_error(FCGI_LOG_NOTICE_NOERRNO, fcgi_apache_main_server, 
-        "FastCGI: process manager initialized (pid %ld)", fcgi_pm_pid);
+        "FastCGI: process manager initialized (pid %ld)", (long)getpid());
 
     /*
      * Loop until SIGTERM
@@ -1154,13 +1154,13 @@ ChildFound:
             }
 
             if (WIFEXITED(waitStatus)) {
-                ap_log_error(FCGI_LOG_WARNING_NOERRNO, fcgi_apache_main_server, 
+                ap_log_error(FCGI_LOG_WARN_NOERRNO, fcgi_apache_main_server, 
                     "FastCGI:%s server \"%s\" (pid %d) terminated by calling exit with status '%d'",
                     (s->directive == APP_CLASS_DYNAMIC) ? " (dynamic)" : "",
                     s->fs_path, (int)childPid, WEXITSTATUS(waitStatus));
             } 
             else if (WIFSIGNALED(waitStatus)) {
-                ap_log_error(FCGI_LOG_WARNING_NOERRNO, fcgi_apache_main_server, 
+                ap_log_error(FCGI_LOG_WARN_NOERRNO, fcgi_apache_main_server, 
                     "FastCGI:%s server \"%s\" (pid %d) terminated due to uncaught signal '%d' (%s)%s",
                     (s->directive == APP_CLASS_DYNAMIC) ? " (dynamic)" : "",
                     s->fs_path, (int)childPid, WTERMSIG(waitStatus), SYS_SIGLIST[WTERMSIG(waitStatus)],
@@ -1171,7 +1171,7 @@ ChildFound:
 #endif                    
             }
             else if (WIFSTOPPED(waitStatus)) {
-                ap_log_error(FCGI_LOG_WARNING_NOERRNO, fcgi_apache_main_server, 
+                ap_log_error(FCGI_LOG_WARN_NOERRNO, fcgi_apache_main_server, 
                     "FastCGI:%s server \"%s\" (pid %d) stopped due to uncaught signal '%d' (%s)",
                     (s->directive == APP_CLASS_DYNAMIC) ? " (dynamic)" : "",
                     s->fs_path, (int)childPid, WTERMSIG(waitStatus), SYS_SIGLIST[WTERMSIG(waitStatus)]);

@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_config.c,v 1.13 1999/09/10 02:05:21 roberts Exp $
+ * $Id: fcgi_config.c,v 1.14 1999/09/10 04:37:39 roberts Exp $
  */
 
 #include "fcgi.h"
@@ -80,9 +80,9 @@ static const char *get_float(pool *p, const char **arg,
  * Get the next configuration directive argument, & add it to an env array.
  * The pool arg should be permanent storage.
  */
-static const char *get_env_var(pool *p, const char **arg, const char **envp, int *envc)
+static const char *get_env_var(pool *p, const char **arg, char **envp, int *envc)
 {
-    const char * const val = ap_getword_conf(p, arg);
+    char * const val = ap_getword_conf(p, arg);
 
     if (*val == '\0')
         return "\"\"";
@@ -414,7 +414,7 @@ const char *fcgi_config_new_static_server(cmd_parms *cmd, void *dummy, const cha
     const char *option, *err;
 
     /* Allocate temp storage for the array of initial environment variables */
-    const char **envp = ap_pcalloc(tp, sizeof(char *) * (MAX_INIT_ENV_VARS + 1));
+    char **envp = ap_pcalloc(tp, sizeof(char *) * (MAX_INIT_ENV_VARS + 1));
     int envc = 0;
 
     if (*fs_path == '\0')
@@ -546,7 +546,7 @@ const char *fcgi_config_new_static_server(cmd_parms *cmd, void *dummy, const cha
 
     /* If -intial-env option was used, move env array to a surviving pool */
     if (envc++) {
-        s->envp = (const char **)ap_palloc(p, sizeof(char *) * envc);
+        s->envp = (char **)ap_palloc(p, sizeof(char *) * envc);
         memcpy(s->envp, envp, sizeof(char *) * envc);
     }
 
@@ -702,7 +702,7 @@ const char *fcgi_config_set_config(cmd_parms *cmd, void *dummy, const char *arg)
 
     /* Allocate temp storage for an initial environment */
     int envc = 0;
-    const char **envp = (const char **)ap_pcalloc(tp, sizeof(char *) * (MAX_INIT_ENV_VARS + 1));
+    char **envp = (char **)ap_pcalloc(tp, sizeof(char *) * (MAX_INIT_ENV_VARS + 1));
 
     /* Parse the directive arguments */
     while (*arg) {
@@ -789,7 +789,7 @@ const char *fcgi_config_set_config(cmd_parms *cmd, void *dummy, const char *arg)
 
     /* If -intial-env option was used, move env array to a surviving pool */
     if (envc++) {
-        dynamicEnvp = (const char **)ap_palloc(p, sizeof(char *) * envc);
+        dynamicEnvp = (char **)ap_palloc(p, sizeof(char *) * envc);
         memcpy(dynamicEnvp, envp, sizeof(char *) * envc);
     }
 
