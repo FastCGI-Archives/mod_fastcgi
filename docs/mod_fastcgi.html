@@ -1,6 +1,6 @@
 <!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">
 <HTML>
-    <!-- $Id: mod_fastcgi.html,v 1.30 2001/12/18 01:54:42 robs Exp $ -->
+    <!-- $Id: mod_fastcgi.html,v 1.31 2002/03/01 13:44:14 robs Exp $ -->
     <HEAD>
         <TITLE>
             Apache module mod_fastcgi
@@ -794,7 +794,7 @@
                 <TD>
                 </TD>
                 <TD>
-                    <STRONG>Windows NT:&nbsp;</STRONG> <CODE>FastCgiIpcDir \\.\pipe\ModFastCgi\</CODE> 
+                    <STRONG>Windows NT:&nbsp;</STRONG> <CODE>FastCgiIpcDir \\\\.\\pipe\\ModFastCgi\\</CODE> 
                 </TD>
             </TR>
             <TR>
@@ -818,10 +818,10 @@
             <CODE>mod_fastcgi</CODE> will break if your system periodically deletes files from <CODE>/tmp</CODE>.
         </P>
         <P>
-            <STRONG>Windows NT:&nbsp;</STRONG> The <CODE>FastCgiIpcDir</CODE> directive specifies <EM>name</EM> as the
-            root for the named pipes used for communication between the application and the web server. The
-            <EM>name</EM> must be in the form of <STRONG>\\.\pipe\</STRONG><EM>pipename.</EM> The <EM>pipename</EM>
-            part can contain any character other than a backslash
+            <STRONG>Windows NT:&nbsp;</STRONG> The <CODE>FastCgiIpcDir</CODE> directive specifies <EM>name</EM> as
+            the root for the named pipes used for communication between the application and the web server. The
+            <EM>name</EM> must be in the form of <STRONG>\\\\.\\pipe\\</STRONG><EM>pipename</EM> (notice that the
+            backslashes are escaped). The <EM>pipename</EM> can contain any character other than a backslash.
         </P>
         <P>
             The <CODE>FastCgiIpcDir</CODE> directive must precede any <A HREF=
@@ -829,6 +829,10 @@
             "#FastCgiExternalServer"><CODE>FastCgiExternalServer</CODE></A> directives (which make use of Unix
             sockets). The directory must be readable, writeable, and executable (searchable) by the web server, but
             otherwise should not be accessible to anyone.
+        </P>
+        <P>
+            <CODE>FastCgiIpcDir</CODE> is typically used move the directory someplace more suitable (than the default)
+            for the platform or to prevent multiple Apache instances from sharing FastCGI application instances.
         </P>
         <HR>
         <H2>
