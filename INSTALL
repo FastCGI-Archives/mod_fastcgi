@@ -13,9 +13,9 @@ Notes
 
   The FastCGI Module has not been tested on all of the Apache supported
   platforms.  These are known to work: SunOS, Solaris, SCO, Linux, Digital
-  Unix, and QNX (Inet sockets only).  Windows is not currently supported.
-  If your successful in using this module on other platforms, please email
-  fastcgi-developers@idle.com.
+  Unix, IRIX, FreeBSD and QNX (Inet sockets only).  Windows is not currently
+  supported.  If your successful in using this module on other platforms, 
+  please email fastcgi-developers@idle.com.
 
   This module is maintained at http://www.FastCGI.com.  
   
@@ -31,12 +31,14 @@ Notes
 Introduction
 ============
 
-  As of Apache 1.3, there are two approaches to configure, compile, and
-  install Apache.
+  There are three approaches to configure, compile, and install Apache.
 
     o APACI - (Apache 1.3+) described in <apache_dir>/INSTALL
 
-    o manual - (original) described in <apache_dir>/src/INSTALL.
+    o manual - (original) described in <apache_dir>/src/INSTALL
+    
+    o DSO (Dynamic Shared Object) - described in 
+      <apache_dir>/htdocs/manual/dso.html
     
   If you have a binary Apache distribution, such as Red Hat's Secure
   Server (or prefer a DSO based Apache), you have to build mod_fastcgi as a

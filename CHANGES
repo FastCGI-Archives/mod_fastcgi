@@ -1,5 +1,8 @@
 Changes with mod_fastcgi 2.2.2
 
+ *) Added IRIX and FreeBSD to the list of supported platforms and other minor
+    updates to the INSTALL doc.
+
  *) Changed the default listen-queue-depth (FCGI_DEFAULT_LISTEN_Q) from
     5 to 100.  Its still configurable with the --listen-queue-depth option.
     This should help eliminate the FAQ - Why do I see "Connection Refused"
