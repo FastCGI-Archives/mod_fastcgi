@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.63 1999/02/20 05:16:57 roberts Exp $
+ *  $Id: mod_fastcgi.c,v 1.64 1999/02/20 05:24:38 roberts Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -1139,7 +1139,7 @@ static fcgi_request *create_fcgi_request(request_rec * const r, const char *fs_p
     fr->erBufPtr = fcgi_buf_new(p, sizeof(FCGI_EndRequestBody) + 1);
     fr->gotHeader = FALSE;
     fr->parseHeader = SCAN_CGI_READING_HEADERS;
-    fr->header = NULL;
+    fr->header = ap_make_array(p, 1, 1);
     fr->fs_stderr = NULL;
     fr->r = r;
     fr->readingEndRequestBody = FALSE;

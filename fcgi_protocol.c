@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_protocol.c,v 1.2 1999/02/15 02:41:41 roberts Exp $
+ * $Id: fcgi_protocol.c,v 1.3 1999/02/20 05:24:37 roberts Exp $
  */
  
 
@@ -312,8 +312,6 @@ int fcgi_protocol_dequeue(pool *p, fcgi_request *fr)
                 if (len > 0) {
                     switch(fr->parseHeader) {
                         case SCAN_CGI_READING_HEADERS:
-                            if (fr->header == NULL)
-                                fr->header = ap_make_array(p, len, 1);
                             fcgi_buf_get_to_array(fr->serverInputBuffer, fr->header, len);
                             break;
                         case SCAN_CGI_FINISHED:

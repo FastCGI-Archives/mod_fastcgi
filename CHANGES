@@ -1,5 +1,9 @@
 Changes with mod_fastcgi 2.2.1
 
+ *) Always setup fr->header so that in the event the FastCGI server
+    doesn't get a valid FastCGI protocol header over the wire, we
+    can still print our error message to the log from do_work().
+
  *) Fix an obvious copy-n-paste error in open_connection_to_fs() 
     if TCP_NODELAY was defined (Don Locrasto [locrasto@iceminer.com]).
 
