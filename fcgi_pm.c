@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_pm.c,v 1.38 2000/08/22 14:56:14 robs Exp $
+ * $Id: fcgi_pm.c,v 1.39 2000/08/22 15:05:45 robs Exp $
  */
 
 
@@ -173,16 +173,18 @@ static int init_listen_sock(fcgi_server * fs)
     {
         char port[11];
 
+        ap_snprintf(port, sizeof(port), "port=%d", 
+            ((struct sockaddr_in *)fs->socket_addr)->sin_port);
+
         ap_log_error(FCGI_LOG_CRIT, fcgi_apache_main_server,
             "FastCGI: can't create %sserver \"%s\": bind() failed [%s]", 
             (fs->directive == APP_CLASS_DYNAMIC) ? "(dynamic) " : "",
             fs->fs_path,
 #ifndef WIN32
-            fs->socket_addr->sa_family == AF_UNIX ?
+            (fs->socket_addr->sa_family == AF_UNIX) ?
                 ((struct sockaddr_un *)fs->socket_addr)->sun_path :
 #endif
-                ap_snprintf(port, sizeof(port), "port=%d", 
-                    ((struct sockaddr_in *)fs->socket_addr)->sin_port));
+                port);
     }
 
 #ifndef WIN32
