@@ -13,7 +13,7 @@
     was available it was being returned by Apache's accept().  This 
     caused it to be registered for pool cleanup.  mod_cgi though moves
     the CGI stdin pipe to FD0 and thus it was getting waxed during pool
-    cleanup.  Problem identified by checksum@tebie.com.
+    cleanup.  Problem identified by checksum@163.net.
 
 Changes with mod_fastcgi 2.2.8
 
