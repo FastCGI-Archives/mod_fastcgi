@@ -1122,6 +1122,9 @@ static char *CreateDynamicDirAndMbox(uid_t uid, gid_t gid)
 
     if(mkdir(ipcDynamicDir, S_IRWXU | S_IRGRP | S_IROTH)<0) {
         if(errno==EEXIST) {
+#ifdef STRONGHOLD
+	    chown(ipcDynamicDir, uid, gid);
+#endif /* STRONGHOLD */
 	    /* directory exists, check permissions and stat */
 	    if(WS_Access(ipcDynamicDir, NULL, R_OK | W_OK | X_OK, uid, gid)) {
 	        return
