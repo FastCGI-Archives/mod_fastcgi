@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_config.c,v 1.5 1999/02/25 02:49:12 roberts Exp $
+ * $Id: fcgi_config.c,v 1.6 1999/03/06 04:09:45 roberts Exp $
  */
 
 #include "fcgi.h"
@@ -653,7 +653,7 @@ const char *fcgi_config_new_external_server(cmd_parms *cmd, void *dummy, const c
     /* Build the appropriate sockaddr structure */
     if (s->port != 0) {
         err = fcgi_util_socket_make_inet_addr(p, (struct sockaddr_in **)&s->socket_addr,
-                                &s->socket_addr_len, NULL, s->port);
+            &s->socket_addr_len, s->host, s->port);
         if (err != NULL)
             return ap_psprintf(tp, "%s %s: %s", name, fs_path, err);
     } else {

@@ -1,6 +1,7 @@
 Changes with mod_fastcgi 2.2.2
 
- *) 
+ *) Fix a bug in FastCgiExternalServer that broke support for external servers 
+    on other hosts.  [Dave Neuer <dneuer@futuristics.net>]
 
 Changes with mod_fastcgi 2.2.1
 
