@@ -1,5 +1,8 @@
 2.2.13
 
+ *) [*nix] Fix handling of FastCgiWrapper when passed a real path,
+    i.e. other than "on" or "off".  Michael Richards [michael@fastmail.ca]
+
  *) Eliminate the logging of "incomplete headers (0 bytes) received from 
     server" when a client aborts. 
 

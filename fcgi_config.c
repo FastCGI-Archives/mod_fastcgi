@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_config.c,v 1.45 2002/10/22 02:36:13 robs Exp $
+ * $Id: fcgi_config.c,v 1.46 2002/12/23 03:13:15 robs Exp $
  */
 
 #define CORE_PRIVATE
@@ -543,7 +543,7 @@ const char *fcgi_config_set_wrapper(cmd_parms *cmd, void *dummy, const char *arg
     else
     {
 #ifdef APACHE2
-        if (apr_filepath_merge((char **) &arg, "", arg, 0, cmd->pool))
+        if (apr_filepath_merge(&wrapper, "", arg, 0, cmd->pool))
             return ap_psprintf(tp, "%s %s: invalid filepath", name, arg);
 #else
         wrapper = ap_os_canonical_filename(cmd->pool, (char *) arg);
