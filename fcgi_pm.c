@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_pm.c,v 1.41 2000/09/19 16:26:51 robs Exp $
+ * $Id: fcgi_pm.c,v 1.42 2000/10/17 01:58:16 robs Exp $
  */
 
 
@@ -399,7 +399,7 @@ static pid_t spawn_fs_process(fcgi_server *fs, ServerProcess *process)
      * install its own handler. */
     signal(SIGPIPE, SIG_IGN);
 
-    if (fcgi_wrapper) {
+    if (fcgi_wrapper && (fcgi_user_id != fs->uid || fcgi_group_id != fs->gid)) {
         char *shortName = strrchr(fs->fs_path, '/') + 1;
 
         /* Relinquish our root real uid powers */

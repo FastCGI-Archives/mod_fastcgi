@@ -1,5 +1,13 @@
 2.2.9
 
+ *) Don't invoke suexec when the user/group for the fastcgi application
+    is the same as the apache main server.  This is consistent with 
+    apache's suexec handling.
+
+ *) Reset the apache drop dead timer upon successful read or writes
+    to/from the client.  This eliminates timeouts that were occuring
+    during the large file transfers to/from slow clients.
+
  *) Support generic wrappers such as cgiwrap by eliminating dependencies
     on Apache's SUEXEC, renaming the FastCgiSuexec directive 
     FastCgiWrapper and eliminating any checks regarding the target 

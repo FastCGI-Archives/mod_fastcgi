@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.99 2000/09/19 16:26:52 robs Exp $
+ *  $Id: mod_fastcgi.c,v 1.100 2000/10/17 01:58:16 robs Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -54,21 +54,6 @@
  *   gentle restart interact with restart cleanup?
  *
  * 2. Request timeouts.
- *
- *   The Apache Timeout directive allows per-server configuration of
- *   the timeout associated with a request.  This is typically used to
- *   detect dead clients.  The timer is reset for every successful
- *   read/write.  The default value is 5min.  Thats way too long to tie
- *   up a FastCGI server.  For now this dropdead timer is used a little
- *   differently in FastCGI.  All of the FastCGI server I/O AND the
- *   client I/O must complete within Timeout seconds.  This isn't
- *   exactly what we want.. it should be revisited.  See http_main.h.
- *
- *   We need a way to configurably control the timeout associated with
- *   FastCGI server exchanges AND one for client exchanges.  This could
- *   be done with the select() in doWork() (which should be rewritten
- *   anyway).  This will allow us to free up the FastCGI as soon as
- *   possible.
  *
  *   Earlier versions of this module used ap_soft_timeout() rather than
  *   ap_hard_timeout() and ate FastCGI server output until it completed.
@@ -636,11 +621,13 @@ static int read_from_client_n_queue(fcgi_request *fr)
         if ((countRead = ap_get_client_block(fr->r, end, count)) < 0)
             return -1;
 
-        if (countRead == 0)
+        if (countRead == 0) {
             fr->expectingClientContent = 0;
-        else
+        }
+        else {
             fcgi_buf_add_update(fr->clientInputBuffer, countRead);
-
+            ap_reset_timeout(fr->r);
+        }
     }
     return OK;
 }
@@ -676,6 +663,7 @@ static int write_to_client(fcgi_request *fr)
     }
 #endif
 
+    ap_reset_timeout(fr->r);
 
     /* Don't bother with a wrapped buffer, limiting exposure to slow
      * clients.  The BUFF routines don't allow a writev from above,
@@ -699,6 +687,7 @@ static int write_to_client(fcgi_request *fr)
             return -1;
         }
 #endif
+        ap_reset_timeout(fr->r);
     }
 
     fcgi_buf_toss(fr->clientOutputBuffer, count);
