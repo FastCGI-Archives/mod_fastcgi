@@ -1,4 +1,4 @@
-Changes with mod_fastcgi 2.2.5
+Changes with mod_fastcgi 2.2.6
 
  *) Shutdown the PM when Apache appears to have disappeared.
 
