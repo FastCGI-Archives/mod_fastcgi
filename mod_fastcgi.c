@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.71 1999/05/08 02:06:28 roberts Exp $
+ *  $Id: mod_fastcgi.c,v 1.72 1999/05/31 02:10:57 roberts Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -889,7 +889,7 @@ ConnectionComplete:
 
 static int server_error(fcgi_request *fr) 
 {
-#ifdef SIGPIPE && MODULE_MAGIC_NUMBER < 19990320
+#if defined(SIGPIPE) && MODULE_MAGIC_NUMBER < 19990320
     /* Make sure we leave with Apache's sigpipe_handler in place */
     if (fr->apache_sigpipe_handler != NULL)
         signal(SIGPIPE, fr->apache_sigpipe_handler);
@@ -1032,7 +1032,7 @@ static int do_work(request_rec *r, fcgi_request *fr)
                 doClientWrite = TRUE;
             }
             
-#ifdef SIGPIPE && MODULE_MAGIC_NUMBER < 19990320
+#if defined(SIGPIPE) && MODULE_MAGIC_NUMBER < 19990320
             /* Disable Apache's SIGPIPE handler */
             fr->apache_sigpipe_handler = signal(SIGPIPE, SIG_IGN);
 #endif
@@ -1060,7 +1060,7 @@ static int do_work(request_rec *r, fcgi_request *fr)
                 }
             }
             
-#ifdef SIGPIPE && MODULE_MAGIC_NUMBER < 19990320
+#if defined(SIGPIPE) && MODULE_MAGIC_NUMBER < 19990320
             /* Reinstall Apache's SIGPIPE handler */
             signal(SIGPIPE, fr->apache_sigpipe_handler);
 #endif

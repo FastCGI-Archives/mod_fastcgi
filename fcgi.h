@@ -1,5 +1,5 @@
 /* 
- * $Id: fcgi.h,v 1.9 1999/04/29 02:28:24 roberts Exp $
+ * $Id: fcgi.h,v 1.10 1999/05/31 02:10:56 roberts Exp $
  */
 
 #ifndef FCGI_H
@@ -16,6 +16,11 @@
 #include "util_script.h"
 #include "http_conf_globals.h"
 #include "util_md5.h"
+
+#if MODULE_MAGIC_NUMBER < 19980806
+#error "This version of mod_fastcgi is incompatible with Apache versions 1.3.1 and earlier."
+#error "Please upgrade, or try the last Apache 1.2 compatible release, mod_fastcgi 2.0.18 (no DSO support)."
+#endif
 
 #ifndef NO_WRITEV
 #include <sys/uio.h>
@@ -135,7 +140,7 @@ typedef struct {
     table *authHeaders;			 /* headers received from an auth fs */
 	int auth_compat;			 /* whether the auth request is spec compat */
 	table *saved_subprocess_env; /* subprocess_env before auth handling */
-#ifdef SIGPIPE && MODULE_MAGIC_NUMBER < 19990320
+#if defined(SIGPIPE) && MODULE_MAGIC_NUMBER < 19990320
     void (*apache_sigpipe_handler)(int);
 #endif
     int expectingClientContent;     /* >0 => more content, <=0 => no more */

@@ -1,5 +1,7 @@
 Changes with mod_fastcgi 2.2.2
 
+ *) Dump a compile time error if the version of Apache is too old.
+
  *) Wrap the SIGPIPE handler manipulation code such that it is only applicable
     to Apache releases prior to 1.3.6.
 
