@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.52 1998/10/25 14:24:10 roberts Exp $
+ *  $Id: mod_fastcgi.c,v 1.53 1998/10/25 22:09:21 roberts Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -978,6 +978,7 @@ static int threshhold1 = FCGI_DEFAULT_THRESHHOLD_1;
 static int threshholdN = FCGI_DEFAULT_THRESHHOLD_N;
 static int startProcessDelay = FCGI_DEFAULT_START_PROCESS_DELAY;
 static int dynamicAppConnectTimeout = FCGI_DEFAULT_APP_CONN_TIMEOUT;
+static char **dynamicEnvp = NULL;
 static int processSlack = FCGI_DEFAULT_PROCESS_SLACK;
 static int restartDynamic = FCGI_DEFAULT_RESTART_DYNAMIC;
 static int autoUpdate = FCGI_DEFAULT_AUTOUPDATE;
@@ -1764,7 +1765,6 @@ const char *AppClassCmd(cmd_parms *cmd, void *dummy, char *arg)
     char *cvtPtr;
     char **envHead = NULL;
     char **envPtr;
-    int envCount;
     char *namePtr;
     char *valuePtr;
     int numProcesses = 1;
@@ -1827,9 +1827,9 @@ const char *AppClassCmd(cmd_parms *cmd, void *dummy, char *arg)
      * of the number of -initial-env options so that an environment
      * structure can be allocated now.
      */
-    envCount = argc/2 + 1;
-    envHead = OS_EnvironInit(envCount);
+    envHead = OS_EnvironInit(argc/2 + 1);
     envPtr = envHead;
+
     for(i = 2; i < argc; i++) {
         if((strcmp(argv[i], "-processes") == 0)) {
             if((i + 1) == argc) {
@@ -2227,6 +2227,9 @@ const char *FCGIConfigCmd(cmd_parms *cmd, void *dummy, char *arg)
     char *errMsg = fcgi_Malloc(1024);
     char *cvtPtr;
     double d;
+    char **envPtr;
+    char *namePtr;
+    char *valuePtr;
 
     /*
      * Parse the raw arguments into tokens.
@@ -2239,8 +2242,10 @@ const char *FCGIConfigCmd(cmd_parms *cmd, void *dummy, char *arg)
         goto ErrorReturn;
     }
 
-    /*
-     * Parse out the command line arguments.
+    dynamicEnvp = OS_EnvironInit(argc/2 + 1);
+    envPtr = dynamicEnvp;
+    
+    /* Parse the command line arguments.
      */
     for(i = 1; i < argc; i++) {
         if((strcmp(argv[i], "-maxProcesses") == 0)) {
@@ -2341,6 +2346,24 @@ const char *FCGIConfigCmd(cmd_parms *cmd, void *dummy, char *arg)
                 goto BadValueReturn;
             }
             startProcessDelay = n;
+            continue;
+        } else if((strcmp(argv[i], "-initial-env") == 0)) {
+            if((i + 1) == argc) {
+                goto MissingValueReturn;
+            }
+            i++;
+            namePtr = argv[i];
+            valuePtr = strchr(namePtr, '=');
+            if(valuePtr != NULL) {
+                *valuePtr = '\0';
+                valuePtr++;
+            } else {
+                goto BadValueReturn;
+            }
+            OS_EnvString(envPtr, namePtr, valuePtr);
+            envPtr++;
+            valuePtr--;
+            *valuePtr = '=';
             continue;
         } else if((strcmp(argv[i], "-appConnTimeout") == 0)) {
             if((i+1) == argc) {
@@ -2674,6 +2697,7 @@ NothingToDo:
             s->group = strdup(group);
             s->numProcesses = 0;
             s->restartTime = 0;
+			s->envp = dynamicEnvp;
             s->directive = APP_CLASS_DYNAMIC;
             /* create a socket file for the app */
             ipcAddrPtr = (OS_IpcAddr *) OS_InitIpcAddr();

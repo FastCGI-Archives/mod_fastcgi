@@ -362,6 +362,12 @@ are as follows:</P>
   be used to decide whether one of them should be terminated and
   if only one instance remains, <CODE>singleTHreshhold</CODE> is
   used. The default value for this attribute is 50.
+  <LI><B>initial-env:</B> a name-value pair in the initial environment
+  passed to all of the dynamically invoked application processes.
+  The argument has the form <CODE>name=value</CODE>, with no whitespace
+  allowed. You can add several name-value pairs to the initial
+  environment by using this option several times. The default initial
+  environment is empty (no name-value pairs.)
   <LI><B>startDelay:</B> an integer representing a number of seconds
   that the web server waits in trying to connect to the FastCGI
   application. If the connection is unsuccessful within that time
