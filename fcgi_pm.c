@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_pm.c,v 1.58 2001/08/24 01:47:22 robs Exp $
+ * $Id: fcgi_pm.c,v 1.59 2001/08/24 02:04:45 robs Exp $
  */
 
 
@@ -1309,7 +1309,6 @@ void child_wait_thread(void *dummy) {
 #ifndef WIN32
 static void setup_signals(void)
 {
-    sigset_t mask;
     struct sigaction sa;
 
     /* Setup handlers */
