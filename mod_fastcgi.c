@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.149 2003/02/03 22:59:01 robs Exp $
+ *  $Id: mod_fastcgi.c,v 1.150 2003/02/03 23:07:37 robs Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -813,16 +813,22 @@ static const char *process_headers(request_rec *r, fcgi_request *fr)
     }
 
     len = fr->header->nelts - (next - fr->header->elts);
+
     ASSERT(len >= 0);
     ASSERT(BufferLength(fr->clientOutputBuffer) == 0);
+    
     if (BufferFree(fr->clientOutputBuffer) < len) {
         fr->clientOutputBuffer = fcgi_buf_new(r->pool, len);
     }
+    
     ASSERT(BufferFree(fr->clientOutputBuffer) >= len);
+
     if (len > 0) {
-        int sent = fcgi_buf_add_block(fr->clientOutputBuffer, next, len);
+        int sent;
+        sent = fcgi_buf_add_block(fr->clientOutputBuffer, next, len);
         ASSERT(sent == len);
     }
+
     return NULL;
 
 BadHeader:

@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_buf.c,v 1.17 2003/02/03 22:59:01 robs Exp $
+ * $Id: fcgi_buf.c,v 1.18 2003/02/03 23:07:37 robs Exp $
  */
 
 #include "fcgi.h"
@@ -15,7 +15,8 @@
 /*******************************************************************************
  * Check buffer consistency with assertions.
  */
-void fcgi_buf_check(Buffer *buf)
+#ifdef DEBUG
+static void fcgi_buf_check(Buffer *buf)
 {
     ASSERT(buf->size > 0);
     ASSERT(buf->length >= 0);
@@ -29,7 +30,10 @@ void fcgi_buf_check(Buffer *buf)
     ASSERT(((buf->end - buf->begin + buf->size) % buf->size)
             == (buf->length % buf->size));
 }
-
+#else
+#define fcgi_buf_check(a) ((void) 0)
+#endif
+ 
 /*******************************************************************************
  * Reset buffer, losing any data that's in it.
  */

@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi.h,v 1.43 2003/02/03 22:59:01 robs Exp $
+ * $Id: fcgi.h,v 1.44 2003/02/03 23:07:37 robs Exp $
  */
 
 #ifndef FCGI_H
@@ -471,10 +471,8 @@ int fcgi_protocol_dequeue(pool *p, fcgi_request *fr);
 #define BufferLength(b)     ((b)->length)
 #define BufferFree(b)       ((b)->size - (b)->length)
 
-void fcgi_buf_check(Buffer *bufPtr);
 void fcgi_buf_reset(Buffer *bufPtr);
 Buffer *fcgi_buf_new(pool *p, int size);
-void BufferDelete(Buffer *bufPtr);
 
 #ifndef WIN32
 typedef int SOCKET;
