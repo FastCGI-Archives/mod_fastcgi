@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.39 1998/07/24 15:31:49 roberts Exp $
+ *  $Id: mod_fastcgi.c,v 1.40 1998/07/27 13:18:41 roberts Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -829,6 +829,7 @@ typedef struct _FastCgiServerInfo {
                                      * managed app.
                                      */
     int listenQueueDepth;           /* size of listen queue for IPC */
+    int appConnectTimeout;          /* timeout (sec) for connect() requests */
     int numProcesses;               /* max allowed processes of this class,
                                      * or for dynamic apps, the number of
                                      * processes actually running */
@@ -971,10 +972,11 @@ static float gain = FCGI_DEFAULT_GAIN;
 static int threshhold1 = FCGI_DEFAULT_THRESHHOLD_1;
 static int threshholdN = FCGI_DEFAULT_THRESHHOLD_N;
 static int startProcessDelay = FCGI_DEFAULT_START_PROCESS_DELAY;
-static int appConnTimeout = FCGI_DEFAULT_APP_CONN_TIMEOUT;
+static int dynamicAppConnectTimeout = FCGI_DEFAULT_APP_CONN_TIMEOUT;
 static int processSlack = FCGI_DEFAULT_PROCESS_SLACK;
 static int restartDynamic = FCGI_DEFAULT_RESTART_DYNAMIC;
 static int autoUpdate = FCGI_DEFAULT_AUTOUPDATE;
+static int dynamicListenQueueDepth = FCGI_DEFAULT_LISTEN_Q;
 
 
 /*
@@ -1760,6 +1762,7 @@ const char *AppClassCmd(cmd_parms *cmd, void *dummy, char *arg)
     int restartDelay = FCGI_DEFAULT_RESTART_DELAY;
     int processPriority = FCGI_DEFAULT_PRIORITY;
     int listenQueueDepth = FCGI_DEFAULT_LISTEN_Q;
+    int appConnectTimeout = FCGI_DEFAULT_APP_CONN_TIMEOUT;
     char *bindname = NULL;
     int portNumber = -1;
     int affinity = FALSE;
@@ -1858,6 +1861,17 @@ const char *AppClassCmd(cmd_parms *cmd, void *dummy, char *arg)
             }
             listenQueueDepth = n;
             continue;
+        } else if((strcmp(argv[i], "-appConnTimeout") == 0)) {
+            if((i + 1) == argc) {
+                goto MissingValueReturn;
+            }
+            i++;
+            n = strtol(argv[i], &cvtPtr, 10);
+            if(*cvtPtr != '\0' || n < 1) {
+                goto BadValueReturn;
+            }
+            appConnectTimeout = n;
+            continue;
         } else if((strcmp(argv[i], "-port") == 0)) {
             if((i + 1) == argc) {
                 goto MissingValueReturn;
@@ -1912,6 +1926,7 @@ const char *AppClassCmd(cmd_parms *cmd, void *dummy, char *arg)
     serverInfoPtr->restartDelay = restartDelay;
     serverInfoPtr->processPriority = processPriority;
     serverInfoPtr->listenQueueDepth = listenQueueDepth;
+    serverInfoPtr->appConnectTimeout = appConnectTimeout;
     if(bindname != NULL) {
         DStringAppend(&serverInfoPtr->bindName, bindname, -1);
     }
@@ -2271,7 +2286,18 @@ const char *FCGIConfigCmd(cmd_parms *cmd, void *dummy, char *arg)
             if(*cvtPtr != '\0' || n < 1) {
                 goto BadValueReturn;
             }
-            appConnTimeout = n;
+            dynamicAppConnectTimeout = n;
+            continue;
+        } else if((strcmp(argv[i], "-listen-queue-depth") == 0)) {
+            if((i+1) == argc) {
+                goto MissingValueReturn;
+            }
+            i++;
+            n = strtol(argv[i], &cvtPtr, 10);
+            if(*cvtPtr != '\0' || n < 1) {
+                goto BadValueReturn;
+            }
+            dynamicListenQueueDepth = n;
             continue;
         } else if((strcmp(argv[i], "-processSlack") == 0)) {
             if((i+1) == argc) {
@@ -2581,7 +2607,7 @@ NothingToDo:
             /* create a socket file for the app */
             ipcAddrPtr = (OS_IpcAddr *) OS_InitIpcAddr();
             listenFd = OS_CreateLocalIpcFd((OS_IpcAddress *)ipcAddrPtr,
-                    FCGI_DEFAULT_LISTEN_Q,
+                    dynamicListenQueueDepth,
                     (user_id == (uid_t) -1)  ? geteuid() : user_id,
 #ifndef __EMX__
                     (group_id == (gid_t) -1) ? getegid() : group_id,
@@ -3132,6 +3158,7 @@ void FastCgiProcMgr(void *data)
     int i;
     int status, callWaitPid, callDynamicProcs;
     sigset_t sigMask;
+    int alarmLeft;
 
     /*
      * Create mbox file now, so we won't have to check for
@@ -3187,6 +3214,14 @@ void FastCgiProcMgr(void *data)
         pid_t childPid;
         int waitStatus;
         int numChildren;
+
+        /*
+         * If we came out of sigsuspend() for any reason other than
+         * SIGALRM, pick up where we left off.
+         */
+        if (alarmLeft) {
+            sleepSeconds = alarmLeft;
+        }
 
         /*
          * If there is no parent process, then the Apache has
@@ -3293,7 +3328,7 @@ void FastCgiProcMgr(void *data)
             ASSERT(sleepSeconds > 0);
             alarm(sleepSeconds);
             sigsuspend(&sigMask);
-            alarm(0);
+            alarmLeft = alarm(0);
         }
         callWaitPid = caughtSigChld;
         caughtSigChld = FALSE;
@@ -3555,7 +3590,7 @@ int FCGIProcMgrBoot(void *data, child_info *child_info)
         strncpy(server_argv0, "fcgiKillMgr", strlen(server_argv0));
 
         memset(buf, 0, IOBUFSIZE);
-        sprintf(buf, "%ld", procMgr);
+        sprintf(buf, "%d", procMgr);
         do {
             n = write(STDOUT_FILENO, buf, IOBUFSIZE);
         } while (((n==-1) || (n==0)) && (errno==EINTR));
@@ -4679,10 +4714,17 @@ static int ConnectToFcgiApp(WS_Request *reqPtr, FastCgiInfo *infoPtr)
                 break;
             }
         } while((infoPtr->queueTime.tv_sec - infoPtr->startTime.tv_sec)
-                < appConnTimeout);
+                < dynamicAppConnectTimeout);
+
+        if (status == 0) {
+            sprintf(infoPtr->errorMsg,
+                "mod_fastcgi: connect() timed out (appConnTimeout=%dsec)",
+                dynamicAppConnectTimeout);
+            goto Error;
+        }
     } else {
         /* its a static app  */
-        tval.tv_sec = appConnTimeout;
+        tval.tv_sec = infoPtr->serverPtr->appConnectTimeout;
         tval.tv_usec = 0;
         FD_ZERO(&write_fds);
         FD_SET(infoPtr->fd, &write_fds);
@@ -4695,14 +4737,15 @@ static int ConnectToFcgiApp(WS_Request *reqPtr, FastCgiInfo *infoPtr)
         status = select((infoPtr->fd+1), &read_fds, &write_fds,
                 NULL, &tval);
 #endif
+        if (status == 0) {
+            sprintf(infoPtr->errorMsg,
+                "mod_fastcgi: connect() timed out (appConnTimeout=%dsec)",
+                infoPtr->serverPtr->appConnectTimeout);
+            goto Error;
+        }
     }  /* if (dynamic) else */
 
-    if (status == 0) {
-        sprintf(infoPtr->errorMsg,
-            "mod_fastcgi: connect() timed out (appConnTimeout=%dsec)",
-            appConnTimeout);
-        goto Error;
-    } else if (status < 0) {
+    if (status < 0) {
         sprintf(infoPtr->errorMsg, "mod_fastcgi: select() failed: ");
         goto SystemError;
     }
@@ -4710,7 +4753,7 @@ static int ConnectToFcgiApp(WS_Request *reqPtr, FastCgiInfo *infoPtr)
     if (FD_ISSET(infoPtr->fd, &write_fds) || FD_ISSET(infoPtr->fd, &read_fds)) {
         int error = 0;
         int len = sizeof(error);
-        if (getsockopt(infoPtr->fd, SOL_SOCKET, SO_ERROR, &error, &len) < 0) {
+        if (getsockopt(infoPtr->fd, SOL_SOCKET, SO_ERROR, (char *)&error, &len) < 0) {
             /* Solaris pending error */
             sprintf(infoPtr->errorMsg, "mod_fastcgi: select() failed (Solaris pending error): ");
             goto SystemError;
