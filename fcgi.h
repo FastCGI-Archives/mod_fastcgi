@@ -1,5 +1,5 @@
 /* 
- * $Id: fcgi.h,v 1.3 1999/02/11 03:59:07 roberts Exp $
+ * $Id: fcgi.h,v 1.4 1999/02/20 22:46:43 roberts Exp $
  */
 
 #ifndef FCGI_H
@@ -342,7 +342,7 @@ extern u_int dynamicListenQueueDepth;
 extern u_int dynamicInitStartDelay;
 extern u_int dynamicRestartDelay;
 
-extern module fastcgi_module;
+extern module MODULE_VAR_EXPORT fastcgi_module;
 
 #endif	/* FCGI_H */
 
