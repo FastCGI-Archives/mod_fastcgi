@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.129 2002/03/12 23:25:59 robs Exp $
+ *  $Id: mod_fastcgi.c,v 1.130 2002/03/13 18:32:34 robs Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -855,7 +855,6 @@ static void close_connection_to_fs(fcgi_request *fr)
         }
 
         fr->fd = INVALID_SOCKET;
-    }
 
 #else /* ! WIN32 */
 
@@ -867,23 +866,23 @@ static void close_connection_to_fs(fcgi_request *fr)
         setsockopt(fr->fd, SOL_SOCKET, SO_LINGER, &linger, sizeof(linger)); 
         closesocket(fr->fd);
         fr->fd = -1;
-    }
 
 #endif /* ! WIN32 */
 
-    if (fr->dynamic && fr->keepReadingFromFcgiApp == FALSE) 
-    {
-        /* XXX FCGI_REQUEST_COMPLETE_JOB is only sent for requests which complete
-         * normally WRT the fcgi app.  There is no data sent for
-         * connect() timeouts or requests which complete abnormally.
-         * KillDynamicProcs() and RemoveRecords() need to be looked at
-         * to be sure they can reasonably handle these cases before
-         * sending these sort of stats - theres some funk in there.
-         */
-        if (fcgi_util_ticks(&fr->completeTime) < 0) 
+        if (fr->dynamic && fr->keepReadingFromFcgiApp == FALSE) 
         {
-            /* there's no point to aborting the request, just log it */
-            ap_log_error(FCGI_LOG_ERR, fr->r->server, "FastCGI: can't get time of day");
+            /* XXX FCGI_REQUEST_COMPLETE_JOB is only sent for requests which complete
+             * normally WRT the fcgi app.  There is no data sent for
+             * connect() timeouts or requests which complete abnormally.
+             * KillDynamicProcs() and RemoveRecords() need to be looked at
+             * to be sure they can reasonably handle these cases before
+             * sending these sort of stats - theres some funk in there.
+             */
+            if (fcgi_util_ticks(&fr->completeTime) < 0) 
+            {
+                /* there's no point to aborting the request, just log it */
+                ap_log_error(FCGI_LOG_ERR, fr->r->server, "FastCGI: can't get time of day");
+            }
         }
     }
 }
@@ -1016,10 +1015,11 @@ static int open_connection_to_fs(fcgi_request *fr)
     if (socket_path) 
     {
         BOOL ready;
-        int connect_time;
-
+        DWORD connect_time;
+        int rv;
+        HANDLE wait_npipe_mutex;
         DWORD interval;
-        int max_connect_time = FCGI_NAMED_PIPE_CONNECT_TIMEOUT;
+        DWORD max_connect_time = FCGI_NAMED_PIPE_CONNECT_TIMEOUT;
             
         fr->using_npipe_io = TRUE;
 
@@ -1042,56 +1042,123 @@ static int open_connection_to_fs(fcgi_request *fr)
 
         fcgi_util_ticks(&fr->startTime);
 
-        do 
         {
-            fr->fd = (SOCKET) CreateFile(socket_path, 
-                GENERIC_READ | GENERIC_WRITE, 
-                FILE_SHARE_READ | FILE_SHARE_WRITE, 
-                NULL,                  // no security attributes
-                OPEN_EXISTING,         // opens existing pipe 
-                FILE_FLAG_OVERLAPPED, 
-                NULL);                 // no template file 
-
-            if (fr->fd != (SOCKET) INVALID_HANDLE_VALUE) {
-                break; 
-            }
-
-            if (GetLastError() != ERROR_PIPE_BUSY 
-                && GetLastError() != ERROR_FILE_NOT_FOUND) 
+            // xxx this handle should live somewhere (see CloseHandle()s below too)
+            char * wait_npipe_mutex_name, * cp;
+            wait_npipe_mutex_name = cp = ap_pstrdup(rp, socket_path);
+            while ((cp = strchr(cp, '\\'))) *cp = '/';
+            
+            wait_npipe_mutex = CreateMutex(NULL, FALSE, wait_npipe_mutex_name);
+        }
+        
+        if (wait_npipe_mutex == NULL)
+        {
+            ap_log_rerror(FCGI_LOG_ERR, r,
+                "FastCGI: failed to connect to server \"%s\": "
+                "can't create the WaitNamedPipe mutex", fr->fs_path);
+            return FCGI_FAILED;
+        }
+        
+        SetLastError(ERROR_SUCCESS);
+        
+        rv = WaitForSingleObject(wait_npipe_mutex, max_connect_time * 1000);
+        
+        if (rv == WAIT_TIMEOUT || rv == WAIT_FAILED)
+        {
+            if (fr->dynamic) 
             {
-                ap_log_rerror(FCGI_LOG_ERR, r,
-                    "FastCGI: failed to connect to server \"%s\": "
-                    "CreateFile() failed", fr->fs_path);
-                return FCGI_FAILED; 
+                send_to_pm(FCGI_REQUEST_TIMEOUT_JOB, fr->fs_path, fr->user, fr->group, 0, 0);
             }
+            ap_log_rerror(FCGI_LOG_ERR_NOERRNO, r,
+                "FastCGI: failed to connect to server \"%s\": "
+                "wait for a npipe instance failed", fr->fs_path);
+            FCGIDBG3("interval=%d, max_connect_time=%d", interval, max_connect_time);
+            CloseHandle(wait_npipe_mutex);
+            return FCGI_FAILED; 
+        }
+        
+        fcgi_util_ticks(&fr->queueTime);
+        
+        connect_time = fr->queueTime.tv_sec - fr->startTime.tv_sec;
+        
+        if (fr->dynamic)
+        {
+            if (connect_time >= interval)
+            {
+                send_to_pm(FCGI_REQUEST_TIMEOUT_JOB, fr->fs_path, fr->user, fr->group, 0, 0);
+                FCGIDBG4("connect_time=%d, interval=%d, max_connect_time=%d", connect_time, interval, max_connect_time);
+            }
+            if (max_connect_time - connect_time < interval)
+            {
+                interval = max_connect_time - connect_time;
+            }
+        }
+        else
+        {
+            interval -= connect_time * 1000;
+        }
 
-            // All pipe instances are busy, so wait 
+        for (;;)
+        {
             ready = WaitNamedPipe(socket_path, interval);
 
-            if (fr->dynamic && !ready) {
+            if (ready)
+            {
+                fr->fd = (SOCKET) CreateFile(socket_path, 
+                    GENERIC_READ | GENERIC_WRITE, 
+                    FILE_SHARE_READ | FILE_SHARE_WRITE, 
+                    NULL,                  // no security attributes
+                    OPEN_EXISTING,         // opens existing pipe 
+                    FILE_FLAG_OVERLAPPED, 
+                    NULL);                 // no template file 
+
+                if (fr->fd != (SOCKET) INVALID_HANDLE_VALUE) 
+                {
+                    ReleaseMutex(wait_npipe_mutex);
+                    CloseHandle(wait_npipe_mutex);
+                    fcgi_util_ticks(&fr->queueTime);
+                    FCGIDBG2("got npipe connect: %s", fr->fs_path);
+                    return FCGI_OK;
+                }
+
+                if (GetLastError() != ERROR_PIPE_BUSY 
+                    && GetLastError() != ERROR_FILE_NOT_FOUND) 
+                {
+                    ap_log_rerror(FCGI_LOG_ERR, r,
+                        "FastCGI: failed to connect to server \"%s\": "
+                        "CreateFile() failed", fr->fs_path);
+                    break; 
+                }
+
+                FCGIDBG2("missed npipe connect: %s", fr->fs_path);
+            }
+        
+            if (fr->dynamic) 
+            {
                 send_to_pm(FCGI_REQUEST_TIMEOUT_JOB, fr->fs_path, fr->user, fr->group, 0, 0);
             }
 
             fcgi_util_ticks(&fr->queueTime);
 
             connect_time = fr->queueTime.tv_sec - fr->startTime.tv_sec;
-            
+
             FCGIDBG5("interval=%d, max_connect_time=%d, connect_time=%d, ready=%d", interval, max_connect_time, connect_time, ready);
 
-        } while (connect_time < max_connect_time);
-
-        if (fr->fd == (SOCKET) INVALID_HANDLE_VALUE) {
-            ap_log_rerror(FCGI_LOG_ERR, r,
-                "FastCGI: failed to connect to server \"%s\": "
-                "CreateFile()/WaitNamedPipe() timed out", fr->fs_path);
-            fr->fd = INVALID_SOCKET;
-            return FCGI_FAILED; 
+            if (connect_time >= max_connect_time)
+            {
+                ap_log_rerror(FCGI_LOG_ERR, r,
+                    "FastCGI: failed to connect to server \"%s\": "
+                    "CreateFile()/WaitNamedPipe() timed out", fr->fs_path);
+                break;
+            }
         }
 
-        FCGIDBG2("got_named_pipe_connect: %s", fr->fs_path);
-
-        return FCGI_OK;
+        ReleaseMutex(wait_npipe_mutex);
+        CloseHandle(wait_npipe_mutex);
+        fr->fd = INVALID_SOCKET;
+        return FCGI_FAILED; 
     }
+            
 #endif
 
     /* Create the socket */
