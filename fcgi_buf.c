@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_buf.c,v 1.16 2002/10/22 01:02:18 robs Exp $
+ * $Id: fcgi_buf.c,v 1.17 2003/02/03 22:59:01 robs Exp $
  */
 
 #include "fcgi.h"
@@ -17,16 +17,16 @@
  */
 void fcgi_buf_check(Buffer *buf)
 {
-    ap_assert(buf->size > 0);
-    ap_assert(buf->length >= 0);
-    ap_assert(buf->length <= buf->size);
+    ASSERT(buf->size > 0);
+    ASSERT(buf->length >= 0);
+    ASSERT(buf->length <= buf->size);
 
-    ap_assert(buf->begin >= buf->data);
-    ap_assert(buf->begin < buf->data + buf->size);
-    ap_assert(buf->end >= buf->data);
-    ap_assert(buf->end < buf->data + buf->size);
+    ASSERT(buf->begin >= buf->data);
+    ASSERT(buf->begin < buf->data + buf->size);
+    ASSERT(buf->end >= buf->data);
+    ASSERT(buf->end < buf->data + buf->size);
 
-    ap_assert(((buf->end - buf->begin + buf->size) % buf->size)
+    ASSERT(((buf->end - buf->begin + buf->size) % buf->size)
             == (buf->length % buf->size));
 }
 
@@ -114,10 +114,10 @@ static int socket_recv(int fd, char * buf, int len)
         if (bytes_read < 0)
         {
 #ifdef EWOULDBLOCK
-            ap_assert(errno != EWOULDBLOCK);
+            ASSERT(errno != EWOULDBLOCK);
 #endif
 #ifdef EAGAIN
-            ap_assert(errno != EAGAIN);
+            ASSERT(errno != EAGAIN);
 #endif
         }
     } while (bytes_read == -1 && errno == EINTR);
@@ -135,10 +135,10 @@ static int socket_send(int fd, char * buf, int len)
         if (bytes_sent < 0)
         {
 #ifdef EWOULDBLOCK
-            ap_assert(errno != EWOULDBLOCK);
+            ASSERT(errno != EWOULDBLOCK);
 #endif
 #ifdef EAGAIN
-            ap_assert(errno != EAGAIN);
+            ASSERT(errno != EAGAIN);
 #endif
         }
     } 
@@ -198,8 +198,8 @@ int fcgi_buf_socket_recv(Buffer *buf, SOCKET fd)
         vec[1].iov_base = buf->data;
         vec[1].iov_len = buf->size - buf->length - len;
 
-        ap_assert(len);
-        ap_assert(vec[1].iov_len);
+        ASSERT(len);
+        ASSERT(vec[1].iov_len);
 
         do
         {
@@ -290,8 +290,8 @@ void fcgi_buf_get_block_info(Buffer *buf, char **beginPtr, int *countPtr)
 void fcgi_buf_toss(Buffer *buf, int count)
 {
     fcgi_buf_check(buf);
-    ap_assert(count >= 0);
-    ap_assert(count <= buf->length);
+    ASSERT(count >= 0);
+    ASSERT(count <= buf->length);
 
     buf->length -= count;
     buf->begin += count;
@@ -318,8 +318,8 @@ void fcgi_buf_get_free_block_info(Buffer *buf, char **endPtr, int *countPtr)
 void fcgi_buf_add_update(Buffer *buf, int count)
 {
     fcgi_buf_check(buf);
-    ap_assert(count >= 0);
-    ap_assert(count <= BufferFree(buf));
+    ASSERT(count >= 0);
+    ASSERT(count <= BufferFree(buf));
 
     buf->length += count;
     buf->end += count;
@@ -339,14 +339,14 @@ int fcgi_buf_add_block(Buffer *buf, char *data, int datalen)
     int copied = 0;     /* Number of bytes actually copied. */
     int canCopy;        /* Number of bytes to copy in a given op. */
 
-    ap_assert(data != NULL);
-    ap_assert(datalen >= 0);
+    ASSERT(data != NULL);
+    ASSERT(datalen >= 0);
 
     if(datalen == 0) {
         return 0;
     }
 
-    ap_assert(datalen > 0);
+    ASSERT(datalen > 0);
     fcgi_buf_check(buf);
     end = buf->data + buf->size;
 
@@ -396,8 +396,8 @@ int fcgi_buf_get_to_block(Buffer *buf, char *data, int datalen)
     int copied = 0;                /* Number of bytes actually copied. */
     int canCopy;                   /* Number of bytes to copy in a given op. */
 
-    ap_assert(data != NULL);
-    ap_assert(datalen > 0);
+    ASSERT(data != NULL);
+    ASSERT(datalen > 0);
     fcgi_buf_check(buf);
 
     end = buf->data + buf->size;
@@ -447,9 +447,9 @@ void fcgi_buf_get_to_buf(Buffer *dest, Buffer *src, int len)
     char *dest_end, *src_begin;
     int dest_len, src_len, move_len;
 
-    ap_assert(len > 0);
-    ap_assert(BufferLength(src) >= len);
-    ap_assert(BufferFree(dest) >= len);
+    ASSERT(len > 0);
+    ASSERT(BufferLength(src) >= len);
+    ASSERT(BufferFree(dest) >= len);
 
     fcgi_buf_check(src);
     fcgi_buf_check(dest);
@@ -507,8 +507,8 @@ void fcgi_buf_get_to_array(Buffer *buf, array_header *arr, int len)
     int len1 = min(buf->length, buf->data + buf->size - buf->begin);
 
     fcgi_buf_check(buf);
-    ap_assert(len > 0);
-    ap_assert(len <= BufferLength(buf));
+    ASSERT(len > 0);
+    ASSERT(len <= BufferLength(buf));
 
     array_grow(arr, len);
 

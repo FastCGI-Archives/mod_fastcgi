@@ -1,9 +1,15 @@
 /*
- * $Id: fcgi.h,v 1.42 2002/09/22 16:49:34 robs Exp $
+ * $Id: fcgi.h,v 1.43 2003/02/03 22:59:01 robs Exp $
  */
 
 #ifndef FCGI_H
 #define FCGI_H
+
+#if defined(DEBUG) && ! defined(NDEBUG)
+#define ASSERT(a) ap_assert(a)
+#else
+#define ASSERT(a) ((void) 0)
+#endif
 
 #ifdef WIN32
 /* warning C4115: named type definition in parentheses */

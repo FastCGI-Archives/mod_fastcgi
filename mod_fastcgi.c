@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.148 2002/12/23 03:19:14 robs Exp $
+ *  $Id: mod_fastcgi.c,v 1.149 2003/02/03 22:59:01 robs Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -224,7 +224,7 @@ static void send_to_pm(const char id, const char * const fs_path,
 
     SetEvent(fcgi_event_handles[MBOX_EVENT]);
 #else
-    ap_assert(buflen <= FCGI_MAX_MSG_LEN);
+    ASSERT(buflen <= FCGI_MAX_MSG_LEN);
 
     /* There is no apache flag or function that can be used to id
      * restart/shutdown pending so ignore the first few failures as
@@ -478,7 +478,7 @@ static char *get_header_line(char *start, int continuation)
         }
     }
 
-    ap_assert(*p != '\0');
+    ASSERT(*p != '\0');
     end = p;
     end++;
 
@@ -648,7 +648,7 @@ static const char *process_headers(request_rec *r, fcgi_request *fr)
     int len, flag;
     int hasContentType, hasStatus, hasLocation;
 
-    ap_assert(fr->parseHeader == SCAN_CGI_READING_HEADERS);
+    ASSERT(fr->parseHeader == SCAN_CGI_READING_HEADERS);
 
     if (fr->header == NULL)
         return NULL;
@@ -813,15 +813,15 @@ static const char *process_headers(request_rec *r, fcgi_request *fr)
     }
 
     len = fr->header->nelts - (next - fr->header->elts);
-    ap_assert(len >= 0);
-    ap_assert(BufferLength(fr->clientOutputBuffer) == 0);
+    ASSERT(len >= 0);
+    ASSERT(BufferLength(fr->clientOutputBuffer) == 0);
     if (BufferFree(fr->clientOutputBuffer) < len) {
         fr->clientOutputBuffer = fcgi_buf_new(r->pool, len);
     }
-    ap_assert(BufferFree(fr->clientOutputBuffer) >= len);
+    ASSERT(BufferFree(fr->clientOutputBuffer) >= len);
     if (len > 0) {
         int sent = fcgi_buf_add_block(fr->clientOutputBuffer, next, len);
-        ap_assert(sent == len);
+        ASSERT(sent == len);
     }
     return NULL;
 
@@ -1739,7 +1739,7 @@ SERVER_SEND:
 
         default:
 
-            ap_assert(0);
+            ASSERT(0);
         }
 
         if (state == STATE_ERROR)
@@ -1878,7 +1878,7 @@ SERVER_SEND:
                 {
                     DWORD rcvd;
 
-                    ap_assert(i == 1);
+                    ASSERT(i == 1);
 
                     recv_pending = 0;
                     ResetEvent(rov.hEvent);
@@ -2040,7 +2040,7 @@ SERVER_SEND:
             }
             else
             {
-                ap_assert(fr->eofSent);
+                ASSERT(fr->eofSent);
                 state = STATE_SERVER_RECV;
             }
 
@@ -2074,7 +2074,7 @@ SERVER_SEND:
 
         default:
 
-            ap_assert(0);
+            ASSERT(0);
         }
 
         if (state == STATE_CLIENT_ERROR || state == STATE_ERROR)
@@ -2386,7 +2386,7 @@ static int do_work(request_rec * const r, fcgi_request * const fr)
 
     default:
 
-        ap_assert(0);
+        ASSERT(0);
         rv = HTTP_INTERNAL_SERVER_ERROR;
     }
    

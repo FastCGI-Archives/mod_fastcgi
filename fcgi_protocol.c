@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_protocol.c,v 1.24 2002/10/22 01:02:18 robs Exp $
+ * $Id: fcgi_protocol.c,v 1.25 2003/02/03 22:59:01 robs Exp $
  */
 
 #include "fcgi.h"
@@ -23,10 +23,10 @@ static void queue_header(fcgi_request *fr, unsigned char type, unsigned int len)
 {
     FCGI_Header header;
 
-    ap_assert(type > 0);
-    ap_assert(type <= FCGI_MAXTYPE);
-    ap_assert(len <= 0xffff);
-    ap_assert(BufferFree(fr->serverOutputBuffer) >= sizeof(FCGI_Header));
+    ASSERT(type > 0);
+    ASSERT(type <= FCGI_MAXTYPE);
+    ASSERT(len <= 0xffff);
+    ASSERT(BufferFree(fr->serverOutputBuffer) >= sizeof(FCGI_Header));
 
     /* Assemble and queue the packet header. */
     header.version = FCGI_VERSION;
@@ -46,7 +46,7 @@ static void queue_header(fcgi_request *fr, unsigned char type, unsigned int len)
 static void build_begin_request(unsigned int role, unsigned char keepConnection,
         FCGI_BeginRequestBody *body)
 {
-    ap_assert((role >> 16) == 0);
+    ASSERT((role >> 16) == 0);
     body->roleB1 = (unsigned char) (role >>  8);
     body->roleB0 = (unsigned char) role;
     body->flags = (unsigned char) ((keepConnection) ? FCGI_KEEP_CONN : 0);
@@ -62,7 +62,7 @@ void fcgi_protocol_queue_begin_request(fcgi_request *fr)
     int bodySize = sizeof(FCGI_BeginRequestBody);
 
     /* We should be the first ones to use this buffer */
-    ap_assert(BufferLength(fr->serverOutputBuffer) == 0);
+    ASSERT(BufferLength(fr->serverOutputBuffer) == 0);
 
     build_begin_request(fr->role, FALSE, &body);
     queue_header(fr, FCGI_BEGIN_REQUEST, bodySize);
@@ -77,7 +77,7 @@ static void build_env_header(int nameLen, int valueLen,
 {
     unsigned char *startHeaderBuffPtr = headerBuffPtr;
 
-    ap_assert(nameLen >= 0);
+    ASSERT(nameLen >= 0);
 
     if (nameLen < 0x80) {
         *headerBuffPtr++ = (unsigned char) nameLen;
@@ -88,7 +88,7 @@ static void build_env_header(int nameLen, int valueLen,
         *headerBuffPtr++ = (unsigned char) nameLen;
     }
 
-    ap_assert(valueLen >= 0);
+    ASSERT(valueLen >= 0);
 
     if (valueLen < 0x80) {
         *headerBuffPtr++ = (unsigned char) valueLen;
@@ -213,7 +213,7 @@ int fcgi_protocol_queue_env(request_rec *r, fcgi_request *fr, env_status *env)
         {
         case PREP:
             env->equalPtr = strchr(*env->envp, '=');
-            ap_assert(env->equalPtr != NULL);
+            ASSERT(env->equalPtr != NULL);
             env->nameLen = env->equalPtr - *env->envp;
             env->valueLen = strlen(++env->equalPtr);
             build_env_header(env->nameLen, env->valueLen, env->headerBuff, &env->headerLen);
@@ -344,7 +344,7 @@ int fcgi_protocol_dequeue(pool *p, fcgi_request *fr)
          * State #2:  got a header, and processing packet bytes.
          */
         len = min(fr->dataLen, BufferLength(fr->serverInputBuffer));
-        ap_assert(len >= 0);
+        ASSERT(len >= 0);
         switch (fr->packetType) {
             case FCGI_STDOUT:
                 if (len > 0) {
