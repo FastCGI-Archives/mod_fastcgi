@@ -1,5 +1,8 @@
 Changes with mod_fastcgi 2.2.3
 
+ *) Remove request type restriction (GET and POST only) in order to support
+    Web DAV requests.  Scott Robertson [sroberts@codeit.com] 
+
  *) Allow requests for URLs such as /server/some/other/qualifier to match a
     FastCGI server defined as /server.	This was done primarily for Java
 	Servlets, but is generically useful.

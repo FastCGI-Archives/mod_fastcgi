@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.85 1999/10/05 03:48:53 roberts Exp $
+ *  $Id: mod_fastcgi.c,v 1.86 2000/03/27 18:07:47 robs Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -1353,13 +1353,6 @@ static int content_handler(request_rec *r)
 {
     fcgi_request *fr = NULL;
     int ret;
-
-    /* We don't do anything but GET and POST */
-    if (r->method_number == M_OPTIONS) {
-        r->allowed |= (1 << M_GET);
-        r->allowed |= (1 << M_POST);
-        return DECLINED;
-    }
 
     /* Setup a new FastCGI request */
     if ((fr = create_fcgi_request(r, NULL)) == NULL)
