@@ -1,5 +1,7 @@
-
 Changes with mod_fastcgi 2.2
+
+ *) SCO doesn't like the const in the arg to inet_addr() and
+    gethostbyname().
 
  *) Use Apache's NET_SIZE_T to get the correct arg type for getsockopt().
 

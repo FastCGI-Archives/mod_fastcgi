@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_util.c,v 1.1 1999/02/09 03:08:03 roberts Exp $
+ * $Id: fcgi_util.c,v 1.2 1999/02/11 04:11:17 roberts Exp $
  */
 
 #include "fcgi.h"
@@ -79,10 +79,10 @@ convert_string_to_in_addr(const char * const hostname, struct in_addr * const ad
     struct hostent *hp;
     int count;
 
-    addr->s_addr = inet_addr(hostname);
+    addr->s_addr = inet_addr((char *)hostname);
     
     if (addr->s_addr == INADDR_NONE) {
-        if ((hp = gethostbyname(hostname)) == NULL)
+        if ((hp = gethostbyname((char *)hostname)) == NULL)
             return -1;
 
         memcpy((char *) addr, hp->h_addr, hp->h_length);
