@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_protocol.c,v 1.17 2000/04/27 19:53:54 robs Exp $
+ * $Id: fcgi_protocol.c,v 1.18 2000/06/06 14:18:54 robs Exp $
  */
 
 
@@ -18,7 +18,7 @@ static void queue_header(fcgi_request *fr, unsigned char type, unsigned int len)
 
     ap_assert(type > 0 && type <= FCGI_MAXTYPE);
     ap_assert(len >= 0 && len <= 0xffff);
-    ap_assert(BufferFree(fr->serverOutputBuffer) > sizeof(FCGI_Header));
+    ap_assert(BufferFree(fr->serverOutputBuffer) >= sizeof(FCGI_Header));
 
     /* Assemble and queue the packet header. */
     header.version = FCGI_VERSION;

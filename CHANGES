@@ -1,5 +1,7 @@
 Changes with mod_fastcgi 2.2.5
 
+ *) Prevent an assert from popping unnecessarily.
+
  *) (Win32) Add support for interpretter scripts.
 
  *) (Win32) Fix named pipe handling (problems with large responses).

@@ -1,5 +1,5 @@
 /*
- * $Id: mod_fastcgi.h,v 1.24 2000/05/10 05:21:10 robs Exp $
+ * $Id: mod_fastcgi.h,v 1.25 2000/06/06 14:18:54 robs Exp $
  */
 
 #ifndef MOD_FASTCGI_H
@@ -16,7 +16,6 @@
 #define FCGI_DEFAULT_RESTART_DELAY 5       /* delay between restarts */
 #define DEFAULT_INIT_START_DELAY 1         /* delay between starts */
 #define FCGI_DEFAULT_PRIORITY 0            /* process priority - not used */
-#define FCGI_ERRMSG_LEN 200                /* size of error buffer */
 #define FCGI_MIN_EXEC_RETRY_DELAY 10       /* minimum number of seconds to
                                               wait before restarting */
 #define MAX_INIT_ENV_VARS 64               /* max # of -initial-env options */
