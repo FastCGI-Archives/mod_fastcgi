@@ -3,10 +3,16 @@
  *
  * OS abstraction layer - well, not really
  *
- * $Id: fcgios.c,v 1.2 1998/02/24 17:11:41 roy Exp $
+ * $Id: fcgios.c,v 1.3 1998/08/06 04:12:52 roberts Exp $
  */
 
+#include "httpd.h"
+#include "http_config.h"
+#if MODULE_MAGIC_NUMBER >= 19980713
+#include "ap_config.h"
+#else
 #include "conf.h"                       /* apache code */
+#endif
 #include "mod_fastcgi.h"
 #include "fcgios.h"
 
