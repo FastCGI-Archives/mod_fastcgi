@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.143 2002/10/18 02:20:09 robs Exp $
+ *  $Id: mod_fastcgi.c,v 1.144 2002/10/19 02:09:29 robs Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -291,9 +291,22 @@ static apcb_t init_module(server_rec *s, pool *p)
      * Under Unix, the -X switch causes two calls to init() but no detach
      * (but all subprocesses are wacked so the PM is toasted anyway)! */
 
-#ifndef APACHE2
+#ifdef APACHE2
+    {
+        void * first_pass;
+        apr_pool_userdata_get(&first_pass, "mod_fastcgi", s->process->pool);
+        if (first_pass == NULL) 
+        {
+            apr_pool_userdata_set((const void *)1, "mod_fastcgi",
+                                  apr_pool_cleanup_null, s->process->pool);
+            return APCB_OK;
+        }
+    }
+#else /* !APACHE2 */
+
     if (ap_standalone && ap_restart_time == 0)
         return;
+
 #endif
 
     /* Create the pipe for comm with the PM */

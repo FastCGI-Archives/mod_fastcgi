@@ -1,5 +1,8 @@
 2.2.13
 
+ *) [*nix/AP2] Prevent the module from being initalized twice at startup
+    (resulting in confusing error messages to the log).
+
  *) Eliminate the need for SetHandler or AddHandler with static or 
     external applications.
 
