@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.94 2000/07/19 17:58:37 robs Exp $
+ *  $Id: mod_fastcgi.c,v 1.95 2000/07/20 21:11:42 robs Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -1298,7 +1298,7 @@ static int do_work(request_rec *r, fcgi_request *fr)
                     timersub(&fr->queueTime, &dynamic_last_activity_time, &idle_time);
                     if (idle_time.tv_sec > idle_timeout) {
                         send_to_pm(rp, CONN_TIMEOUT, fr->fs_path, fr->user, fr->group, 0, 0);
-                        ap_log_rerror(FCGI_LOG_ERR, r,
+                        ap_log_rerror(FCGI_LOG_ERR_NOERRNO, r,
                             "FastCGI: comm with (dynamic) server \"%s\" aborted: (first read) idle timeout (%d sec)",
                             fr->fs_path, idle_timeout);
                         return server_error(fr);
@@ -1379,7 +1379,7 @@ static int do_work(request_rec *r, fcgi_request *fr)
                     dynamic_first_read = qwait.tv_sec / dynamicPleaseStartDelay + 1;
                 }
                 else {
-                    ap_log_rerror(FCGI_LOG_ERR, r,
+                    ap_log_rerror(FCGI_LOG_ERR_NOERRNO, r,
                         "FastCGI: comm with server \"%s\" aborted: idle timeout (%d sec)",
                         fr->fs_path, idle_timeout);
                     return server_error(fr);
