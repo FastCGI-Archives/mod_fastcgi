@@ -1,5 +1,5 @@
 /*
- * $Id: mod_fastcgi.h,v 1.39 2002/02/04 19:41:56 robs Exp $
+ * $Id: mod_fastcgi.h,v 1.40 2002/02/28 15:58:11 robs Exp $
  */
 
 #ifndef MOD_FASTCGI_H
@@ -19,6 +19,19 @@
  * this is typically XXX sec.
  */
 #define FCGI_NAMED_PIPE_CONNECT_TIMEOUT  90
+
+/* 
+ * [WIN32] The number of millisecs to wait after having signaled the 
+ * termination event to its applications before issuing a TerminateProcess().
+ * If all of the applications are based on a version of the FastCGI 
+ * application library that properly handles the shutdown event
+ * (fcgi2 v2.2.4), this can be set to <= 0 to prevent the use of
+ * TerminateProcess() entirely.  If non of the applications support the
+ * termination event, this value can be set to 1.  It is highly reccomended
+ * that the termination event be supported, as TerminateProcess() is a 
+ * brutal way of taking down an application.
+ */
+#define WIN32_SHUTDOWN_GRACEFUL_WAIT  1000
 
 #define FCGI_DEFAULT_LISTEN_Q 100          /* listen queue (backlog) depth */
 #define FCGI_DEFAULT_RESTART_DELAY 5       /* delay between restarts */

@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_pm.c,v 1.68 2002/02/23 21:31:19 robs Exp $
+ * $Id: fcgi_pm.c,v 1.69 2002/02/28 15:58:11 robs Exp $
  */
 
 
@@ -135,6 +135,38 @@ static void shutdown_all()
         
         s = s->next;
     }
+
+#if defined(WIN32) && (WIN32_SHUTDOWN_GRACEFUL_WAIT > 0)
+
+    /*
+     * WIN32 applications may not have support for the shutdown event
+     * depending on their application library version 
+     */
+    
+    Sleep(WIN32_SHUTDOWN_GRACEFUL_WAIT);
+    s = fcgi_servers;
+
+    while (s) 
+    {
+        ServerProcess *proc = s->procs;
+        int i;
+        int numChildren = (s->directive == APP_CLASS_DYNAMIC)
+            ? dynamicMaxClassProcs
+            : s->numProcesses;
+        
+        /* Send KILL to all processes */
+        for (i = 0; i < numChildren; i++, proc++) 
+        {
+            if (proc->state == FCGI_RUNNING_STATE) 
+            {
+                fcgi_kill(proc, SIGKILL);
+            }
+        }
+        
+        s = s->next;
+    }
+
+#endif /* WIN32 */
 }
 
 static int init_listen_sock(fcgi_server * fs)
