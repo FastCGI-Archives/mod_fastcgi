@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_pm.c,v 1.89 2003/10/30 01:08:34 robs Exp $
+ * $Id: fcgi_pm.c,v 1.90 2004/01/07 01:56:00 robs Exp $
  */
 
 
@@ -1707,6 +1707,7 @@ void fcgi_pm_main(void *dummy)
         int waitStatus;
 #endif
         unsigned int numChildren;
+		unsigned int minServerLife;
 
         /*
          * If we came out of sigsuspend() for any reason other than
@@ -1731,6 +1732,10 @@ void fcgi_pm_main(void *dummy)
                 ? dynamicMaxClassProcs 
                 : s->numProcesses;
 
+            minServerLife = (s->directive == APP_CLASS_DYNAMIC) 
+                ? dynamicMinServerLife 
+                : s->minServerLife;
+
             for (i = 0; i < numChildren; ++i) 
             {
                 if (s->procs[i].pid <= 0 && s->procs[i].state == FCGI_START_STATE)
@@ -1753,7 +1758,7 @@ void fcgi_pm_main(void *dummy)
                     {
                         time_t last_start_time = s->procs[i].start_time;
 
-                        if (last_start_time && now - last_start_time > RUNTIME_SUCCESS_INTERVAL)
+                        if (last_start_time && now - last_start_time > minServerLife)
                         {
                             s->bad = 0;
                             s->numFailures = 0;
@@ -1762,7 +1767,7 @@ void fcgi_pm_main(void *dummy)
                                 " running for more than %d seconds, its restart"
                                 " interval has been restored to %d seconds",
                                 (s->directive == APP_CLASS_DYNAMIC) ? " (dynamic)" : "",
-                                s->fs_path, RUNTIME_SUCCESS_INTERVAL, s->restartDelay);
+                                s->fs_path, minServerLife, s->restartDelay);
                         }
                         else
                         {
@@ -1773,7 +1778,7 @@ void fcgi_pm_main(void *dummy)
                                 if (s->procs[j].pid <= 0) continue;
                                 if (s->procs[j].state != FCGI_RUNNING_STATE) continue;
                                 if (s->procs[j].start_time == 0) continue;
-                                if (now - s->procs[j].start_time > RUNTIME_SUCCESS_INTERVAL) break;
+                                if (now - s->procs[j].start_time > minServerLife) break;
                             }
 
                             if (j >= numChildren)
@@ -1784,7 +1789,7 @@ void fcgi_pm_main(void *dummy)
                                     " running for %d seconds given %d attempts, its restart"
                                     " interval has been backed off to %d seconds",
                                     (s->directive == APP_CLASS_DYNAMIC) ? " (dynamic)" : "",
-                                    s->fs_path, RUNTIME_SUCCESS_INTERVAL, MAX_FAILED_STARTS,
+                                    s->fs_path, minServerLife, MAX_FAILED_STARTS,
                                     FAILED_STARTS_DELAY);
                             }
                             else
@@ -1796,7 +1801,7 @@ void fcgi_pm_main(void *dummy)
                                     " running for more than %d seconds, its restart"
                                     " interval has been restored to %d seconds",
                                     (s->directive == APP_CLASS_DYNAMIC) ? " (dynamic)" : "",
-                                    s->fs_path, RUNTIME_SUCCESS_INTERVAL, s->restartDelay);
+                                    s->fs_path, minServerLife, s->restartDelay);
                             }
                         }
                     }

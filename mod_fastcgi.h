@@ -1,5 +1,5 @@
 /*
- * $Id: mod_fastcgi.h,v 1.48 2003/11/25 00:02:19 robs Exp $
+ * $Id: mod_fastcgi.h,v 1.49 2004/01/07 01:56:00 robs Exp $
  */
 
 #ifndef MOD_FASTCGI_H
@@ -40,12 +40,6 @@
  * considered broken and start attempts fall back to FAILED_STARTS_DELAY.
  */
 #define MAX_FAILED_STARTS 3
-
-/*
- * The number of seconds an application has to have run without exiting
- * for the application to be considered no longer broken.
- */
-#define RUNTIME_SUCCESS_INTERVAL 30
 
 /*
  * The number of seconds between attempts to start an application that 
@@ -102,7 +96,9 @@
                                             * seconds a server should wait in
                                             * attempt to connect to fcgi app
                                             * before sending FCGI_REQUEST_TIMEOUT_JOB */
-
+#define	FCGI_DEFAULT_MIN_SERVER_LIFE 30    /* the default minimum number of 
+                                            * seconds a server must stay alive
+                                            * before it's considered broken. */
 /*
  * # of sec to wait in a non-blocking connect() to the FastCGI application 
  * before aborting the request, or 0 to indicate that blocking connect()s 

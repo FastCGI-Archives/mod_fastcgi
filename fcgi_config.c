@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_config.c,v 1.49 2003/10/30 01:08:34 robs Exp $
+ * $Id: fcgi_config.c,v 1.50 2004/01/07 01:56:00 robs Exp $
  */
 
 #define CORE_PRIVATE
@@ -287,6 +287,7 @@ apcb_t fcgi_config_reset_globals(void* dummy)
     dynamicListenQueueDepth = FCGI_DEFAULT_LISTEN_Q;
     dynamicInitStartDelay = DEFAULT_INIT_START_DELAY;
     dynamicRestartDelay = FCGI_DEFAULT_RESTART_DELAY;
+    dynamicMinServerLife = FCGI_DEFAULT_MIN_SERVER_LIFE;
     dynamic_pass_headers = NULL;
     dynamic_idle_timeout = FCGI_DEFAULT_IDLE_TIMEOUT;
 	dynamicFlush = FCGI_FLUSH;
@@ -691,6 +692,10 @@ const char *fcgi_config_new_static_server(cmd_parms *cmd, void *dummy, const cha
         else if (strcasecmp(option, "-init-start-delay") == 0) {
             if ((err = get_int(tp, &arg, &s->initStartDelay, 0)))
                 return invalid_value(tp, name, fs_path, option, err);
+        }
+        else if (strcasecmp(option, "-min-server-life") == 0) {
+            if ((err = get_int(tp, &arg, &s->minServerLife, 0)))
+                return invalid_value(tp, name, NULL, option, err);
         }
         else if (strcasecmp(option, "-priority") == 0) {
             if ((err = get_u_int(tp, &arg, &s->processPriority, 0)))
@@ -1107,6 +1112,10 @@ const char *fcgi_config_set_config(cmd_parms *cmd, void *dummy, const char *arg)
         }
         else if (strcasecmp(option, "-listen-queue-depth") == 0) {
             if ((err = get_u_int(tp, &arg, &dynamicListenQueueDepth, 1)))
+                return invalid_value(tp, name, NULL, option, err);
+        }
+        else if (strcasecmp(option, "-min-server-life") == 0) {
+            if ((err = get_int(tp, &arg, &dynamicMinServerLife, 0)))
                 return invalid_value(tp, name, NULL, option, err);
         }
         else if (strcasecmp(option, "-restart-delay") == 0) {

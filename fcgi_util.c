@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_util.c,v 1.30 2003/10/30 01:08:34 robs Exp $
+ * $Id: fcgi_util.c,v 1.31 2004/01/07 01:56:00 robs Exp $
  */
 
 #include "fcgi.h"
@@ -417,6 +417,7 @@ fcgi_util_fs_new(pool *p)
     s->idle_timeout = FCGI_DEFAULT_IDLE_TIMEOUT;
     s->initStartDelay = DEFAULT_INIT_START_DELAY;
     s->restartDelay = FCGI_DEFAULT_RESTART_DELAY;
+	s->minServerLife = FCGI_DEFAULT_MIN_SERVER_LIFE;
     s->restartOnExit = FALSE;
     s->directive = APP_CLASS_UNKNOWN;
     s->processPriority = FCGI_DEFAULT_PRIORITY;

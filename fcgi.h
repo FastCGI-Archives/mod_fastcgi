@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi.h,v 1.44 2003/02/03 23:07:37 robs Exp $
+ * $Id: fcgi.h,v 1.45 2004/01/07 01:56:00 robs Exp $
  */
 
 #ifndef FCGI_H
@@ -181,6 +181,8 @@ typedef struct _FastCgiServerInfo {
                                      * starting of AppClass processes at init */
     u_int restartDelay;             /* number of seconds to wait between
                                      * restarts after failure.  Can be zero. */
+    u_int minServerLife;            /* minimum number of seconds a server must
+                                     * live before it's considered borked. */
     int restartOnExit;              /* = TRUE = restart. else terminate/free */
     u_int numFailures;              /* num restarts due to exit failure */
     int bad;                        /* is [not] having start problems */
@@ -582,7 +584,9 @@ extern u_int dynamicInitStartDelay;
 extern u_int dynamicRestartDelay;
 extern array_header *dynamic_pass_headers;
 extern u_int dynamic_idle_timeout;
+extern int dynamicMinServerLife;
 extern int dynamicFlush;
+
 
 extern module MODULE_VAR_EXPORT fastcgi_module;
 

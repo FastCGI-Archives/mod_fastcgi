@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.155 2003/10/30 01:08:34 robs Exp $
+ *  $Id: mod_fastcgi.c,v 1.156 2004/01/07 01:56:00 robs Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -151,6 +151,7 @@ u_int dynamicInitStartDelay = DEFAULT_INIT_START_DELAY;
 u_int dynamicRestartDelay = FCGI_DEFAULT_RESTART_DELAY;
 array_header *dynamic_pass_headers = NULL;
 u_int dynamic_idle_timeout = FCGI_DEFAULT_IDLE_TIMEOUT;
+int dynamicMinServerLife = FCGI_DEFAULT_MIN_SERVER_LIFE;
 
 /*******************************************************************************
  * Construct a message and write it to the pm_pipe.

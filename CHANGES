@@ -1,3 +1,9 @@
+2.4.3
+
+ *) Add a -min-server-life option to the FastCgiConfig and 
+    FastCgiServer directives to provide better control of the 
+    restart backoff feature.  Benjamin Osheroff [ben@gimbo.net]
+
 2.4.2
 
  *) [WIN] Fix handle leaks in the process manager.  
