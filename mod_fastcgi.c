@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.145 2002/10/22 01:02:18 robs Exp $
+ *  $Id: mod_fastcgi.c,v 1.146 2002/12/05 02:41:26 robs Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -1616,8 +1616,8 @@ SERVER_SEND:
 
                 if (WriteFile((HANDLE) fr->fd, b->begin, len, &sent, &sov))
                 {
+                    /* sov.hEvent is set */
                     fcgi_buf_removed(b, sent);
-                    ResetEvent(sov.hEvent);
                 }
                 else if (GetLastError() == ERROR_IO_PENDING)
                 {
@@ -1817,21 +1817,25 @@ SERVER_SEND:
 
                 if (i == 0)
                 {
-                    DWORD sent;
+                    if (send_pending)
+                    {
+                        DWORD sent;
 
-                    if (GetOverlappedResult((HANDLE) fr->fd, &sov, &sent, FALSE))
-                    {
-                        send_pending = 0;
-                        ResetEvent(sov.hEvent);
-                        fcgi_buf_removed(fr->serverOutputBuffer, sent);
+                        if (GetOverlappedResult((HANDLE) fr->fd, &sov, &sent, FALSE))
+                        {
+                            send_pending = 0;
+                            fcgi_buf_removed(fr->serverOutputBuffer, sent);
+                        }
+                        else
+                        {
+                            ap_log_rerror(FCGI_LOG_ERR, r, "FastCGI: comm with server "
+                                "\"%s\" aborted: GetOverlappedResult() failed", fr->fs_path);
+                            state = STATE_ERROR;
+                            break;
+                        }
                     }
-                    else
-                    {
-                        ap_log_rerror(FCGI_LOG_ERR, r, "FastCGI: comm with server "
-                            "\"%s\" aborted: GetOverlappedResult() failed", fr->fs_path);
-                        state = STATE_ERROR;
-                        break;
-                    }
+
+                    ResetEvent(sov.hEvent);
                 }
                 else
                 {

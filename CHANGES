@@ -1,5 +1,8 @@
 2.2.13
 
+ *) [WIN32] Fix a delay in handling large POSTs to named pipe based
+    servers. Philip Gladstone [philip@okena.com]
+
  *) [*nix/AP2] Prevent the module from being initalized twice at startup
     (resulting in confusing error messages to the log).
 
