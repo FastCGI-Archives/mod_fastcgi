@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.113 2001/05/03 22:06:29 robs Exp $
+ *  $Id: mod_fastcgi.c,v 1.112 2001/05/03 22:04:17 robs Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -741,7 +741,7 @@ static void close_connection_to_fs(fcgi_request *fr)
     if (fr->dynamic) 
     {
         if (fr->keepReadingFromFcgiApp == FALSE) {
-            /* XXX FCGI_REQUEST_COMPLETE_JOB is only sent for requests which complete
+            /* XXX REQ_COMPLETE is only sent for requests which complete
              * normally WRT the fcgi app.  There is no data sent for
              * connect() timeouts or requests which complete abnormally.
              * KillDynamicProcs() and RemoveRecords() need to be looked at

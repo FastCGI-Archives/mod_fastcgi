@@ -1,5 +1,5 @@
 /*
- * $Id: mod_fastcgi.h,v 1.35 2001/05/03 22:06:29 robs Exp $
+ * $Id: mod_fastcgi.h,v 1.34 2001/05/03 22:04:17 robs Exp $
  */
 
 #ifndef MOD_FASTCGI_H
@@ -102,7 +102,7 @@
 #define FCGI_MAXPATH  512
 #endif
 
-/* FCGI_REQUEST_COMPLETE_JOB is the longest: id, path, user, gid, qtime, start */
+/* REQ_COMPLETE is the longest: id, path, user, gid, qtime, start */
 #define FCGI_MSG_CRAP  1 + 2 + MAX_USER_NAME_LEN + 1 + MAX_GID_CHAR_LEN + (2 * 11) + 3
  
 #if defined(PIPE_BUF) && PIPE_BUF < FCGI_MAXPATH + FCGI_MSG_CRAP
