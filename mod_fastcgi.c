@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.35 1998/05/22 20:18:54 roberts Exp $
+ *  $Id: mod_fastcgi.c,v 1.36 1998/05/26 19:05:25 roberts Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -228,27 +228,20 @@ static int OS_BuildSockAddrUn(
 {
     int bindPathLen = strlen(bindPath);
 
-#ifdef HAVE_SOCKADDR_UN_SUN_LEN /* 4.3BSD Reno and later: BSDI */
     if(bindPathLen >= sizeof(servAddrPtr->sun_path)) {
         return -1;
     }
-#else                           /* 4.3 BSD Tahoe: Solaris, HPUX, DEC, ... */
-    if(bindPathLen > sizeof(servAddrPtr->sun_path)) {
-        return -1;
-    }
-#endif
+
     memset((char *) servAddrPtr, 0, sizeof(*servAddrPtr));
     servAddrPtr->sun_family = AF_UNIX;
-    memcpy(servAddrPtr->sun_path, bindPath, bindPathLen);
+    strncpy(servAddrPtr->sun_path, bindPath, sizeof(servAddrPtr->sun_path) - 1);
 
-#ifdef HAVE_SOCKADDR_UN_SUN_LEN /* 4.3BSD Reno and later: BSDI */
-    *servAddrLen = sizeof(servAddrPtr->sun_len)
-            + sizeof(servAddrPtr->sun_family)
-            + bindPathLen + 1;
-    servAddrPtr->sun_len = *servAddrLen;
-#else                           /* 4.3 BSD Tahoe: Solaris, HPUX, DEC, ... */
-    *servAddrLen = sizeof(servAddrPtr->sun_family) + bindPathLen;
+#ifndef SUN_LEN
+#define SUN_LEN(su) \
+    (sizeof(*(su)) - sizeof((su)->sun_path) + strlen((su)->sun_path))
 #endif
+
+    *servAddrLen = SUN_LEN(servAddrPtr);
     return 0;
 }
 
@@ -4468,10 +4461,15 @@ static void DrainReqOutbuf(WS_Request *reqPtr, FastCgiInfo *infoPtr)
  *
  *----------------------------------------------------------------------
  */
+static void CloseConnectionToFcgiApp(FastCgiInfo *infoPtr);
+
 static int ConnectToFcgiApp(WS_Request *reqPtr, FastCgiInfo *infoPtr)
 {
-    OS_IpcAddr*  ipcAddrPtr = NULL;
-    int          flags = 0;
+    OS_IpcAddr*     ipcAddrPtr = NULL;
+    int             flags = 0;
+    struct timeval  tval;
+    fd_set          write_fds;
+    int             status;
 
     /* Dynamic app's lockfile handling */
     if(infoPtr->dynamic) {
@@ -4563,62 +4561,20 @@ static int ConnectToFcgiApp(WS_Request *reqPtr, FastCgiInfo *infoPtr)
     if(connect(infoPtr->fd, 
             (struct sockaddr *)ipcAddrPtr->serverAddr,
             ipcAddrPtr->addrLen) < 0) {
-        struct  timeval tval;
-        fd_set  write_fds;
-        int     status;
-
-        if(errno != EINPROGRESS) {
-            sprintf(infoPtr->errorMsg,
-                    "mod_fastcgi: connect() failed: ");
+        if (errno != EINPROGRESS) {
+            sprintf(infoPtr->errorMsg, "mod_fastcgi: connect() failed: ");
             goto SystemError;
-        } 
+        }
+    } else {
+        goto ConnectionComplete;
+    }
                
-        /* errno == EINPROGRESS, so we'll have to use select()
-           to wait for the connect() to complete */
-        if (infoPtr->dynamic) {
-            do {
-                FD_ZERO(&write_fds);
-                FD_SET(infoPtr->fd, &write_fds);
-
-                /* Reset on each pass, tval might be changed by select() */
-                tval.tv_sec = startProcessDelay;
-                tval.tv_usec = 0;
-
-#ifdef SELECT_NEEDS_CAST
-                status = select((infoPtr->fd+1), NULL, (int*)&write_fds,
-                        NULL, &tval);
-#else
-                status = select((infoPtr->fd+1), NULL, &write_fds,
-                        NULL, &tval);
-#endif
-                if(status < 0) {
-                    sprintf(infoPtr->errorMsg,
-                            "mod_fastcgi: select() failed: ");
-                    goto SystemError;
-                }
-                if(gettimeofday(&(infoPtr->queueTime),NULL) < 0) {
-                    sprintf(infoPtr->errorMsg,
-                         "mod_fastcgi: gettimeofday() failed: ");
-                    goto SystemError;
-                }
-                if(status == 0) {
-                    /* select() timed out */
-                    SignalProcessManager(CONN_TIMEOUT,
-                            reqPtr->filename,
-                            (unsigned long)startProcessDelay*1000000,
-                            0, 0);
-                } else {
-                    /* connect() completed */
-                    break;
-                }
-            } while((infoPtr->queueTime.tv_sec - infoPtr->startTime.tv_sec) 
-                    < appConnTimeout);
-        } else {        
-            /* errno==EINPROGRESS && its a static app  */
-            tval.tv_sec = appConnTimeout;
-            tval.tv_usec = 0;
+    if (infoPtr->dynamic) {
+        do {
             FD_ZERO(&write_fds);
             FD_SET(infoPtr->fd, &write_fds);
+            tval.tv_sec = startProcessDelay;
+            tval.tv_usec = 0;
 
 #ifdef SELECT_NEEDS_CAST
             status = select((infoPtr->fd+1), NULL, (int*)&write_fds,
@@ -4628,20 +4584,53 @@ static int ConnectToFcgiApp(WS_Request *reqPtr, FastCgiInfo *infoPtr)
                     NULL, &tval);
 #endif
             if(status < 0) {
+                break;
+            }
+            if(gettimeofday(&(infoPtr->queueTime),NULL) < 0) {
                 sprintf(infoPtr->errorMsg,
-                        "mod_fastcgi: select() failed: ");
+                     "mod_fastcgi: gettimeofday() failed: ");
                 goto SystemError;
             }
-        }  /* errno==EINPROGRESS, if(dynamic){} else{} */
-        if(status == 0) {
-            sprintf(infoPtr->errorMsg,
-                "mod_fastcgi: failed to establish a connection to fcgi app within %d seconds (appConnTimeout)",
-                appConnTimeout);
-            goto Error;
-        }
-    }  /* if (connect() < 0) */
+            if(status == 0) {
+                /* select() timed out */
+                SignalProcessManager(CONN_TIMEOUT,
+                        reqPtr->filename,
+                        (unsigned long)startProcessDelay*1000000,
+                        0, 0);
+            } else {
+                /* connect() completed */
+                break;
+            }
+        } while((infoPtr->queueTime.tv_sec - infoPtr->startTime.tv_sec) 
+                < appConnTimeout);
+    } else {        
+        /* its a static app  */
+        tval.tv_sec = appConnTimeout;
+        tval.tv_usec = 0;
+        FD_ZERO(&write_fds);
+        FD_SET(infoPtr->fd, &write_fds);
 
-    /* we should have a valid connection at this point */
+#ifdef SELECT_NEEDS_CAST
+        status = select((infoPtr->fd+1), NULL, (int*)&write_fds,
+                NULL, &tval);
+#else
+        status = select((infoPtr->fd+1), NULL, &write_fds,
+                NULL, &tval);
+#endif
+    }  /* if (dynamic){} else{} */
+
+    if(status < 0) {
+        sprintf(infoPtr->errorMsg, "mod_fastcgi: select() failed: ");
+        goto SystemError;
+    }
+    if(status == 0) {
+        sprintf(infoPtr->errorMsg,
+            "mod_fastcgi: connect() timed out (appConnTimeout=%dsec)",
+            appConnTimeout);
+        goto Error;
+    }
+
+ConnectionComplete:
     if (infoPtr->dynamic) {
         if (gettimeofday(&(infoPtr->queueTime),NULL) < 0) {
             sprintf(infoPtr->errorMsg,
@@ -4823,7 +4812,9 @@ static int FastCgiDoWork(WS_Request *reqPtr, FastCgiInfo *infoPtr)
             } else {
                 /* we've got the apache soft_timeout() alarm set,
                    so select() will fail with EINTR as a drop dead TO,
-                   i.e. its OK to set this to null. */
+                   i.e. its OK to set this to null. 
+                   ***TODO: but if the app hasn't accept()ed w/in 
+                   appConnTimeout, shouldn't we abort? */
                 timeOutPtr = NULL;
             }
 #ifdef SELECT_NEEDS_CAST
