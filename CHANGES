@@ -1,5 +1,8 @@
 2.2.11
 
+ *) Win32. Eliminate forward slashes from the named pipe path name.
+    Gerald Richter [richter@ecos.de]
+
  *) SIGUSR2 is no longer blocked in the process manager and the fastcgi 
     applications it spawns. [ryans@amazon.com]
 

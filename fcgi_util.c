@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_util.c,v 1.18 2001/05/03 21:57:35 robs Exp $
+ * $Id: fcgi_util.c,v 1.19 2001/09/04 13:13:09 robs Exp $
  */
 
 #include "fcgi.h"
@@ -24,6 +24,44 @@ fcgi_util_socket_hash_filename(pool *p, const char *path,
     return ap_md5(p, (unsigned char *)buf);
 }
 
+
+ /*******************************************************************************
+  * Concat src1 and src2 using the approprate path seperator for the platform. 
+  */
+static char * make_full_path(pool *a, const char *src1, const char *src2)
+{
+#ifdef WIN32
+    register int x;
+    char * p ;
+    char * q ;
+
+    x = strlen(src1);
+
+    if (x == 0) {
+	    p = ap_pstrcat(a, "\\", src2, NULL);
+    }
+    else if (src1[x - 1] != '\\' && src1[x - 1] != '/') {
+	    p = ap_pstrcat(a, src1, "\\", src2, NULL);
+    }
+    else {
+	    p = ap_pstrcat(a, src1, src2, NULL);
+    }
+
+    q = p ;
+    while (*q)
+	{
+        if (*q == '/') {
+	        *q = '\\' ;
+        }
+	    ++q;
+	}
+
+    return p ;
+#else
+    return ap_make_full_path(a, src1, src2);
+#endif
+}
+
 /*******************************************************************************
  * Return absolute path to file in either "regular" FCGI socket directory or
  * the dynamic directory.  Result is allocated in pool p.
@@ -39,7 +77,7 @@ fcgi_util_socket_make_path_absolute(pool * const p,
     else
     {
         const char * parent_dir = dynamic ? fcgi_dynamic_dir : fcgi_socket_dir;
-        return (const char *) ap_make_full_path(p, parent_dir, file);
+        return (const char *) make_full_path(p, parent_dir, file);
     }
 }
 
