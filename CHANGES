@@ -1,4 +1,4 @@
-2.2.11
+2.2.12
 
  *) Delay the logging of write errors to the pm to account for shutdown/restart.
 
