@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_pm.c,v 1.42 2000/10/17 01:58:16 robs Exp $
+ * $Id: fcgi_pm.c,v 1.43 2001/02/19 05:50:50 robs Exp $
  */
 
 
@@ -1182,7 +1182,7 @@ static void dynamic_kill_idle_fs_procs(void)
         /* XXX producing a heavy load with one client, I haven't been
            able to achieve a loadFactor greater than 0.5.  Perhaps this
            should be scaled up by another order of magnitude or two.  */
-        loadFactor = connTime/totalTime*100.0;
+        loadFactor = 100.0 * connTime / totalTime;
 
         if ((s->numProcesses > 1
                 && s->numProcesses/(s->numProcesses - 1)*loadFactor < dynamicThreshholdN) 
