@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_pm.c,v 1.19 1999/09/26 02:15:02 roberts Exp $
+ * $Id: fcgi_pm.c,v 1.20 1999/10/06 11:44:23 roberts Exp $
  */
 
 #include "fcgi.h"
@@ -311,14 +311,9 @@ static pid_t spawn_fs_process(const fcgi_server *fs)
 
     failedSysCall = "execle()";
 
-    /* We had to close all files but the FCGI listener socket in order to
-     * exec the application.  So we must reopen the log file. */
-    ap_open_logs(fcgi_apache_main_server, fcgi_config_pool);
-
 FailedSystemCallExit:
-    ap_log_error(FCGI_LOG_ERR, fcgi_apache_main_server,
-        "FastCGI: can't start server \"%s\" (pid %ld), %s failed",
-        fs->fs_path, (long) getpid(), failedSysCall);
+    fprintf(stderr, "FastCGI: can't start server \"%s\" (pid %ld), %s failed: %s\n",
+        fs->fs_path, (long) getpid(), failedSysCall, strerror(errno));
     exit(-1);
 
     /* avoid an irrelevant compiler warning */
