@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi.h,v 1.11 1999/08/02 12:55:28 roberts Exp $
+ * $Id: fcgi.h,v 1.12 1999/08/04 18:13:18 roberts Exp $
  */
 
 #ifndef FCGI_H
@@ -234,15 +234,15 @@ typedef struct
  */
 void *fcgi_config_create_dir_config(pool *p, char *dummy);
 const char *fcgi_config_make_dir(pool *tp, char *path);
-const char *fcgi_config_make_dynamic_dir_n_mbox(pool *p, int wax);
+const char *fcgi_config_make_dynamic_dir_n_mbox(pool *p, const int wax);
 const char *fcgi_config_new_static_server(cmd_parms *cmd, void *dummy, const char *arg);
 const char *fcgi_config_new_external_server(cmd_parms *cmd, void *dummy, const char *arg);
 const char *fcgi_config_set_config(cmd_parms *cmd, void *dummy, const char *arg);
 const char *fcgi_config_set_fcgi_uid_n_gid(int set);
-const char *fcgi_config_new_auth_server(cmd_parms *cmd, fcgi_dir_config *dir_config,
-					const char *fs_path, const char *compat);
-const char *fcgi_config_set_authoritative_slot(const cmd_parms *cmd,
-					       fcgi_dir_config *dir_config, int arg);
+const char *fcgi_config_new_auth_server(cmd_parms * const cmd,
+	fcgi_dir_config *dir_config, const char *fs_path, const char * const compat);
+const char *fcgi_config_set_authoritative_slot(const cmd_parms * const cmd,
+	fcgi_dir_config * const dir_config, int arg);
 const char *fcgi_config_set_socket_dir(cmd_parms *cmd, void *dummy, char *arg);
 const char *fcgi_config_set_suexec(cmd_parms *cmd, void *dummy, const char *arg);
 void fcgi_config_reset_globals(void* dummy);
