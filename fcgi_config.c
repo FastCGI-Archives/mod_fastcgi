@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_config.c,v 1.28 2001/05/03 20:51:24 robs Exp $
+ * $Id: fcgi_config.c,v 1.29 2001/05/29 15:22:12 robs Exp $
  */
 
 #include "fcgi.h"
@@ -263,6 +263,7 @@ void fcgi_config_reset_globals(void* dummy)
     dynamicRestartDelay = FCGI_DEFAULT_RESTART_DELAY;
     dynamic_pass_headers = NULL;
     dynamic_idle_timeout = FCGI_DEFAULT_IDLE_TIMEOUT;
+	dynamicFlush = FCGI_FLUSH;
 
 #ifndef WIN32
 	/* Close any old pipe (HUP/USR1) */
@@ -901,6 +902,9 @@ const char *fcgi_config_set_config(cmd_parms *cmd, void *dummy, const char *arg)
         }
         else if (strcasecmp(option, "-autoUpdate") == 0) {
             dynamicAutoUpdate = 1;
+		}
+        else if (strcasecmp(option, "-flush") == 0) {
+            dynamicFlush = TRUE;
         }
         else {
             return ap_psprintf(tp, "%s: invalid option: %s", name, option);

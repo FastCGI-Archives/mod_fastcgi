@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_pm.c,v 1.55 2001/05/03 22:06:30 robs Exp $
+ * $Id: fcgi_pm.c,v 1.56 2001/05/29 15:22:13 robs Exp $
  */
 
 
@@ -825,6 +825,7 @@ static void dynamic_read_msgs(int read_ready)
             s->listenQueueDepth = dynamicListenQueueDepth;
             s->initStartDelay = dynamicInitStartDelay;
             s->envp = dynamicEnvp;
+			s->flush = dynamicFlush;
             
 #ifdef WIN32
             s->mutex_env_string = ap_psprintf(sp, "_FCGI_MUTEX_=%ld", mutex);

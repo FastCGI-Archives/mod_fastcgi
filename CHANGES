@@ -1,5 +1,8 @@
 2.2.11
 
+ *) Added support for the -flush argument to FastCgiConfig. 
+    Eric Sit [esit@alum.mit.edu]
+
  *) Change the "which call to module_init() is this" check to a more
     reliable approach.  Doru Petrescu [pdoru@kappa.ro]
 

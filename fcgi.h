@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi.h,v 1.31 2001/05/03 21:57:35 robs Exp $
+ * $Id: fcgi.h,v 1.32 2001/05/29 15:22:12 robs Exp $
  */
 
 #ifndef FCGI_H
@@ -485,6 +485,7 @@ extern u_int dynamicInitStartDelay;
 extern u_int dynamicRestartDelay;
 extern array_header *dynamic_pass_headers;
 extern u_int dynamic_idle_timeout;
+extern int dynamicFlush;
 
 extern module MODULE_VAR_EXPORT fastcgi_module;
 

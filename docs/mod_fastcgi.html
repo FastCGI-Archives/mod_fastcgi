@@ -1,6 +1,6 @@
 <!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">
 <html>
-<!-- $Id: mod_fastcgi.html,v 1.22 2001/05/12 12:53:57 robs Exp $ -->
+<!-- $Id: mod_fastcgi.html,v 1.23 2001/05/29 15:22:15 robs Exp $ -->
 
 <head>
 <title>Apache module mod_fastcgi</title>
@@ -338,6 +338,10 @@ mutually exclusive.</DD>
     be built-in to the application (e.g. every 100th request it checks to see 
     if there's a newer version on disk and exits if so). There may be an outstanding 
     problem (bug) when this option is used with <code>-restart</code>. 
+  <dt><code><b>-flush</b> (none)</code> 
+  <dd>Force a write to the client as data is received from the application. By 
+    default, <code>mod_fastcgi</code> buffers data in order to free the application 
+    as quickly as possible. 
   <dt><code><b>-gainValue <em>n</em></b> (0.5)</code> 
   <dd>A floating point value between 0 and 1 used as an exponent in the computation 
     of the exponentially decayed connection times load factor of the currently 

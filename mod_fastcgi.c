@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.115 2001/05/03 22:33:53 robs Exp $
+ *  $Id: mod_fastcgi.c,v 1.116 2001/05/29 15:22:13 robs Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -131,6 +131,7 @@ char **dynamicEnvp = &fcgi_empty_env;
 u_int dynamicProcessSlack = FCGI_DEFAULT_PROCESS_SLACK;
 int dynamicAutoRestart = FCGI_DEFAULT_RESTART_DYNAMIC;
 int dynamicAutoUpdate = FCGI_DEFAULT_AUTOUPDATE;
+int dynamicFlush = FCGI_FLUSH;
 u_int dynamicListenQueueDepth = FCGI_DEFAULT_LISTEN_Q;
 u_int dynamicInitStartDelay = DEFAULT_INIT_START_DELAY;
 u_int dynamicRestartDelay = FCGI_DEFAULT_RESTART_DELAY;

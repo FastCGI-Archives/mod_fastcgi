@@ -1,5 +1,5 @@
 /*
- * $Id: mod_fastcgi.h,v 1.34 2001/05/03 22:04:17 robs Exp $
+ * $Id: mod_fastcgi.h,v 1.36 2001/05/29 15:22:13 robs Exp $
  */
 
 #ifndef MOD_FASTCGI_H
@@ -86,6 +86,12 @@
                                             * fcgi apps when the binary on the
                                             * disk is changed. */
 
+/*
+ * Should data recieved from the FastCGI server be immediately flushed to
+ * the client?  Default: FALSE
+ */
+#define FCGI_FLUSH	FALSE
+
 #ifdef WIN32
 #define DEFAULT_SOCK_DIR "\\\\.\\pipe\\FastCGI\\"
 #else
@@ -102,7 +108,7 @@
 #define FCGI_MAXPATH  512
 #endif
 
-/* REQ_COMPLETE is the longest: id, path, user, gid, qtime, start */
+/* FCGI_REQUEST_COMPLETE_JOB is the longest: id, path, user, gid, qtime, start */
 #define FCGI_MSG_CRAP  1 + 2 + MAX_USER_NAME_LEN + 1 + MAX_GID_CHAR_LEN + (2 * 11) + 3
  
 #if defined(PIPE_BUF) && PIPE_BUF < FCGI_MAXPATH + FCGI_MSG_CRAP
