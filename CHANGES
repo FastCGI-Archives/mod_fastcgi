@@ -1,5 +1,10 @@
 Changes with mod_fastcgi 2.2.2
 
+ *) Changed the default listen-queue-depth (FCGI_DEFAULT_LISTEN_Q) from
+    5 to 100.  Its still configurable with the --listen-queue-depth option.
+    This should help eliminate the FAQ - Why do I see "Connection Refused"
+    messages in the log?
+
  *) Fix a bug in FastCgiExternalServer that broke support for external servers 
     on other hosts.  [Dave Neuer <dneuer@futuristics.net>]
 

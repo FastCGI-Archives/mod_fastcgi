@@ -1,5 +1,5 @@
 /*
- * $Id: mod_fastcgi.h,v 1.11 1999/02/25 04:31:57 roberts Exp $
+ * $Id: mod_fastcgi.h,v 1.12 1999/03/31 03:33:57 roberts Exp $
  */
 
 #ifndef MOD_FASTCGI_H
@@ -7,7 +7,7 @@
 
 #define MOD_FASTCGI_VERSION "2.2.2"
 
-#define FCGI_DEFAULT_LISTEN_Q 5            /* listen queue size */
+#define FCGI_DEFAULT_LISTEN_Q 100          /* listen queue (backlog) depth */
 #define FCGI_DEFAULT_RESTART_DELAY 5       /* delay between restarts */
 #define DEFAULT_INIT_START_DELAY 1         /* delay between starts */
 #define FCGI_DEFAULT_PRIORITY 0            /* process priority - not used */
