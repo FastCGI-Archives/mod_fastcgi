@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_protocol.c,v 1.12 2000/04/06 12:31:49 robs Exp $
+ * $Id: fcgi_protocol.c,v 1.13 2000/04/06 18:46:36 robs Exp $
  */
 
 
@@ -377,7 +377,7 @@ int fcgi_protocol_dequeue(pool *p, fcgi_request *fr)
                     fr->fs_stderr_len += get_len;
                     *(start + fr->fs_stderr_len) = '\0';
 
-                    /* Disallow nulls */
+                    /* Disallow nulls, we could be nicer but this is the motivator */
                     while ((null = memchr(start, '\0', fr->fs_stderr_len)))
                     {
                         int discard = ++null - start;
@@ -391,8 +391,11 @@ int fcgi_protocol_dequeue(pool *p, fcgi_request *fr)
                     /* Print as much as possible  */
                     while ((end = strpbrk(start, "\r\n"))) 
                     {
-                        *end = '\0';
-                        ap_log_rerror(FCGI_LOG_ERR_NOERRNO, fr->r, "FastCGI: server \"%s\" stderr: %s", fr->fs_path, start); 
+                        if (start != end)
+                        {
+                        	*end = '\0';
+                        	ap_log_rerror(FCGI_LOG_ERR_NOERRNO, fr->r, "FastCGI: server \"%s\" stderr: %s", fr->fs_path, start);
+                        } 
                         end += strspn(++end, "\r\n");
                         fr->fs_stderr_len -= (end - start);
                         start = end;
