@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi.h,v 1.28 2001/02/19 06:00:09 robs Exp $
+ * $Id: fcgi.h,v 1.29 2001/03/05 15:45:16 robs Exp $
  */
 
 #ifndef FCGI_H
@@ -255,6 +255,31 @@ typedef struct
     u_char access_checker_options;
 } fcgi_dir_config;
 
+#define FCGI_OK     0
+#define FCGI_FAILED 1
+
+#ifdef WIN32
+
+#define FCGI_LOG_EMERG_ERRNO    __FILE__,__LINE__,APLOG_EMERG     /* system is unusable */
+#define FCGI_LOG_ALERT_ERRNO    __FILE__,__LINE__,APLOG_ALERT     /* action must be taken immediately */
+#define FCGI_LOG_CRIT_ERRNO     __FILE__,__LINE__,APLOG_CRIT      /* critical conditions */
+#define FCGI_LOG_ERR_ERRNO      __FILE__,__LINE__,APLOG_ERR       /* error conditions */
+#define FCGI_LOG_WARN_ERRNO     __FILE__,__LINE__,APLOG_WARNING   /* warning conditions */
+#define FCGI_LOG_NOTICE_ERRNO   __FILE__,__LINE__,APLOG_NOTICE    /* normal but significant condition */
+#define FCGI_LOG_INFO_ERRNO     __FILE__,__LINE__,APLOG_INFO      /* informational */
+#define FCGI_LOG_DEBUG_ERRNO    __FILE__,__LINE__,APLOG_DEBUG     /* debug-level messages */
+
+#define FCGI_LOG_EMERG          __FILE__,__LINE__,APLOG_EMERG|APLOG_WIN32ERROR
+#define FCGI_LOG_ALERT          __FILE__,__LINE__,APLOG_ALERT|APLOG_WIN32ERROR
+#define FCGI_LOG_CRIT           __FILE__,__LINE__,APLOG_CRIT|APLOG_WIN32ERROR
+#define FCGI_LOG_ERR            __FILE__,__LINE__,APLOG_ERR|APLOG_WIN32ERROR
+#define FCGI_LOG_WARN           __FILE__,__LINE__,APLOG_WARNING|APLOG_WIN32ERROR
+#define FCGI_LOG_NOTICE         __FILE__,__LINE__,APLOG_NOTICE|APLOG_WIN32ERROR
+#define FCGI_LOG_INFO           __FILE__,__LINE__,APLOG_INFO|APLOG_WIN32ERROR
+#define FCGI_LOG_DEBUG          __FILE__,__LINE__,APLOG_DEBUG|APLOG_WIN32ERROR
+
+#else
+
 #define FCGI_LOG_EMERG    __FILE__,__LINE__,APLOG_EMERG     /* system is unusable */
 #define FCGI_LOG_ALERT    __FILE__,__LINE__,APLOG_ALERT     /* action must be taken immediately */
 #define FCGI_LOG_CRIT     __FILE__,__LINE__,APLOG_CRIT      /* critical conditions */
@@ -263,6 +288,17 @@ typedef struct
 #define FCGI_LOG_NOTICE   __FILE__,__LINE__,APLOG_NOTICE    /* normal but significant condition */
 #define FCGI_LOG_INFO     __FILE__,__LINE__,APLOG_INFO      /* informational */
 #define FCGI_LOG_DEBUG    __FILE__,__LINE__,APLOG_DEBUG     /* debug-level messages */
+
+#define FCGI_LOG_EMERG_ERRNO    FCGI_LOG_EMERG
+#define FCGI_LOG_ALERT_ERRNO    FCGI_LOG_ALERT
+#define FCGI_LOG_CRIT_ERRNO     FCGI_LOG_CRIT
+#define FCGI_LOG_ERR_ERRNO      FCGI_LOG_ERR
+#define FCGI_LOG_WARN_ERRNO     FCGI_LOG_WARN
+#define FCGI_LOG_NOTICE_ERRNO   FCGI_LOG_NOTICE
+#define FCGI_LOG_INFO_ERRNO     FCGI_LOG_INFO
+#define FCGI_LOG_DEBUG_ERRNO    FCGI_LOG_DEBUG
+
+#endif
 
 #define FCGI_LOG_EMERG_NOERRNO    __FILE__,__LINE__,APLOG_EMERG|APLOG_NOERRNO
 #define FCGI_LOG_ALERT_NOERRNO    __FILE__,__LINE__,APLOG_ALERT|APLOG_NOERRNO
