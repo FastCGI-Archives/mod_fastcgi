@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.130 2002/03/13 18:32:34 robs Exp $
+ *  $Id: mod_fastcgi.c,v 1.131 2002/03/13 23:32:19 robs Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -1371,6 +1371,7 @@ static void cleanup(void *data)
     }
 }
 
+#ifdef WIN32
 static int npipe_io(fcgi_request * const fr)
 {
     request_rec * const r = fr->r;
@@ -1752,6 +1753,7 @@ SERVER_SEND:
 
     return (state == STATE_ERROR);
 }
+#endif /* WIN32 */
 
 static int socket_io(fcgi_request * const fr)
 {
@@ -1931,6 +1933,8 @@ SERVER_SEND:
             timersub(&fr->queueTime, &fr->startTime, &qwait);
 
             delay = dynamic_first_recv * dynamicPleaseStartDelay;
+
+	    FCGIDBG5("qwait=%ld.%06ld delay=%d first_recv=%d", qwait.tv_sec, qwait.tv_usec, delay, dynamic_first_recv);
 
             if (qwait.tv_sec < delay) 
             {
