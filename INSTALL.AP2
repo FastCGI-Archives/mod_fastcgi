@@ -22,7 +22,7 @@
     set the top_dir variable when running make (or edit the
     Makefile), e.g. 
 
-      $ top_dir=/opt/httpd/2.0.40 make install
+      $ make top_dir=/opt/httpd/2.0.40
 
     Add an entry to httpd.conf like this:
 
