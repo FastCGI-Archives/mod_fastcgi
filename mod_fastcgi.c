@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.43 1998/08/05 15:15:55 roberts Exp $
+ *  $Id: mod_fastcgi.c,v 1.44 1998/08/05 19:47:01 roberts Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -3581,7 +3581,7 @@ int FCGIProcMgrBoot(void *data, child_info *child_info)
         strncpy(server_argv0, "fcgiKillMgr", strlen(server_argv0));
 
         memset(buf, 0, IOBUFSIZE);
-        sprintf(buf, "%d", procMgr);
+        sprintf(buf, "%ld", (long)procMgr);
         do {
             n = write(STDOUT_FILENO, buf, IOBUFSIZE);
         } while (((n==-1) || (n==0)) && (errno==EINTR));
@@ -4264,7 +4264,7 @@ char *ScanLine(char *start, int continuation)
 
 void ScanCGIHeader(WS_Request *reqPtr, FastCgiInfo *infoPtr)
 {
-    char *p, *next, *name, *value, *location;
+    char *p, *next, *name, *value;
     int len, flag;
     int hasContentType, hasStatus, hasLocation;
 
@@ -4374,7 +4374,7 @@ void ScanCGIHeader(WS_Request *reqPtr, FastCgiInfo *infoPtr)
      * Who responds, this handler or Apache?
      */
     if(hasLocation) {
-        location = table_get(reqPtr->headers_out, "Location");
+        const char *location = table_get(reqPtr->headers_out, "Location");
         /*
          * Based on internal redirect handling in mod_cgi.c...
          *
@@ -5132,7 +5132,7 @@ void FcgiCleanUp(FastCgiInfo *infoPtr)
 
 static int is_scriptaliased(request_rec *r)
 {
-    char *t = table_get(r->notes, "alias-forced-type");
+    const char *t = table_get(r->notes, "alias-forced-type");
     return t && (!strcasecmp(t, "cgi-script"));
 }
 
