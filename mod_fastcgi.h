@@ -1,5 +1,5 @@
 /*
- * $Id: mod_fastcgi.h,v 1.41 2002/02/28 22:52:50 robs Exp $
+ * $Id: mod_fastcgi.h,v 1.42 2002/07/29 00:06:39 robs Exp $
  */
 
 #ifndef MOD_FASTCGI_H
@@ -195,14 +195,21 @@
 #define max(a,b) ((a) > (b) ? (a) : (b))
 #endif
 
+#ifdef APACHE2
+
+#define get_signal_text(a)  apr_signal_description_get(a)
+
+#else /* !APACHE2 */
+
 /* This is (more or less) from http_main.c. It should be in an Apache header */
 #ifndef SYS_SIGLIST
 #define SYS_SIGLIST ap_sys_siglist
 extern const char *ap_sys_siglist[]; 
 #endif
 
+#define get_signal_text(a)  SYS_SIGLIST[WTERMSIG(a)]
+
+#endif /* !APACHE2 */
+
 #endif	/* MOD_FASTCGI_H */
-
-
-
 
