@@ -4,3 +4,9 @@
 *.la *.so
 Makefile
 .libs
+.deps
+.project
+.cdtproject
+Debug
+Release
+
