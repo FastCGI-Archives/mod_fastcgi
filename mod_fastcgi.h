@@ -1,5 +1,5 @@
 /*
- * $Id: mod_fastcgi.h,v 1.12 1999/03/31 03:33:57 roberts Exp $
+ * $Id: mod_fastcgi.h,v 1.13 1999/04/22 03:28:07 roberts Exp $
  */
 
 #ifndef MOD_FASTCGI_H
@@ -16,8 +16,8 @@
                                               wait before restarting */
 #define MAX_INIT_ENV_VARS 64               /* max # of -initial-env options */
 
-/* max number of chars of stderr we can handle from a FastCGI Server */
-#define FCGI_SERVER_MAX_STDERR_LEN 2047     
+/* max number of chars in a line of stderr we can handle from a FastCGI Server */
+#define FCGI_SERVER_MAX_STDERR_LINE_LEN 511     
 
 #define SERVER_BUFSIZE 8192
 

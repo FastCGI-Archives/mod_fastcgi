@@ -1,5 +1,8 @@
 Changes with mod_fastcgi 2.2.2
 
+ *) Improved script stderr handling.  [based on suggestions by 
+    David Birnbaum <davidb@chelsea.net>]
+    
  *) Added IRIX and FreeBSD to the list of supported platforms and other minor
     updates to the INSTALL doc.
 

@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_protocol.c,v 1.4 1999/02/24 04:38:03 roberts Exp $
+ * $Id: fcgi_protocol.c,v 1.5 1999/04/22 03:28:04 roberts Exp $
  */
  
 
@@ -340,21 +340,54 @@ int fcgi_protocol_dequeue(pool *p, fcgi_request *fr)
             case FCGI_STDERR:
                 if (len > 0) {
                     int max_len;
+                    char *start_of_line, *end_of_line;
+                    
+                    /* This doesn't have to be fast, its the exception */
                     
                     if (fr->fs_stderr == NULL)
-                        fr->fs_stderr = ap_pcalloc(p, FCGI_SERVER_MAX_STDERR_LEN + 1);
+                        fr->fs_stderr = ap_pcalloc(p, FCGI_SERVER_MAX_STDERR_LINE_LEN + 1);
                         
-                    max_len = min(len, FCGI_SERVER_MAX_STDERR_LEN - strlen(fr->fs_stderr));
-                    fcgi_buf_get_to_block(fr->serverInputBuffer, fr->fs_stderr + strlen(fr->fs_stderr), max_len);
-
-                    if (max_len < len) {
-                        ap_log_rerror(FCGI_LOG_WARNING_NOERRNO, fr->r, 
-                            "FastCGI: too much stderr received from server \"%s\", increase FCGI_SERVER_MAX_STDERR_LEN (%d)",
-                            fr->fs_path, FCGI_SERVER_MAX_STDERR_LEN);
-                        fcgi_buf_toss(fr->serverInputBuffer, len - max_len);
+                    /* We're gonna consume all of it */
+                    fr->dataLen -= len;
+                    
+                    while ((max_len = min(len, FCGI_SERVER_MAX_STDERR_LINE_LEN - strlen(fr->fs_stderr)))) {
+                        /* Put as much as we can in the block */
+                        fcgi_buf_get_to_block(fr->serverInputBuffer, 
+                            fr->fs_stderr + strlen(fr->fs_stderr), max_len);
+                        len -= max_len;            
+                        
+                        /* Print as much as we can */
+                        start_of_line = fr->fs_stderr;
+                        while ((end_of_line = strpbrk(start_of_line, "\r\n"))) {
+                            *end_of_line = '\0';
+                            ap_log_rerror(FCGI_LOG_ERR_NOERRNO, fr->r, 
+                                "FastCGI: server \"%s\" stderr: %s", fr->fs_path, start_of_line);
+                            ++end_of_line;
+                            start_of_line = end_of_line + strspn(end_of_line, "\r\n");
+                        }
+                    
+                        /* Move any leftovers down */
+                        if (*start_of_line && start_of_line != fr->fs_stderr) {
+                            int move_len = strlen(start_of_line);
+                        
+                            memmove(fr->fs_stderr, start_of_line, move_len);
+                            *(fr->fs_stderr + move_len) = '\0';
+                        }
+                        else
+                            *fr->fs_stderr = '\0';
                     }
 
-                    fr->dataLen -= len;
+                    if (len) {
+                        ap_log_rerror(FCGI_LOG_ERR_NOERRNO, fr->r, 
+                            "FastCGI: server \"%s\" stderr: %s...", fr->fs_path, fr->fs_stderr);
+                        *fr->fs_stderr = '\0';        
+                        ap_log_rerror(FCGI_LOG_WARNING_NOERRNO, fr->r, 
+                            "FastCGI: too much stderr received from server \"%s\", %d bytes discarded, "
+                            "increase FCGI_SERVER_MAX_STDERR_LINE_LEN (%d) and rebuild "
+                            "or use \"\\n\" to terminate lines",
+                            fr->fs_path, len, FCGI_SERVER_MAX_STDERR_LINE_LEN);
+                        fcgi_buf_toss(fr->serverInputBuffer, len);
+                    }
                 }
                 break;
             case FCGI_END_REQUEST:
