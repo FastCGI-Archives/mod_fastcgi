@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.26 1998/02/25 17:35:30 roberts Exp $
+ *  $Id: mod_fastcgi.c,v 1.27 1998/03/02 16:19:40 roy Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -1526,8 +1526,6 @@ static void FreeFcgiServerInfo(FastCgiServerInfo *serverInfoPtr)
       ipcAddrPtr = (OS_IpcAddr *)serverInfoPtr->ipcAddr;
       fname = MakeSocketName(DStringValue(&serverInfoPtr->execPath),
 			     NULL, -1, &ipcAddrPtr->bindPath, 1);
-      /* Remove extraneous digit from end.  XXX why is this necessary?  */
-      fname[strlen(fname)-1] = '\0';
       unlink(fname);
       Free(fname);
     }
