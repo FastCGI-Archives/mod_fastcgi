@@ -1,6 +1,6 @@
 <!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">
 <html>
-<!-- $Id: mod_fastcgi.html,v 1.8 1999/02/25 03:32:22 roberts Exp $ -->
+<!-- $Id: mod_fastcgi.html,v 1.9 1999/04/22 04:23:09 roberts Exp $ -->
 
 <head>
 <title>Apache module mod_fastcgi</title>
@@ -197,7 +197,7 @@ the specified extension(s) as FastCGI applications:</p>
   <dt><code><strong>-flush</strong>&nbsp;<em>none</em></code></dt>
   <dd>Force a write to the client as data is received from the application.&nbsp; By default, <code>mod_fastcgi</code>
     buffers data in order to free the application as quickly as possible.</dd>
-  <dt><code><b>-listen-queue-depth <em>n</em></b>&nbsp;(5)</code></dt>
+  <dt><code><b>-listen-queue-depth <em>n</em></b>&nbsp;(100)</code></dt>
   <dd>The depth of listen() queue (also known as the backlog) shared by all of the instances
     of this application.&nbsp; A deeper listen queue allows the server to cope with transient
     load fluctuations without rejecting requests; it does not increase throughput. &nbsp;
@@ -286,7 +286,7 @@ the specified extension(s) as FastCGI applications:</p>
   <dd>The killInterval determines how often the dynamic application instance killing policy is
     implemented within the process manager.&nbsp; Lower numbers result in a more aggressive
     policy, higher numbers a less aggressive policy.</dd>
-  <dt><code><b>-listen-queue-depth <em>n</em></b>&nbsp;(5)</code></dt>
+  <dt><code><b>-listen-queue-depth <em>n</em></b>&nbsp;(100)</code></dt>
   <dd>The depth of listen() queue (also known as the backlog) shared by all of the instances
     of this application.&nbsp; A deeper listen queue allows the server to cope with transient
     load fluctuations without rejecting requests; it does not increase throughput. &nbsp;
