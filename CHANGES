@@ -1,5 +1,9 @@
 2.4.1
 
+ *) Provide the NO_SUEXEC_FOR_AP_USER_N_GROUP macro for building
+    mod_fastcgi with the AP13 suexec behaviour (don't use suexec
+    if httpd's user and group match that needed for the application).
+
  *) Prevent the use of all but the "auth" directives from being used
     anywhere but in global scope.  Prevent more than one instance
     of the FastCgiWrapper directive.

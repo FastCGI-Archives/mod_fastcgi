@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_pm.c,v 1.84 2003/01/19 16:33:51 robs Exp $
+ * $Id: fcgi_pm.c,v 1.85 2003/02/04 01:14:10 robs Exp $
  */
 
 
@@ -410,9 +410,18 @@ static pid_t spawn_fs_process(fcgi_server *fs, ServerProcess *process)
         setuid(ap_user_id);
 
         /* AP13 does not use suexec if the target uid/gid is the same as the 
-         * server's - AP20 does.  I (now) consider the latter approach better
-         * (fcgi_pm.c v1.42 incorporated the 1.3 behaviour, v1.84 reverted it). */
+         * server's - AP20 does.  I (now) consider the AP2 approach better
+         * (fcgi_pm.c v1.42 incorporated the 1.3 behaviour, v1.84 reverted it,
+         * v1.85 added the compile time option to use the old behaviour). */
 
+#ifdef NO_SUEXEC_FOR_AP_USER_N_GROUP
+
+        if (fcgi_user_id == fs->uid && fcgi_group_id == fs->gid)
+        {
+            goto NO_SUEXEC;
+        }
+
+#endif
         shortName = strrchr(fs->fs_path, '/') + 1;
 
         do {
@@ -420,7 +429,10 @@ static pid_t spawn_fs_process(fcgi_server *fs, ServerProcess *process)
                    shortName, NULL, fs->envp);
         } while (errno == EINTR);
     }
-    else {
+    else 
+    {
+
+NO_SUEXEC:
         do {
             execle(fs->fs_path, fs->fs_path, NULL, fs->envp);
         } while (errno == EINTR);
