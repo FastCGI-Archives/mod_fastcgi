@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_pm.c,v 1.24 2000/04/27 19:03:34 robs Exp $
+ * $Id: fcgi_pm.c,v 1.25 2000/04/28 06:16:31 robs Exp $
  */
 
 
@@ -828,6 +828,7 @@ static void dynamic_read_msgs(int read_ready)
             else {
                 s->envp = (char **)ap_palloc(fcgi_config_pool, sizeof(char *) * 2);
                 s->envp[0] = ap_psprintf(fcgi_config_pool, "_FCGI_MUTEX_=%d", (int)hPipeMutex);
+                s->envp[1] = NULL;
             }
 
             /* Create the application lock */
@@ -1387,6 +1388,7 @@ void fcgi_pm_main(void *dummy)
             else {
                 s->envp = (char **)ap_palloc(fcgi_config_pool, sizeof(char *) * 2);
                 s->envp[0] = ap_psprintf(fcgi_config_pool, "_FCGI_MUTEX_=%d", (int)hPipeMutex);
+                s->envp[1] = NULL;
             }
         }
         else

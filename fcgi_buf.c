@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_buf.c,v 1.5 2000/04/27 15:14:27 robs Exp $
+ * $Id: fcgi_buf.c,v 1.6 2000/04/28 06:16:31 robs Exp $
  */
 
 #include "fcgi.h"
@@ -44,6 +44,36 @@ Buffer *fcgi_buf_new(pool *p, int size)
     return buf;
 }
 
+#ifdef WIN32
+
+static int fd_read(SOCKET fd, char *buf, int len)
+{
+    int bytes_read;
+    
+    // HACK - we don't know if its a pipe or socket..
+    if (!ReadFile((HANDLE) fd, buf, len, &bytes_read, NULL)) {
+        bytes_read = recv(fd, buf, len, 0);
+        if (bytes_read == SOCKET_ERROR) {
+            errno = WSAGetLastError();
+            bytes_read = -1;
+        }
+    }
+    return bytes_read;
+}
+
+#else
+
+static int fd_read(int fd, char * buf, int len)
+{
+    int bytes_read;
+    do {
+        bytes_read = read(fd, buf, len);
+    } while (bytes_read == -1 && errno == EINTR);
+    return bytes_read;
+}
+
+#endif
+
 /*******************************************************************************
  * Read from an open file descriptor into buffer.
  *
@@ -86,17 +116,7 @@ int fcgi_buf_add_fd(Buffer *buf, int fd)
         /* its not wrapped, use read() instead of readv() */
 #endif
 
-    do
-#ifdef WIN32
-    {
-		if (!ReadFile((HANDLE) fd, buf->end, len, &len, NULL)) {
-            errno = GetLastError();
-        }
-    }
-#else
-        len = read(fd, buf->end, len);
-#endif
-    while (len == -1 && errno == EINTR);
+    len = fd_read(fd, buf->end, len);
 
     if (len <= 0)
         return len;
@@ -153,9 +173,7 @@ int fcgi_buf_add_fd(Buffer *buf, int fd)
 
             if (status > 0 && FD_ISSET(fd, &read_set)) {
 
-                do
-                len = read(fd, buf->end, buf->size - buf->length);
-                while (len == -1 && errno == EINTR);
+                len = fd_read(fd, buf->end, buf->size - buf->length);
 
                 if (len <= 0)
                     return len;
@@ -168,6 +186,36 @@ int fcgi_buf_add_fd(Buffer *buf, int fd)
 #endif
     return len;     /* this may not contain the number of bytes read */
 }
+
+#ifdef WIN32
+
+static int fd_write(SOCKET fd, char * buf, int len)
+{
+    int bytes_sent;
+    
+    // HACK - We don't know if its a pipe or socket..
+    if (!WriteFile((HANDLE) fd, (LPVOID) buf, len, &bytes_sent, NULL)) {
+        bytes_sent = send(fd, buf, len, 0);
+        if (bytes_sent == SOCKET_ERROR) {
+            errno = WSAGetLastError();
+            bytes_sent = -1;
+        }
+    }
+    return bytes_sent;
+}
+
+#else
+
+static int fd_write(int fd, char * buf, int len)
+{
+    int bytes_sent;
+    do {
+        bytes_sent = write(fd, buf, len);
+    } while (bytes_sent == -1 && errno == EINTR);
+    return bytes_sent;
+}
+
+#endif
 
 /*******************************************************************************
  * Write from the buffer to an open file descriptor.
@@ -205,17 +253,7 @@ int fcgi_buf_get_to_fd(Buffer *buf, int fd)
         /* the buffer is not wrapped, we don't need to use writev() */
 #endif
 
-    do
-#ifdef WIN32
-    {
-        if (!WriteFile((HANDLE) fd, (LPVOID) buf->begin, len, &len, NULL)) {
-            errno =GetLastError();
-        }
-    }
-#else
-        len = write(fd, buf->begin, len);
-#endif
-    while (len == -1 && errno == EINTR);
+    len = fd_write(fd, buf->begin, len);
 
     if (len <= 0)
         goto Return;
@@ -276,9 +314,7 @@ int fcgi_buf_get_to_fd(Buffer *buf, int fd)
             if (status > 0 && FD_ISSET(fd, &write_set)) {
                 int len2;
 
-                do
-                len2 = write(fd, buf->begin, buf->length);
-                while (len == -1 && errno == EINTR);
+                len2 = fd_write(fd, buf->begin, buf->length);
 
                 if (len2 < 0) {
                     len = len2;

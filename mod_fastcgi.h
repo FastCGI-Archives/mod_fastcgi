@@ -1,5 +1,5 @@
 /*
- * $Id: mod_fastcgi.h,v 1.20 2000/04/27 02:27:36 robs Exp $
+ * $Id: mod_fastcgi.h,v 1.21 2000/04/28 06:16:31 robs Exp $
  */
 
 #ifndef MOD_FASTCGI_H
@@ -80,7 +80,7 @@
                                             * disk is changed. */
 
 #ifdef WIN32
-#define DEFAULT_SOCK_DIR "\\\\.\\pipe\\ModFastCGI\\"
+#define DEFAULT_SOCK_DIR "\\\\.\\pipe\\FastCGI\\"
 #else
 #define DEFAULT_SOCK_DIR "/tmp/fcgi"       /* Default dir for Unix/Domain sockets */
 #endif
