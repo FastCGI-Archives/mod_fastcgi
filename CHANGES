@@ -1,5 +1,8 @@
 Changes with mod_fastcgi 2.2.3
 
+ *) Allow supplementary groups to be passed to spawned FastCGI applications (as
+    is done for CGI) - at least until PR2580 is resolved.
+
  *) Initialize the default (empty) environment in a more socially acceptable
     way.
 

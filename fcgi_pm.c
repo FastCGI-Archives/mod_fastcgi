@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_pm.c,v 1.5 1999/04/25 02:29:09 roberts Exp $
+ * $Id: fcgi_pm.c,v 1.6 1999/06/18 03:26:42 roberts Exp $
  */
 
 #include "fcgi.h"
@@ -343,7 +343,8 @@ static void reduce_priveleges()
         exit(1);
     }
 
-#ifdef MULTIPLE_GROUPS
+    /* See Apache PR2580. Until its resolved, do it the same way CGI is done.. */
+     
     /* Initialize supplementary groups */
     if (initgroups(name, ap_group_id) == -1) {
         ap_log_error(FCGI_LOG_ALERT, fcgi_apache_main_server,
@@ -351,18 +352,7 @@ static void reduce_priveleges()
             name, (unsigned)ap_group_id);
         exit(1);
     }
-
-    /* Based on Apache 1.3.0 main/util.c... */
-#elif !defined(QNX) && !defined(MPE) && !defined(BEOS) && !defined(_OSD_POSIX)
-    /* QNX, MPE and BeOS do not appear to support supplementary groups. */
-
-    if (setgroups(1, &ap_group_id) == -1) {
-        ap_log_error(FCGI_LOG_ALERT, fcgi_apache_main_server,
-            "FastCGI: process manager exiting, setgroups(%u) failed", (unsigned)ap_group_id);
-        exit(1);
-    }
-#endif
-#endif
+#endif /* __EMX__ */
 
     /* Change real, effective, and saved UserId */
     if (setuid(ap_user_id) == -1) {
