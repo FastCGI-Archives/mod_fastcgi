@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.151 2003/02/04 00:29:41 robs Exp $
+ *  $Id: mod_fastcgi.c,v 1.152 2003/06/18 00:25:17 robs Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -1583,6 +1583,7 @@ static int npipe_io(fcgi_request * const fr)
     struct timeval dynamic_last_io_time = {0, 0};
     int did_io = 1;
     pool * const rp = r->pool;
+    int is_connected = 0;
 
 DWORD recv_count = 0;
 
@@ -1649,6 +1650,17 @@ DWORD recv_count = 0;
 SERVER_SEND:
 
         case STATE_SERVER_SEND:
+
+            if (! is_connected) 
+            {
+                if (open_connection_to_fs(fr) != FCGI_OK) 
+                {
+                    ap_kill_timeout(r);
+                    return HTTP_INTERNAL_SERVER_ERROR;
+                }
+
+                is_connected = 1;
+            }
 
             if (! send_pending && BufferLength(fr->serverOutputBuffer))
             {
@@ -1968,7 +1980,7 @@ static int socket_io(fcgi_request * const fr)
     struct timeval dynamic_last_io_time = {0, 0};
     fd_set read_set;
     fd_set write_set;
-    int nfds = fr->fd + 1;
+    int nfds = 0;
     int select_status = 1;
     int idle_timeout;
     int rv;
@@ -1977,6 +1989,7 @@ static int socket_io(fcgi_request * const fr)
     int client_recv = FALSE;
     env_status env;
     pool *rp = r->pool;
+    int is_connected = 0;
 
     if (fr->role == FCGI_RESPONDER) 
     {
@@ -2000,8 +2013,6 @@ static int socket_io(fcgi_request * const fr)
     }
 
     ap_hard_timeout("FastCGI request processing", r);
-
-    set_nonblocking(fr, TRUE);
 
     for (;;)
     {
@@ -2039,6 +2050,19 @@ static int socket_io(fcgi_request * const fr)
 SERVER_SEND:
 
         case STATE_SERVER_SEND:
+
+            if (! is_connected) 
+            {
+                if (open_connection_to_fs(fr) != FCGI_OK) 
+                {
+                    ap_kill_timeout(r);
+                    return HTTP_INTERNAL_SERVER_ERROR;
+                }
+
+                set_nonblocking(fr, TRUE);
+                is_connected = 1;
+                nfds = fr->fd + 1;
+            }
 
             if (BufferLength(fr->serverOutputBuffer))
             {
@@ -2297,15 +2321,6 @@ static int do_work(request_rec * const r, fcgi_request * const fr)
     ap_block_alarms();
     ap_register_cleanup(rp, (void *)fr, cleanup, ap_null_cleanup);
     ap_unblock_alarms();
-
-    ap_hard_timeout("connect() to FastCGI server", r);
-
-    /* Connect to the FastCGI Application */
-    if (open_connection_to_fs(fr) != FCGI_OK) 
-    {
-        ap_kill_timeout(r);
-        return HTTP_INTERNAL_SERVER_ERROR;
-    }
 
 #ifdef WIN32
     if (fr->using_npipe_io)

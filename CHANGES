@@ -1,6 +1,10 @@
 2.4.1
 
- *) Remove an assert on WIN that was triggering when spawn() failed.
+ *) Do the connect() to the application *after* collecting a chunk
+    of client data.  This reinstates the pre-2.4.0 behaviour.
+    James Jurach [muaddib@erf.net].
+
+ *) Remove an assert that was triggering on WIN when spawn() failed.
 
  *) Provide the NO_SUEXEC_FOR_AP_USER_N_GROUP macro for building
     mod_fastcgi with the AP13 suexec behaviour (don't use suexec
