@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.33 1998/05/11 14:08:16 roberts Exp $
+ *  $Id: mod_fastcgi.c,v 1.34 1998/05/22 16:07:31 roberts Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -133,10 +133,20 @@ void *Malloc(size_t size)
 {
     void *result;
 
-    ASSERT(size>=0);
+    ASSERT(size>0);
     result = malloc(size);
-    ASSERT(size == 0 || result != NULL);
+    ASSERT(result != NULL);
     memset(result, 0, size);
+    return result;
+}
+
+static void *Realloc(void *old_blk, size_t size)
+{
+    void *result;
+
+    ASSERT(size>0);
+    result = realloc(old_blk, size);
+    ASSERT(result != NULL);
     return result;
 }
 
@@ -347,9 +357,10 @@ void OS_FreeIpcAddr(OS_IpcAddress ipcAddress)
 {
     OS_IpcAddr *ipcAddrPtr = (OS_IpcAddr *)ipcAddress;
 
+    if (ipcAddress == NULL)
+        return;
     DStringFree(&ipcAddrPtr->bindPath);
     Free(ipcAddrPtr->serverAddr);
-    ipcAddrPtr->addrLen = 0;
     Free(ipcAddrPtr);
 }
 
@@ -1031,8 +1042,8 @@ typedef struct {
     int dataLen;                    /* length of data bytes */
     int paddingLen;                 /* record padding after content */
     FastCgiServerInfo *serverPtr;   /* FastCGI server info */
-    Buffer *inbufPtr;               /* input buffer from server */
-    Buffer *outbufPtr;              /* output buffer to server */
+    Buffer *inbufPtr;               /* input buffer from FastCgi appliation */
+    Buffer *outbufPtr;              /* output buffer to FastCgi application */
     Buffer *reqInbufPtr;            /* client input buffer */
     Buffer *reqOutbufPtr;           /* client output buffer */
     char *errorMsg;                 /* error message from failed request */
@@ -1048,6 +1059,12 @@ typedef struct {
     int exitStatusSet;
     int requestId;
     int eofSent;
+    int dynamic;                    /* whether or not this is a dynamic app */
+    struct timeval startTime;       /* dynamic app's connect() attempt start time */
+    struct timeval queueTime;       /* dynamic app's connect() complete time */
+    struct timeval completeTime;    /* dynamic app's connection close() time */
+    int lockFd;                     /* dynamic app's lockfile file descriptor */
+    int requestStatus;              /* request status, set by FastCgiDoWork() */
 } FastCgiInfo;
 
 /*
@@ -2463,6 +2480,11 @@ int LockRegion(int fd, int cmd, int type, off_t offset, int whence, off_t len)
 
     /* Don't be fooled into thinking we've set a lock when we've
        merely caught a signal.  */
+
+/* *** This may be a problem for Apache request handling processes,
+    the soft_timeout() causes an alarm to go off which causes the
+    abort of the request - we need to be able to get out of here,
+    at least for dynamic apps. */
     while ((res = fcntl(fd, cmd, &lock)) == -1 && errno == EINTR)
         ;
     return res;
@@ -2883,6 +2905,7 @@ void BlockingKill(void *data)
  *
  *----------------------------------------------------------------------
  */
+extern char *server_argv0;
 
 void KillDynamicProcs()
 {
@@ -2985,6 +3008,10 @@ void KillDynamicProcs()
                         return;
                     } else if(pid==0) {
                         /* child */
+
+                        /* rename the process for ps - best we can easily */
+                        strncpy(server_argv0, "fcgiBlkKill", strlen(server_argv0));
+
                         BlockingKill(funcData);
                     } else {
                         /* parent */
@@ -3128,10 +3155,16 @@ void FastCgiProcMgr(void *data)
     sigdelset(&sigMask, SIGCHLD);
     sigdelset(&sigMask, SIGALRM);
     sigdelset(&sigMask, SIGUSR2);
-    ASSERT(OS_Signal(SIGTERM, FastCgiProcMgrSignalHander) != SIG_ERR);
-    ASSERT(OS_Signal(SIGCHLD, FastCgiProcMgrSignalHander) != SIG_ERR);
-    ASSERT(OS_Signal(SIGALRM, FastCgiProcMgrSignalHander) != SIG_ERR);
-    ASSERT(OS_Signal(SIGUSR2, FastCgiProcMgrSignalHander) != SIG_ERR);
+    if ((OS_Signal(SIGTERM, FastCgiProcMgrSignalHander) == SIG_ERR) ||
+            (OS_Signal(SIGCHLD, FastCgiProcMgrSignalHander) == SIG_ERR) ||
+            (OS_Signal(SIGALRM, FastCgiProcMgrSignalHander) == SIG_ERR) ||
+            (OS_Signal(SIGUSR2, FastCgiProcMgrSignalHander) == SIG_ERR)) {
+        fprintf(errorLogFile,
+                "[%s] mod_fastcgi: signal() failed (exiting): %s\n",
+                get_time(), strerror(errno));
+        fflush(errorLogFile);
+        exit(1);
+    }
  
     /*
      * s->procInfo[i].pid == 0 means we've never tried to start this one.
@@ -3347,7 +3380,7 @@ ChildFound:
                      * dynamic app dies when it shoudn't have.
                      */
                     if (restartDynamic) {
-                            s->procInfo[i].state = STATE_NEEDS_STARTING;
+                        s->procInfo[i].state = STATE_NEEDS_STARTING;
                         s->restartDelay = s->numFailures;
                         if (s->restartDelay > 10)
                             s->restartDelay = 10;
@@ -3437,10 +3470,18 @@ int FCGIProcMgrBoot(void *data)
         return -1;
     } else if(procMgr==0) {
         /* child */
+
+        /* rename the process for ps - best we can easily */
+        strncpy(server_argv0, "fcgiProcMgr", strlen(server_argv0));
+
         FastCgiProcMgr(data);
     } else {
         /* parent */
 /*      unblock_alarms(); */
+
+        /* rename the process for ps - best we can easily */
+        strncpy(server_argv0, "fcgiKillMgr", strlen(server_argv0));
+
         memset(buf, 0, IOBUFSIZE);
         sprintf(buf, "%ld", procMgr);
         do {
@@ -3714,24 +3755,25 @@ static void FCGIUtil_BuildNameValueHeader(
  *
  * SendEnvironment --
  *
- *      Queue the environment variables to a FastCGI server.  Assumes that
- *      there's enough space in the output buffer to hold the variables.
+ *      Queue the environment variables to a FastCGI server.  
  *
  * Results:
- *      None.
+ *      TRUE if the complete ENV was buffered, FALSE otherwise.
  *
  * Side effects:
  *      Environment variables queued for delivery.
+ *      envp is updated to reflect the current position in the ENV.
  *
  *----------------------------------------------------------------------
  */
 
-static void SendEnvironment(WS_Request *reqPtr, FastCgiInfo *infoPtr)
+static int SendEnvironment(WS_Request *reqPtr, FastCgiInfo *infoPtr, char ***envp)
 {
-    int headerLen, nameLen, valueLen;
-    char *equalPtr;
-    unsigned char headerBuff[8];
-    char **envp;
+    static int              headerLen, nameLen, valueLen, totalLen;
+    static char             *equalPtr;
+    static unsigned char    headerBuff[8];
+    static enum SendEnvPassEnum { prep, header, name, value } pass;
+    int       charCount;
 
     /*
      * Send each environment item to the FastCGI server as a
@@ -3739,29 +3781,60 @@ static void SendEnvironment(WS_Request *reqPtr, FastCgiInfo *infoPtr)
      *
      * XXX: this code will break with the environment format used on NT.
      */
-
-    add_common_vars(reqPtr);
-    add_cgi_vars(reqPtr);
-    envp = create_environment(reqPtr->pool, reqPtr->subprocess_env);
-    for (; *envp ; envp++) {
-        equalPtr = strchr(*envp, '=');
-        ASSERT(equalPtr != NULL);
-        nameLen = equalPtr - *envp;
-        valueLen = strlen(equalPtr + 1);
-        FCGIUtil_BuildNameValueHeader(
-                nameLen,
-                valueLen,
-                &headerBuff[0],
-                &headerLen);
-        SendPacketHeader(
-                infoPtr,
-                FCGI_PARAMS,
-                headerLen + nameLen + valueLen);
-        BufferAddData(infoPtr->outbufPtr, (char *) &headerBuff[0], headerLen);
-        BufferAddData(infoPtr->outbufPtr, *envp, nameLen);
-        BufferAddData(infoPtr->outbufPtr, equalPtr + 1, valueLen);
+    if (*envp == NULL) {
+        add_common_vars(reqPtr);
+        add_cgi_vars(reqPtr);
+        *envp = create_environment(reqPtr->pool, reqPtr->subprocess_env);
+        pass = prep;
+    }
+    while (**envp) {
+        switch (pass) {
+            case prep:
+                equalPtr = strchr(**envp, '=');
+                ASSERT(equalPtr != NULL);
+                nameLen = equalPtr - **envp;
+                valueLen = strlen(++equalPtr);
+                FCGIUtil_BuildNameValueHeader(
+                        nameLen,
+                        valueLen,
+                        headerBuff,
+                        &headerLen);
+                totalLen = headerLen + nameLen + valueLen;
+                pass = header;
+                /* drop through */
+            case header:
+                if (BufferFree(infoPtr->outbufPtr) < (sizeof(FCGI_Header)+headerLen)) {
+                    return (FALSE);
+                }
+                SendPacketHeader(infoPtr, FCGI_PARAMS, totalLen);
+                BufferAddData(infoPtr->outbufPtr, (char *)headerBuff, headerLen);
+                pass = name;
+                /* drop through */
+            case name:
+                charCount = BufferAddData(infoPtr->outbufPtr, **envp, nameLen);
+                if (charCount != nameLen) {
+                    **envp += charCount;
+                    nameLen -= charCount;
+                    return (FALSE);
+                }
+                pass = value;
+                /* drop through */
+            case value:
+                charCount = BufferAddData(infoPtr->outbufPtr, equalPtr, valueLen);
+                if (charCount != valueLen) {
+                    equalPtr += charCount;
+                    valueLen -= charCount;
+                    return (FALSE);
+                }
+                pass = prep;
+        }
+        (*envp)++;
+    }
+    if (BufferFree(infoPtr->outbufPtr) < sizeof(FCGI_Header)) {
+        return(FALSE);
     }
     SendPacketHeader(infoPtr, FCGI_PARAMS, 0);
+    return(TRUE);
 }
 
 /*
@@ -3862,8 +3935,20 @@ static int CgiToClientBuffer(FastCgiInfo *infoPtr)
              * XXX: Better handling of packets with other version numbers
              * and other packet problems.
              */
-            ASSERT(header.version == FCGI_VERSION);
-            ASSERT(header.type <= FCGI_MAXTYPE);
+            if (header.version != FCGI_VERSION) {
+                sprintf(infoPtr->errorMsg,
+                        "mod_fastcgi: protocol error: "
+                        "invalid header: version(%d) != FCGI_VERSION(%d)",
+                        header.version, FCGI_VERSION);
+                return SERVER_ERROR;
+            }
+            if (header.type > FCGI_MAXTYPE) {
+                sprintf(infoPtr->errorMsg,
+                        "mod_fastcgi: protocol error: "
+                        "invalid type: type(%d) > FCGI_MAXTYPE(%d)",
+                        header.type, FCGI_MAXTYPE);
+                return SERVER_ERROR;
+            }
 
             infoPtr->packetType = header.type;
             infoPtr->dataLen = (header.contentLengthB1 << 8)
@@ -4360,6 +4445,268 @@ static void DrainReqOutbuf(WS_Request *reqPtr, FastCgiInfo *infoPtr)
 
 /*
  *----------------------------------------------------------------------
+ * 
+ * ConnectToFcgiApp --
+ *
+ *      Open a connection to the FastCGI application.
+ *
+ * Results:
+ *      
+ * Side effects:  
+ *
+ *----------------------------------------------------------------------
+ */
+static int ConnectToFcgiApp(WS_Request *reqPtr, FastCgiInfo *infoPtr)
+{
+    OS_IpcAddr*  ipcAddrPtr = NULL;
+    int          flags = 0;
+
+    /* Dynamic app's lockfile handling */
+    if(infoPtr->dynamic) {
+        char*        lockFileName = MakeLockFileName(reqPtr->filename);
+        struct stat  lstbuf; 
+        struct stat  bstbuf;
+        int          result = 0;
+        do {
+            if( stat(lockFileName,&lstbuf)==0 && S_ISREG(lstbuf.st_mode) ) {
+                if (autoUpdate && 
+                        (stat(reqPtr->filename,&bstbuf) == 0) &&
+                        (lstbuf.st_mtime < bstbuf.st_mtime)) {
+                    /* Its already running, but there's a newer one,
+                     * ask the process manager to start it.
+                     * it will notice that the binary is newer,
+                     * and do a restart instead.
+                     */
+                    SignalProcessManager(PLEASE_START,
+                        reqPtr->filename, 0, 0, 0);
+                    sleep(1);
+                }
+                infoPtr->lockFd = open(lockFileName,O_APPEND);
+                result = (infoPtr->lockFd < 0) ? (0) : (1);
+            } else {
+                SignalProcessManager(PLEASE_START,
+                    reqPtr->filename, 0, 0, 0);
+                sleep(1);
+            }
+        } while (result != 1);
+
+        free(lockFileName);
+
+        /* Block until we get a shared (non-exclusive) read Lock */
+        if(ReadwLock(infoPtr->lockFd) < 0) {
+            sprintf(infoPtr->errorMsg,
+                    "mod_fastcgi: Failed to obtain a shared read lock on lockfile: ");
+            goto SystemError;
+        }
+    }
+    
+    /* Create the connection point */
+    if(infoPtr->dynamic) {
+        struct sockaddr_un*  addrPtr;
+
+        ipcAddrPtr = (OS_IpcAddr *) OS_InitIpcAddr();
+        /* Fill in the serverAddr structure, even though the ProcMgr
+         * is responsible for creating a socket. */
+        addrPtr = (struct sockaddr_un *) Malloc(sizeof(struct sockaddr_un));
+        ipcAddrPtr->serverAddr = (struct sockaddr *) addrPtr;
+        if(OS_BuildSockAddrUn(MakeSocketName(reqPtr->filename,
+                NULL, -1, &ipcAddrPtr->bindPath, 1),
+                addrPtr, &ipcAddrPtr->addrLen) != 0) {
+            sprintf(infoPtr->errorMsg,
+                    "mod_fastcgi: Socket path name is too long: ");
+            infoPtr->errorMsg = Realloc(infoPtr->errorMsg, 
+                    strlen(infoPtr->errorMsg) + strlen(reqPtr->filename) + 1);
+            strcat(infoPtr->errorMsg, reqPtr->filename); 
+            goto Error;
+        }
+        ipcAddrPtr->addrType = TYPE_LOCAL;
+    } else {
+        ASSERT(infoPtr->serverPtr != NULL);
+        ipcAddrPtr = (OS_IpcAddr *) infoPtr->serverPtr->ipcAddr;
+    }
+
+    if((infoPtr->fd = OS_Socket(ipcAddrPtr->serverAddr->sa_family, 
+            SOCK_STREAM, 0)) < 0) {
+        sprintf(infoPtr->errorMsg,
+                "mod_fastcgi: socket() failed: ");
+        goto SystemError;
+    }
+
+    /* Connect */
+    if((flags = fcntl(infoPtr->fd, F_GETFL, 0)) < 0) {
+        sprintf(infoPtr->errorMsg,
+                "mod_fastcgi: fcntl(F_GETFL) failed: ");
+        goto SystemError;
+    }
+    if((fcntl(infoPtr->fd, F_SETFL, (flags|O_NONBLOCK))) < 0) {
+        sprintf(infoPtr->errorMsg,
+                "mod_fastcgi: fcntl(F_SETFL) failed: ");
+        goto SystemError;
+    }
+    if ((infoPtr->dynamic) && (gettimeofday(&(infoPtr->startTime),NULL) < 0)) {
+        sprintf(infoPtr->errorMsg,
+             "mod_fastcgi: gettimeofday() failed: ");
+        goto SystemError;
+    }
+    if(connect(infoPtr->fd, 
+            (struct sockaddr *)ipcAddrPtr->serverAddr,
+            ipcAddrPtr->addrLen) < 0) {
+        struct  timeval tval;
+        fd_set  write_fds;
+        int     status;
+
+        if(errno != EINPROGRESS) {
+            sprintf(infoPtr->errorMsg,
+                    "mod_fastcgi: connect() failed: ");
+            goto SystemError;
+        } 
+               
+        /* errno == EINPROGRESS, so we'll have to use select()
+           to wait for the connect() to complete */
+        if (infoPtr->dynamic) {
+            do {
+                FD_ZERO(&write_fds);
+                FD_SET(infoPtr->fd, &write_fds);
+
+                /* Reset on each pass, tval might be changed by select() */
+                tval.tv_sec = startProcessDelay;
+                tval.tv_usec = 0;
+
+#ifdef SELECT_NEEDS_CAST
+                status = select((infoPtr->fd+1), NULL, (int*)&write_fds,
+                        NULL, &tval);
+#else
+                status = select((infoPtr->fd+1), NULL, &write_fds,
+                        NULL, &tval);
+#endif
+                if(status < 0) {
+                    sprintf(infoPtr->errorMsg,
+                            "mod_fastcgi: select() failed: ");
+                    goto SystemError;
+                }
+                if(gettimeofday(&(infoPtr->queueTime),NULL) < 0) {
+                    sprintf(infoPtr->errorMsg,
+                         "mod_fastcgi: gettimeofday() failed: ");
+                    goto SystemError;
+                }
+                if(status == 0) {
+                    /* select() timed out */
+                    SignalProcessManager(CONN_TIMEOUT,
+                            reqPtr->filename,
+                            (unsigned long)startProcessDelay*1000000,
+                            0, 0);
+                } else {
+                    /* connect() completed */
+                    break;
+                }
+            } while((infoPtr->queueTime.tv_sec - infoPtr->startTime.tv_sec) 
+                    < appConnTimeout);
+        } else {        
+            /* errno==EINPROGRESS && its a static app  */
+            tval.tv_sec = appConnTimeout;
+            tval.tv_usec = 0;
+            FD_ZERO(&write_fds);
+            FD_SET(infoPtr->fd, &write_fds);
+
+#ifdef SELECT_NEEDS_CAST
+            status = select((infoPtr->fd+1), NULL, (int*)&write_fds,
+                    NULL, &tval);
+#else
+            status = select((infoPtr->fd+1), NULL, &write_fds,
+                    NULL, &tval);
+#endif
+            if(status < 0) {
+                sprintf(infoPtr->errorMsg,
+                        "mod_fastcgi: select() failed: ");
+                goto SystemError;
+            }
+        }  /* errno==EINPROGRESS, if(dynamic){} else{} */
+        if(status == 0) {
+            sprintf(infoPtr->errorMsg,
+                "mod_fastcgi: failed to establish a connection to fcgi app within %d seconds (appConnTimeout)",
+                appConnTimeout);
+            goto Error;
+        }
+    }  /* if (connect() < 0) */
+
+    /* we should have a valid connection at this point */
+    if (infoPtr->dynamic) {
+        if (gettimeofday(&(infoPtr->queueTime),NULL) < 0) {
+            sprintf(infoPtr->errorMsg,
+                 "mod_fastcgi: gettimeofday() failed: ");
+            goto SystemError;
+        }
+        OS_FreeIpcAddr(ipcAddrPtr);
+    }
+
+    return TRUE;
+
+SystemError:
+    { char* msg = strerror(errno);
+      if (msg == NULL) {
+          msg = "errno out of range";
+      }
+      infoPtr->errorMsg = Realloc(infoPtr->errorMsg, 
+          strlen(infoPtr->errorMsg) + strlen(msg) + 1);
+      strcat(infoPtr->errorMsg, msg);
+    }
+Error: 
+    CloseConnectionToFcgiApp(infoPtr);
+    if(infoPtr->dynamic) {
+        OS_FreeIpcAddr(ipcAddrPtr);
+    }
+    log_reason(infoPtr->errorMsg, reqPtr->filename, reqPtr);
+    return FALSE;
+}
+
+/*
+ *----------------------------------------------------------------------
+ * 
+ * CloseConnectionToFcgiApp --
+ *
+ *      Closes the connection to the FastCGI application.
+ *      Called only by FcgiDoWork() once the comm is complete with the
+ *      Fcgi application.
+ *
+ * Results:
+ *      
+ * Side effects:  
+ *
+ *----------------------------------------------------------------------
+ */
+static void CloseConnectionToFcgiApp(FastCgiInfo *infoPtr)
+{
+    if (infoPtr->fd != -1)
+        OS_Close(infoPtr->fd);
+
+    if (infoPtr->dynamic) {   /* dynamic == TRUE */
+        Unlock(infoPtr->lockFd);
+        close(infoPtr->lockFd);
+
+        if(infoPtr->requestStatus == OK) {
+            if(gettimeofday(&(infoPtr->completeTime), NULL) < 0) {
+                /* there's no point to aborting the request, just log it */
+                fprintf (infoPtr->reqPtr->server->error_log,
+                     "mod_fastcgi: gettimeofday() failed: %s\n", strerror(errno));
+                fflush (infoPtr->reqPtr->server->error_log);
+            } else {
+                SignalProcessManager(REQ_COMPLETE, infoPtr->reqPtr->filename,
+                    (unsigned long)((infoPtr->queueTime.tv_sec
+                        - infoPtr->startTime.tv_sec)*1000000
+                        + infoPtr->queueTime.tv_usec 
+                        - infoPtr->startTime.tv_usec), 
+                    (unsigned long)((infoPtr->completeTime.tv_sec
+                        - infoPtr->queueTime.tv_sec)*1000000
+                        + infoPtr->completeTime.tv_usec 
+                        - infoPtr->queueTime.tv_usec), 
+                    (unsigned long)infoPtr->completeTime.tv_sec);
+            }
+        }
+    }
+}
+
+/*
+ *----------------------------------------------------------------------
  *
  * FastCgiDoWork --
  *
@@ -4391,124 +4738,179 @@ static void DrainReqOutbuf(WS_Request *reqPtr, FastCgiInfo *infoPtr)
 
 static int FastCgiDoWork(WS_Request *reqPtr, FastCgiInfo *infoPtr)
 {
-    struct timeval timeOut, *timeOutPtr;
-    fd_set read_set, write_set;
-    int numFDs, status;
-    int keepReadingFromFcgiApp, doClientWrite;
-    char *fromStrerror;
+    struct timeval  timeOut, *timeOutPtr;
+    fd_set  read_set, write_set;
+    int     status;
+    int     numFDs; 
+    int     keepReadingFromFcgiApp = TRUE; 
+    int     doClientWrite;
+    int     envSent = FALSE;    /* has the complete ENV been buffered? */
+    char    **envp = NULL;      /* pointer used by SendEnvironment() */
 
-    timeOut.tv_sec = 0;
-    timeOut.tv_usec = 100000; /* 0.1 sec */
     FD_ZERO(&read_set);
     FD_ZERO(&write_set);
+
+    SendBeginRequest(infoPtr);
+
+    /* Buffer as much of the environment as we can fit */
+    envSent = SendEnvironment(reqPtr, infoPtr, &envp);
+
+    /* Start the Apache dropdead timer.  See http_main.h.
+     * ***This needs some attention, reset_timeout() should also 
+     * be called somewhere below */ 
+    soft_timeout("read script input or send script output", reqPtr);
+
+    /* Read as much as possible from the client. */
+    FillOutbuf(reqPtr, infoPtr);
+
+    /* Connect to the Fast CGI Application */
+    if (!ConnectToFcgiApp(reqPtr, infoPtr)) {
+        goto ConnectError;
+    }
     numFDs = infoPtr->fd + 1;
-    keepReadingFromFcgiApp = TRUE;
-    while(keepReadingFromFcgiApp
+
+    while(keepReadingFromFcgiApp 
             || BufferLength(infoPtr->inbufPtr) > 0
             || BufferLength(infoPtr->reqOutbufPtr) > 0) {
-        if(!infoPtr->eofSent) {
+
+        /* If we didn't buffer all of the environment yet, buffer some more */ 
+        if (!envSent) {
+            envSent = SendEnvironment(reqPtr, infoPtr, &envp);
+        }
+        /* Read as much as possible from the client. */
+        if(!infoPtr->eofSent && envSent) {
             FillOutbuf(reqPtr, infoPtr);
         }
-
+        
         /*
          * To avoid deadlock, don't do a blocking select to write to
          * the FastCGI application without selecting to read from the
          * FastCGI application.
          */
         doClientWrite = FALSE;
-        if(keepReadingFromFcgiApp && BufferFree(infoPtr->inbufPtr) > 0) {
+        if (keepReadingFromFcgiApp && BufferFree(infoPtr->inbufPtr) > 0) {
+
             FD_SET(infoPtr->fd, &read_set);
-            if(BufferLength(infoPtr->outbufPtr) > 0) {
+
+            /* Is data buffered for output to the fcgi app? */
+            if (BufferLength(infoPtr->outbufPtr) > 0) {
                 FD_SET(infoPtr->fd, &write_set);
             } else {
                 FD_CLR(infoPtr->fd, &write_set);
             }
             /*
-             * If there's buffered data to send to the client, don't
+             * If there's data buffered to send to the client, don't
              * wait indefinitely for the FastCGI app; the app might
              * be doing server push.
              */
             if(BufferLength(infoPtr->reqOutbufPtr) > 0) {
+             /* Reset on each pass, since they might be changed by select() */
+                timeOut.tv_sec = 0;
+                timeOut.tv_usec = 100000;   /* 0.1 sec */
                 timeOutPtr = &timeOut;
             } else {
+                /* we've got the apache soft_timeout() alarm set,
+                   so select() will fail with EINTR as a drop dead TO,
+                   i.e. its OK to set this to null. */
                 timeOutPtr = NULL;
             }
-            /*
-             * XXX: should always set a non-NULL timeout, to survive an
-             * application that diverges.
-             */
-            status = select(
-                    numFDs, &read_set, &write_set, NULL, timeOutPtr);
+#ifdef SELECT_NEEDS_CAST
+            status = select(numFDs, (int*)&read_set,
+                    (int*)&write_set, NULL, timeOutPtr);
+#else
+            status = select(numFDs, &read_set, &write_set, NULL, timeOutPtr);
+#endif
             if(status < 0) {
-                goto AppIoError;
+                sprintf(infoPtr->errorMsg,
+                        "mod_fastcgi: select() failed while communicating with application: ");
+                goto SystemError;
             } else if(status == 0) {
-                /*
-                 * XXX: select timed out, so go ahead and write to client.
-                 */
+                /* select() timed out, go ahead and write to client */
                 doClientWrite = TRUE;
             }
+            /* Read from the fcgi app */
             if(FD_ISSET(infoPtr->fd, &read_set)) {
                 status = BufferRead(infoPtr->inbufPtr, infoPtr->fd);
                 if(status < 0) {
-                    goto AppIoError;
+                    sprintf(infoPtr->errorMsg,
+                            "mod_fastcgi: read() failed while communicating with application: ");
+                    goto SystemError;
                 } else if(status == 0) {
                     keepReadingFromFcgiApp = FALSE;
+                    CloseConnectionToFcgiApp(infoPtr);
                 }
             }
+            /* Write to the fcgi app */
             if(FD_ISSET(infoPtr->fd, &write_set)) {
                 if(BufferWrite(infoPtr->outbufPtr, infoPtr->fd) < 0) {
-                    goto AppIoError;
+                    sprintf(infoPtr->errorMsg,
+                            "mod_fastcgi: write() failed while communicating with application: ");
+                    goto SystemError;
                 }
             }
         } else {
             doClientWrite = TRUE;
         }
         if(doClientWrite) {
+            /* Move data from client output buffer (reqOutBuf) to the client */
             DrainReqOutbuf(reqPtr, infoPtr);
         }
+        /* Move data from the app input buffer (inbufPtr) to client 
+           output buffer (reqOutBuf) */
         if(CgiToClientBuffer(infoPtr) != OK) {
-            return SERVER_ERROR;
+            /* infoPtr->errorMsg is setup by CgiToClientBuffer() */
+           goto Error;
         }
-        if(infoPtr->exitStatusSet) {
+        if(keepReadingFromFcgiApp && infoPtr->exitStatusSet) {
+            /* we're done talking to the fcgi app */
             keepReadingFromFcgiApp = FALSE;
+            CloseConnectionToFcgiApp(infoPtr);
         }
         if(infoPtr->parseHeader == SCAN_CGI_READING_HEADERS) {
             ScanCGIHeader(reqPtr, infoPtr);
         }
     } /* while */
+
     switch(infoPtr->parseHeader) {
         case SCAN_CGI_FINISHED:
             bflush(reqPtr->connection->client);
             bgetopt(reqPtr->connection->client,
                     BO_BYTECT, &reqPtr->bytes_sent);
-            return OK;
+            break;
         case SCAN_CGI_READING_HEADERS:
-            goto UnterminatedHeader;
+            sprintf(infoPtr->errorMsg,
+                    "mod_fastcgi: Unterminated CGI response headers,"
+                    " %d bytes received from app",
+                    DStringLength(infoPtr->header));
+            goto Error;
         case SCAN_CGI_BAD_HEADER:
-            return SERVER_ERROR;
+            /* infoPtr->errorMsg is setup by ScanHeader() */
+            goto Error;
         case SCAN_CGI_INT_REDIRECT:
         case SCAN_CGI_SRV_REDIRECT:
-            return OK;
+            break;
         default:
             ASSERT(FALSE);
     }
+    kill_timeout(reqPtr);
+    infoPtr->requestStatus = OK;
+    return(infoPtr->requestStatus);
 
-UnterminatedHeader:
-    sprintf(infoPtr->errorMsg,
-            "mod_fastcgi: Unterminated CGI response headers,"
-            " %d bytes received from app",
-            DStringLength(infoPtr->header));
-    return SERVER_ERROR;
+SystemError:
+{   char *msg = strerror(errno);
+    if (msg == NULL) {
+        msg = "errno out of range";
+    }
+    infoPtr->errorMsg = Realloc(infoPtr->errorMsg, 
+        strlen(infoPtr->errorMsg) + strlen(msg) + 1);
+    strcat(infoPtr->errorMsg, msg);
+}
+Error:
+    CloseConnectionToFcgiApp(infoPtr);
 
-AppIoError:
-    /* No strerror prototype on SunOS? */
-    fromStrerror = strerror(errno);
-    Free(infoPtr->errorMsg);
-    infoPtr->errorMsg = Malloc(FCGI_ERRMSG_LEN + strlen(fromStrerror));
-    sprintf(infoPtr->errorMsg,
-            "mod_fastcgi: OS error '%s' while communicating with app",
-            fromStrerror);
-    return SERVER_ERROR;
+ConnectError:
+    infoPtr->requestStatus = SERVER_ERROR;
+    return(infoPtr->requestStatus);
 }
 
 /*
@@ -4551,9 +4953,8 @@ void FcgiCleanUp(FastCgiInfo *infoPtr)
     Free(infoPtr->errorMsg);
     DStringFree(infoPtr->header);
     DStringFree(infoPtr->errorOut);
-    OS_Close(infoPtr->fd);
-    Free( infoPtr->header );
-    Free( infoPtr->errorOut );
+    Free(infoPtr->header);
+    Free(infoPtr->errorOut);
     Free(infoPtr);
 }
 
@@ -4578,17 +4979,11 @@ static int FastCgiHandler(WS_Request *reqPtr)
 {
     FastCgiServerInfo *serverInfoPtr = NULL;
     FastCgiInfo *infoPtr = NULL;
-    OS_IpcAddr *ipcAddrPtr = NULL;
-    struct sockaddr_un* addrPtr = NULL;
-    char *msg = NULL;
     char *argv0 = NULL;
     uid_t uid;
     gid_t gid;
-    struct timeval start, ctime, qtime, tval;
-    fd_set write_fds;
-    int status, flags = 0;
-    int dynamic = FALSE, result;
-    int lockFd = 0;
+    struct timeval;
+    int status;
 
     /*
      * Model after mod_cgi::cgi_handler() to provide better 
@@ -4649,16 +5044,14 @@ static int FastCgiHandler(WS_Request *reqPtr)
             log_reason("mod_fastcgi: Requested application was not found",
                     reqPtr->filename, reqPtr);
             return NOT_FOUND;
-        } else {
-            dynamic = TRUE;
         }
     }
 
     status = setup_client_block(reqPtr, REQUEST_CHUNKED_ERROR);
-    if(status != OK) {
+    if (status != OK) {
         return status;
     }
-
+    
     /*
      * Allocate and initialize FastCGI private data to augment the request
      * structure.
@@ -4685,174 +5078,21 @@ static int FastCgiHandler(WS_Request *reqPtr)
     infoPtr->eofSent = FALSE;
     infoPtr->fd = -1;
     infoPtr->expectingClientContent = (should_client_block(reqPtr) != 0);
-
-    SendBeginRequest(infoPtr);
-    SendEnvironment(reqPtr, infoPtr);
-
-    /*
-     * Read as much as possible from the client now, before connecting
-     * to the FastCGI application.
-     */
-    soft_timeout("read script input or send script output", reqPtr);
-    FillOutbuf(reqPtr, infoPtr);
-
-    /*
-     * Open a connection to the FastCGI application.
-     */
-    if(dynamic==TRUE) {
-        char *lockFileName = MakeLockFileName(reqPtr->filename);
-        struct stat lstbuf, bstbuf;
-        result = 0;
-        do {
-            if( stat(lockFileName,&lstbuf)==0 && S_ISREG(lstbuf.st_mode) ) {
-                if (autoUpdate && stat(reqPtr->filename, &bstbuf)==0 &&
-                        lstbuf.st_mtime < bstbuf.st_mtime) {
-                    /* Its already running, but there's a newer one,
-                     * ask the process manager to start it.
-                     * it will notice that the binary is newer,
-                     * and do a restart instead.
-                     */
-                    SignalProcessManager(PLEASE_START,
-                        reqPtr->filename, 0, 0, 0);
-                    sleep(1);
-                }
-                lockFd = open(lockFileName,O_APPEND);
-                result = (lockFd<0)?(0):(1);
-            } else {
-                SignalProcessManager(PLEASE_START,
-                    reqPtr->filename, 0, 0, 0);
-                sleep(1);
-            }
-        } while (result!=1);
-        if(ReadwLock(lockFd)<0) {
-            sprintf(infoPtr->errorMsg,
-                    "mod_fastcgi: Can't obtain a read lock");
-            goto ErrorReturn;
-        }
-        free(lockFileName);
-    }
-
-    /* create connection point */
-    if(dynamic==TRUE) {
-        ipcAddrPtr = (OS_IpcAddr *) OS_InitIpcAddr();
-        /* need to fill in the serverAddr structure, even
-           though the process manager is the one actually
-           responsible for creating a socket */
-        addrPtr = (struct sockaddr_un *) Malloc(sizeof(struct sockaddr_un));
-        ipcAddrPtr->serverAddr = (struct sockaddr *) addrPtr;
-        if(OS_BuildSockAddrUn(MakeSocketName(reqPtr->filename,
-                NULL, -1, &ipcAddrPtr->bindPath, 1),
-                addrPtr, &ipcAddrPtr->addrLen)) {
-            goto ConnectionErrorReturn;
-        }
-        ipcAddrPtr->addrType = TYPE_LOCAL;
-    } else {
-        ASSERT(serverInfoPtr != NULL);
-        ipcAddrPtr = (OS_IpcAddr *) serverInfoPtr->ipcAddr;
-    }
-    if((infoPtr->fd = OS_Socket(ipcAddrPtr->serverAddr->sa_family, 
-            SOCK_STREAM, 0)) < 0) {
-        goto ConnectionErrorReturn;
-    }
-
-    /* connect */
-    if(dynamic==TRUE) {
-        if((flags=fcntl(infoPtr->fd, F_GETFL, 0))<0) {
-            sprintf(infoPtr->errorMsg,
-                    "mod_fastcgi: Unable to get/set descriptor flags");
-            goto ErrorReturn;
-        }
-        if((fcntl(infoPtr->fd, F_SETFL, (flags|O_NONBLOCK|O_NDELAY)))<0) {
-            sprintf(infoPtr->errorMsg,
-                    "mod_fastcgi: Unable to get/set descriptor flags");
-            goto ErrorReturn;
-        }
-        if(gettimeofday(&start,NULL)<0) {
-            sprintf(infoPtr->errorMsg,
-                    "mod_fastcgi: Unable to get the time of day");
-            goto ErrorReturn;
-        }
-        FD_ZERO(&write_fds);
-        tval.tv_sec = startProcessDelay;
-        tval.tv_usec = 0;
-        if(connect(infoPtr->fd, (struct sockaddr *)ipcAddrPtr->serverAddr,
-                ipcAddrPtr->addrLen)<0) {
-            if(errno!=EINPROGRESS) {
-                goto ConnectionErrorReturn;
-            } else {
-                do {
-                    FD_SET(infoPtr->fd, &write_fds);
-                    status=select((infoPtr->fd+1), NULL, &write_fds,
-                            NULL, &tval);
-                    if(status<0) {
-                        goto ConnectionErrorReturn;
-                    } else {
-                        if(gettimeofday(&qtime,NULL)<0) {
-                            sprintf(infoPtr->errorMsg,
-                                    "mod_fastcgi: Unable to get the time of day");
-                            goto ErrorReturn;
-                        }
-                        if(status==0) {
-                            SignalProcessManager(CONN_TIMEOUT,
-                                    reqPtr->filename,
-                                    (unsigned long)startProcessDelay*1000000,
-                                    0, 0);
-                        } else {
-                            break;
-                        }
-                    }
-                } while((qtime.tv_sec-start.tv_sec)<appConnTimeout);
-                if((qtime.tv_sec-start.tv_sec)>=appConnTimeout) {
-                    status = SERVER_ERROR;
-                    Unlock(lockFd);
-                    close(lockFd);
-                    goto CleanupReturn;
-                }
-            }
-        } else {
-            if(gettimeofday(&qtime,NULL)<0) {
-                sprintf(infoPtr->errorMsg,
-                    "mod_fastcgi: Unable to get the time of day");
-                goto ErrorReturn;
-            }
-        }
-    } else {
-        if(connect(infoPtr->fd, (struct sockaddr *) ipcAddrPtr->serverAddr,
-                ipcAddrPtr->addrLen) < 0) {
-            goto ConnectionErrorReturn;
-        }
-    }
-
-    if(dynamic==TRUE) {
-        if((fcntl(infoPtr->fd, F_SETFL, flags))<0) {
-            sprintf(infoPtr->errorMsg,
-                    "mod_fastcgi: Unable to get/set descriptor flags");
-            goto ErrorReturn;
-        }
-    }
+    infoPtr->requestStatus = DECLINED;
+   
+    if (serverInfoPtr == NULL)
+        infoPtr->dynamic = TRUE;
+    else   
+        infoPtr->dynamic = FALSE;
 
     /* communicate with fcgi app */
     status = FastCgiDoWork(reqPtr, infoPtr);
-    kill_timeout(reqPtr);
-
-    if(dynamic==TRUE && status == OK) {
-        if(gettimeofday(&ctime, NULL)<0) {
-            sprintf(infoPtr->errorMsg,
-                    "mod_fastcgi: Unable to get the time of day");
-            goto ErrorReturn;
-        }
-        SignalProcessManager(REQ_COMPLETE,
-                reqPtr->filename,
-                (unsigned long)((qtime.tv_sec-start.tv_sec)*1000000
-                    +(qtime.tv_usec-start.tv_usec)), 
-                (unsigned long)((ctime.tv_sec-qtime.tv_sec)*1000000
-                    +(ctime.tv_usec-qtime.tv_usec)), 
-                (unsigned long)ctime.tv_sec);
-    }
-
     if(status != OK) {
         goto ErrorReturn;
     };
+
+/* *** I don't understand what this is doing.  Should it be moved
+ * to FcgiDoWork()? */
     switch(infoPtr->parseHeader) {
         case SCAN_CGI_INT_REDIRECT:
             /* 
@@ -4868,34 +5108,11 @@ static int FastCgiHandler(WS_Request *reqPtr)
             status = REDIRECT;
             break;
     }
-    if (dynamic==TRUE) {
-        Unlock(lockFd);
-        close(lockFd);
-    }
+
     goto CleanupReturn;
 
-ConnectionErrorReturn:
-    msg = (char *) strerror(errno);
-    if (msg == NULL) {
-        msg = "errno out of range";
-    }
-    Free(infoPtr->errorMsg);
-    if (dynamic==TRUE) {
-        OS_FreeIpcAddr(ipcAddrPtr);
-    }
-    infoPtr->errorMsg = Malloc(FCGI_ERRMSG_LEN + strlen(msg));
-    sprintf(infoPtr->errorMsg,
-            "mod_fastcgi: Could not connect to application,"
-            " OS error '%s'", msg);
 ErrorReturn:
     log_reason(infoPtr->errorMsg, reqPtr->filename, reqPtr);
-    FcgiCleanUp(infoPtr);
-    if(dynamic==TRUE) {
-        OS_FreeIpcAddr(ipcAddrPtr);
-        Unlock(lockFd);
-        close(lockFd);
-    }
-    return SERVER_ERROR;
 
 CleanupReturn:
     FcgiCleanUp(infoPtr);
