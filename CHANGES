@@ -1,4 +1,7 @@
 2.2.13
+
+ *) Prevent silly maxProcesses and processSlack combinations.
+    Dmitry Dorofeev [dima@yasp.com]
                                                                
  *) Properly handle the killing of idle processes when one takes a long time
     to exit once signaled down (or the config is funky).

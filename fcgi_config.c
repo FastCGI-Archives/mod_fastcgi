@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_config.c,v 1.30 2001/11/17 00:50:20 robs Exp $
+ * $Id: fcgi_config.c,v 1.31 2002/02/04 19:39:32 robs Exp $
  */
 
 #include "fcgi.h"
@@ -919,6 +919,13 @@ const char *fcgi_config_set_config(cmd_parms *cmd, void *dummy, const char *arg)
             return ap_psprintf(tp, "%s: invalid option: %s", name, option);
         }
     } /* while */
+
+    if (dynamicProcessSlack >= dynamicMaxProcs + 1) {
+	    /* the kill policy would work unexpectedly */
+    	return ap_psprintf(tp, 
+            "%s: processSlack (%u) must be less than maxProcesses (%u) + 1", 
+        	name, dynamicProcessSlack, dynamicMaxProcs);
+    }
 
     /* Move env array to a surviving pool, leave an extra slot for WIN32 _FCGI_MUTEX_ */
     ++envc;
