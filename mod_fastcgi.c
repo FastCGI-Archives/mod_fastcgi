@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.117 2001/11/17 00:50:20 robs Exp $
+ *  $Id: mod_fastcgi.c,v 1.118 2001/11/17 02:14:09 robs Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -802,7 +802,7 @@ static int set_nonblocking(const fcgi_request * fr, int nonblocking)
 static int set_nonblocking(const fcgi_request * fr, int nonblocking)
 {
     int nb_flag = 0;
-    int fd_flags = fcntl(fd, F_GETFL, 0);
+    int fd_flags = fcntl(fr->fd, F_GETFL, 0);
 
     if (fd_flags < 0) return -1;
 
@@ -852,7 +852,7 @@ static void close_connection_to_fs(fcgi_request *fr)
     if (fr->fd >= 0) 
     {
         set_nonblocking(fr, FALSE);
-        closesocket(fr->r->pool, fr->fd);
+        closesocket(fr->fd);
         fr->fd = -1;
     }
 
