@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.97 2000/08/16 02:07:30 robs Exp $
+ *  $Id: mod_fastcgi.c,v 1.98 2000/09/19 14:51:35 robs Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -741,14 +741,19 @@ static void close_connection_to_fs(fcgi_request *fr)
 {
     pool *rp = fr->r->pool;
 
-    if (fr->fd != -1)
+    if (fr->fd >= 0) {
         ap_pclosesocket(rp, fr->fd);
+    }
 
     if (fr->dynamic) {
 #ifdef WIN32
-        fcgi_rdwr_unlock(fr->lockFd, READER);
+        if (fr->lockFd != NULL) {
+            fcgi_rdwr_unlock(fr->lockFd, READER);
+        }
 #else
-        ap_pclosef(rp, fr->lockFd);
+        if (fr->lockFd >= 0) {
+            ap_pclosef(rp, fr->lockFd);
+        }
 #endif
 
         if (fr->keepReadingFromFcgiApp == FALSE) {
@@ -1572,6 +1577,7 @@ static fcgi_request *create_fcgi_request(request_rec * const r, const char *fs_p
 #else
     fr->dynamic = (fs == NULL) ? TRUE : FALSE;
     fr->fd = -1;
+    fr->lockFd = -1;
 #endif
 
     set_uid_n_gid(r, &fr->user, &fr->group);

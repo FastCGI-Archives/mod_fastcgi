@@ -1,3 +1,15 @@
+2.2.9
+
+ *) Fix a nasty bug that occurred when a client aborted a request 
+    before the connection to a dynamic FastCGI application was opened.
+    The application's lock file descriptor wasn't setup but was being 
+    closed which resulted in FD0 being closed.  Normally this open to 
+    /dev/null and should pose no problems except that because the FD
+    was available it was being returned by Apache's accept().  This 
+    caused it to be registered for pool cleanup.  mod_cgi though moves
+    the CGI stdin pipe to FD0 and thus it was getting waxed during pool
+    cleanup.  Problem identified by checksum@tebie.com.
+
 Changes with mod_fastcgi 2.2.8
 
  *) Eliminate the concept of disabled applications.  If a failure 
