@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_util.c,v 1.19 2001/09/04 13:13:09 robs Exp $
+ * $Id: fcgi_util.c,v 1.20 2001/11/20 01:55:05 robs Exp $
  */
 
 #include "fcgi.h"
@@ -453,24 +453,18 @@ fcgi_util_fs_create_procs(pool *p, int num)
     return proc;
 }
 
-int fcgi_util_gettimeofday(struct timeval *Time) {
+int fcgi_util_ticks(struct timeval * tv) 
+{
 #ifdef WIN32
-    DWORD clock;
-    time_t t;
+    // millisecs is sufficent granularity
+    DWORD millis = GetTickCount();
 
-    clock = GetTickCount();
+    tv->tv_sec = millis / 1000;
+    tv->tv_usec = millis - (tv->tv_sec * 1000);
 
-    t = time(NULL);
-
-    Time->tv_sec = t; //clock / 1000;
-    Time->tv_usec = (clock - Time->tv_sec) * 1000;
-
-    if (Time->tv_sec == (time_t)-1) 
-        return -1;
-    else
-        return 0;
+    return 0;
 #else
-    return gettimeofday(Time, NULL);
+    return gettimeofday(tv, NULL);
 #endif
 }
 

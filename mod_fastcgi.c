@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.118 2001/11/17 02:14:09 robs Exp $
+ *  $Id: mod_fastcgi.c,v 1.119 2001/11/20 01:55:05 robs Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -632,7 +632,7 @@ DuplicateNotAllowed:
 static int read_from_client_n_queue(fcgi_request *fr)
 {
     char *end;
-    size_t count;
+    int count;
     long int countRead;
 
     while (BufferFree(fr->clientInputBuffer) > 0 || BufferFree(fr->serverOutputBuffer) > 0) {
@@ -662,7 +662,7 @@ static int read_from_client_n_queue(fcgi_request *fr)
 static int write_to_client(fcgi_request *fr)
 {
     char *begin;
-    size_t count;
+    int count;
 
     fcgi_buf_get_block_info(fr->clientOutputBuffer, &begin, &count);
     if (count == 0)
@@ -683,7 +683,7 @@ static int write_to_client(fcgi_request *fr)
         return -1;
     }
 #else
-    if (ap_bwrite(fr->r->connection->client, begin, count) != (int) count) {
+    if (ap_bwrite(fr->r->connection->client, begin, count) != count) {
         ap_log_rerror(FCGI_LOG_INFO_NOERRNO, fr->r,
             "FastCGI: client stopped connection before send body completed");
         return -1;
@@ -867,7 +867,7 @@ static void close_connection_to_fs(fcgi_request *fr)
          * to be sure they can reasonably handle these cases before
          * sending these sort of stats - theres some funk in there.
          */
-        if (fcgi_util_gettimeofday(&fr->completeTime) < 0) 
+        if (fcgi_util_ticks(&fr->completeTime) < 0) 
         {
             /* there's no point to aborting the request, just log it */
             ap_log_error(FCGI_LOG_ERR, fr->r->server, "FastCGI: can't get time of day");
@@ -1027,7 +1027,7 @@ static int open_connection_to_fs(fcgi_request *fr)
             }
         }
 
-        if (fcgi_util_gettimeofday(&fr->startTime) < 0) {
+        if (fcgi_util_ticks(&fr->startTime) < 0) {
             ap_log_rerror(FCGI_LOG_ERR, r,
                 "FastCGI: failed to connect to server \"%s\": "
                 "can't get time of day", fr->fs_path);
@@ -1064,7 +1064,7 @@ static int open_connection_to_fs(fcgi_request *fr)
                 send_to_pm(FCGI_REQUEST_TIMEOUT_JOB, fr->fs_path, fr->user, fr->group, 0, 0);
             }
 
-            if (fcgi_util_gettimeofday(&fr->queueTime) < 0) {
+            if (fcgi_util_ticks(&fr->queueTime) < 0) {
                 ap_log_rerror(FCGI_LOG_ERR, r,
                     "FastCGI: failed to connect to server \"%s\": "
                     "can't get time of day", fr->fs_path);
@@ -1094,9 +1094,11 @@ static int open_connection_to_fs(fcgi_request *fr)
     /* Create the socket */
     fr->fd = socket(socket_addr->sa_family, SOCK_STREAM, 0);
 
-    if (fr->fd < 0) {
 #ifdef WIN32
+    if (fr->fd == INVALID_SOCKET) {
         errno = WSAGetLastError();  // Not sure this is going to work as expected
+#else    
+    if (fr->fd < 0) {
 #endif
         ap_log_rerror(FCGI_LOG_ERR_ERRNO, r,
             "FastCGI: failed to connect to server \"%s\": "
@@ -1120,7 +1122,7 @@ static int open_connection_to_fs(fcgi_request *fr)
         set_nonblocking(fr, TRUE);
     }
 
-    if (fr->dynamic && fcgi_util_gettimeofday(&fr->startTime) < 0) {
+    if (fr->dynamic && fcgi_util_ticks(&fr->startTime) < 0) {
         ap_log_rerror(FCGI_LOG_ERR, r,
             "FastCGI: failed to connect to server \"%s\": "
             "can't get time of day", fr->fs_path);
@@ -1177,7 +1179,7 @@ static int open_connection_to_fs(fcgi_request *fr)
             if (status < 0)
                 break;
 
-            if (fcgi_util_gettimeofday(&fr->queueTime) < 0) {
+            if (fcgi_util_ticks(&fr->queueTime) < 0) {
                 ap_log_rerror(FCGI_LOG_ERR, r,
                     "FastCGI: failed to connect to server \"%s\": "
                     "can't get time of day", fr->fs_path);
@@ -1452,7 +1454,7 @@ static int do_work(request_rec *r, fcgi_request *fr)
                 int delay;
                 struct timeval qwait;
 
-                if (fcgi_util_gettimeofday(&fr->queueTime) < 0) {
+                if (fcgi_util_ticks(&fr->queueTime) < 0) {
                     ap_log_rerror(FCGI_LOG_ERR, r, "FastCGI: can't get time of day");
                     return server_error(fr);
                 }
@@ -1546,7 +1548,7 @@ static int do_work(request_rec *r, fcgi_request *fr)
                 else if (dynamic_first_read) {
                     struct timeval qwait;
 
-                    if (fcgi_util_gettimeofday(&fr->queueTime) < 0) {
+                    if (fcgi_util_ticks(&fr->queueTime) < 0) {
                     	ap_log_rerror(FCGI_LOG_ERR, r, "FastCGI: can't get time of day");
                     	return server_error(fr);
                     }
@@ -1582,7 +1584,7 @@ static int do_work(request_rec *r, fcgi_request *fr)
 #endif             
                 if (dynamic_first_read) {
                     dynamic_first_read = 0;
-                    if (fcgi_util_gettimeofday(&fr->queueTime) < 0) {
+                    if (fcgi_util_ticks(&fr->queueTime) < 0) {
                         ap_log_rerror(FCGI_LOG_ERR, r, "FastCGI: can't get time of day");
                         return server_error(fr);
                     }
@@ -1608,6 +1610,7 @@ static int do_work(request_rec *r, fcgi_request *fr)
 
             /* Write to the FastCGI server */
 #ifdef WIN32
+            /* XXX this is broke because it will cause a spin if the app doesn't read */
             if ((fr->using_npipe_io && (BufferLength(fr->serverOutputBuffer) > 0)) 
                 || FD_ISSET(fr->fd, &write_set)) {
 #else
@@ -1615,6 +1618,7 @@ static int do_work(request_rec *r, fcgi_request *fr)
 #endif
 
                 if (fcgi_buf_get_to_fd(fr->serverOutputBuffer, fr->fd) < 0) {
+                    /* XXX this could fail even if the app finished sending a response */
 #ifdef WIN32
                     if (! fr->using_npipe_io)
                         ap_log_rerror(FCGI_LOG_ERR_ERRNO, r,
