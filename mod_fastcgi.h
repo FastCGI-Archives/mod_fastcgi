@@ -1,5 +1,5 @@
 /*
- * $Id: mod_fastcgi.h,v 1.47 2003/11/24 02:38:39 robs Exp $
+ * $Id: mod_fastcgi.h,v 1.48 2003/11/25 00:02:19 robs Exp $
  */
 
 #ifndef MOD_FASTCGI_H
