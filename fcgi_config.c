@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_config.c,v 1.41 2002/10/18 02:20:09 robs Exp $
+ * $Id: fcgi_config.c,v 1.42 2002/10/19 00:07:54 robs Exp $
  */
 
 #define CORE_PRIVATE
@@ -790,7 +790,13 @@ const char *fcgi_config_new_static_server(cmd_parms *cmd, void *dummy, const cha
              s->socket_path = fcgi_util_socket_hash_filename(tp, fs_path, s->user, s->group);
 
         if (fcgi_socket_dir == NULL)
+        {
+#ifdef WIN32
             fcgi_socket_dir = DEFAULT_SOCK_DIR;
+#else
+            fcgi_socket_dir = ap_server_root_relative(p, DEFAULT_SOCK_DIR);
+#endif
+        }
 
         s->socket_path = fcgi_util_socket_make_path_absolute(p, s->socket_path, 0);
 #ifndef WIN32
@@ -960,7 +966,13 @@ const char *fcgi_config_new_external_server(cmd_parms *cmd, void *dummy, const c
     } else {
 
         if (fcgi_socket_dir == NULL)
+        {
+#ifdef WIN32
             fcgi_socket_dir = DEFAULT_SOCK_DIR;
+#else
+            fcgi_socket_dir = ap_server_root_relative(p, DEFAULT_SOCK_DIR);
+#endif
+        }
 
         s->socket_path = fcgi_util_socket_make_path_absolute(p, s->socket_path, 0);
 #ifndef WIN32
