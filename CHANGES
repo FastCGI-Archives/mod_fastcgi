@@ -1,5 +1,11 @@
 Changes with mod_fastcgi 2.2.3
 
+ *) Log dynamic process termination scheduling and the resulting 
+    process exit notification.
+
+ *) Change the default singleThreshhold from 10 to 0 to prevent the last dynamic
+    application process from being killed off due to low demand.
+
  *) Clean up FastCGI application pathnames (e.g. remove duplicate slashes). 
  
  *) Fix bugs that prevented dynamic processes from being shutdown when

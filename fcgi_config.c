@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_config.c,v 1.15 1999/09/16 01:45:54 roberts Exp $
+ * $Id: fcgi_config.c,v 1.16 1999/09/19 02:06:56 roberts Exp $
  */
 
 #include "fcgi.h"
@@ -410,7 +410,7 @@ const char *fcgi_config_new_static_server(cmd_parms *cmd, void *dummy, const cha
     fcgi_server *s;
     pool *p = cmd->pool, *tp = cmd->temp_pool;
     const char *name = cmd->cmd->name;
-    const char *fs_path = ap_getword_conf(p, &arg);
+    char *fs_path = ap_getword_conf(p, &arg);
     const char *option, *err;
 
     /* Allocate temp storage for the array of initial environment variables */
@@ -586,7 +586,7 @@ const char *fcgi_config_new_external_server(cmd_parms *cmd, void *dummy, const c
     fcgi_server *s;
     pool * const p = cmd->pool, *tp = cmd->temp_pool;
     const char * const name = cmd->cmd->name;
-    const char *fs_path = ap_getword_conf(p, &arg);
+    char *fs_path = ap_getword_conf(p, &arg);
     const char *option, *err;
 
     if (!*fs_path) {
@@ -739,11 +739,11 @@ const char *fcgi_config_set_config(cmd_parms *cmd, void *dummy, const char *arg)
                 return invalid_value(tp, name, NULL, option, err);
         }
         else if (strcasecmp(option, "-singleThreshhold") == 0) {
-            if ((err = get_u_int(tp, &arg, &dynamicThreshhold1, 1)))
+            if ((err = get_u_int(tp, &arg, &dynamicThreshhold1, 0)))
                 return invalid_value(tp, name, NULL, option, err);
         }
         else if (strcasecmp(option, "-multiThreshhold") == 0) {
-            if ((err = get_u_int(tp, &arg, &dynamicThreshholdN, 1)))
+            if ((err = get_u_int(tp, &arg, &dynamicThreshholdN, 0)))
                 return invalid_value(tp, name, NULL, option, err);
         }
         else if (strcasecmp(option, "-startDelay") == 0) {

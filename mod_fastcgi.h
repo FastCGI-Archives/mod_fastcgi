@@ -1,5 +1,5 @@
 /*
- * $Id: mod_fastcgi.h,v 1.17 1999/09/16 01:45:57 roberts Exp $
+ * $Id: mod_fastcgi.h,v 1.18 1999/09/19 02:06:58 roberts Exp $
  */
 
 #ifndef MOD_FASTCGI_H
@@ -49,7 +49,7 @@
                                             * smaller weights them more heavily
                                             * compared to the current value,
                                             * which is scaled by dynamicGain */
-#define FCGI_DEFAULT_THRESHHOLD_1 10       /* if load falls below this value
+#define FCGI_DEFAULT_THRESHHOLD_1 0        /* if load falls below this value
                                             * and we have only one instance
                                             * running, it is killed off */
 #define FCGI_DEFAULT_THRESHHOLD_N 50       /* if load falls below this value

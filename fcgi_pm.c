@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_pm.c,v 1.15 1999/09/16 01:45:55 roberts Exp $
+ * $Id: fcgi_pm.c,v 1.16 1999/09/19 02:06:57 roberts Exp $
  */
 
 #include "fcgi.h"
@@ -567,9 +567,9 @@ NothingToDo:
             s->listenQueueDepth = dynamicListenQueueDepth;
             s->initStartDelay = dynamicInitStartDelay;
             s->envp = dynamicEnvp;
+            ap_getparents(execName);
+            ap_no2slash(execName);
             s->fs_path = ap_pstrdup(sp, execName);
-            ap_getparents(s->fs_path);
-            ap_no2slash(s->fs_path);
             s->procs = fcgi_util_fs_create_procs(sp, dynamicMaxClassProcs);
 
             /* Create socket file's path */
@@ -833,6 +833,9 @@ static void dynamic_kill_idle_fs_procs(void)
                 }
                 if(s->procs[i].state == STATE_STARTED) {
                     s->procs[i].state = STATE_VICTIM;
+                    ap_log_error(FCGI_LOG_WARN_NOERRNO, fcgi_apache_main_server,
+                        "FastCGI: (dynamic) server \"%s\" (pid %d) termination scheduled",
+                        s->fs_path, s->procs[i].pid);
                     victims++;
                     break;
                 }
@@ -905,6 +908,62 @@ static void dynamic_kill_idle_fs_procs(void)
     ap_destroy_pool(tp);
 }
 
+static void setup_signals(sigset_t *mask)
+{
+    struct sigaction sa;
+
+    sa.sa_handler = signal_handler;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = 0;
+
+    /* Setup handlers */
+
+    if (sigaction(SIGTERM, &sa, NULL) < 0) {
+	ap_log_error(FCGI_LOG_ALERT, fcgi_apache_main_server, 
+	"sigaction(SIGTERM) failed");
+    }
+    /* httpd restart */
+    if (sigaction(SIGHUP, &sa, NULL) < 0) {
+	ap_log_error(FCGI_LOG_ALERT, fcgi_apache_main_server, 
+	"sigaction(SIGHUP) failed");
+    }
+    /* httpd graceful restart */
+    if (sigaction(SIGUSR1, &sa, NULL) < 0) {
+	ap_log_error(FCGI_LOG_ALERT, fcgi_apache_main_server, 
+	"sigaction(SIGUSR1) failed");
+    }
+    /* read the mbox - kill interval expired */
+    if (sigaction(SIGALRM, &sa, NULL) < 0) {
+	ap_log_error(FCGI_LOG_ALERT, fcgi_apache_main_server, 
+	"sigaction(SIGALRM) failed");
+    }
+    /* read the mbox - request handler notification */
+    if (sigaction(SIGUSR2, &sa, NULL) < 0) {
+	ap_log_error(FCGI_LOG_ALERT, fcgi_apache_main_server, 
+	"sigaction(SIGUSR2) failed");
+    }
+    if (sigaction(SIGCHLD, &sa, NULL) < 0) {
+	ap_log_error(FCGI_LOG_ALERT, fcgi_apache_main_server, 
+	"sigaction(SIGCHLD) failed");
+    }
+
+    /* Get the current mask */
+    sigprocmask(0, NULL, mask);
+    
+    /* Don't block these */
+    sigdelset(mask, SIGTERM);
+    sigdelset(mask, SIGCHLD);
+    sigdelset(mask, SIGALRM);
+    sigdelset(mask, SIGUSR2);
+    sigdelset(mask, SIGUSR1);
+    sigdelset(mask, SIGHUP);
+
+    sigemptyset(&signalsToBlock);
+    sigaddset(&signalsToBlock, SIGTERM);
+    sigaddset(&signalsToBlock, SIGCHLD);
+    sigaddset(&signalsToBlock, SIGALRM);
+    sigaddset(&signalsToBlock, SIGUSR2);
+}
 
 int fcgi_pm_main(void *dummy, child_info *info)
 {
@@ -919,34 +978,7 @@ int fcgi_pm_main(void *dummy, child_info *info)
     reduce_priveleges();
 
     change_process_name("fcgi-pm");
-
-    /*
-     * Set up to handle SIGTERM, SIGCHLD, and SIGALRM.
-     */
-    sigemptyset(&signalsToBlock);
-    sigaddset(&signalsToBlock, SIGTERM);
-    sigaddset(&signalsToBlock, SIGCHLD);
-    sigaddset(&signalsToBlock, SIGALRM);
-    sigaddset(&signalsToBlock, SIGUSR2);
-    sigprocmask(SIG_BLOCK, NULL, &sigMask);
-    sigdelset(&sigMask, SIGTERM);
-    sigdelset(&sigMask, SIGCHLD);
-    sigdelset(&sigMask, SIGALRM);
-    sigdelset(&sigMask, SIGUSR2);
-    sigdelset(&sigMask, SIGUSR1);
-    sigdelset(&sigMask, SIGHUP);
-
-    if ((signal(SIGTERM, signal_handler) == SIG_ERR) ||
-            (signal(SIGCHLD, signal_handler) == SIG_ERR) ||
-            (signal(SIGALRM, signal_handler) == SIG_ERR) ||
-            (signal(SIGUSR2, signal_handler) == SIG_ERR) ||
-            (signal(SIGUSR1, signal_handler) == SIG_ERR) ||
-            (signal(SIGHUP, signal_handler) == SIG_ERR))
-    {
-        ap_log_error(FCGI_LOG_ALERT, fcgi_apache_main_server,
-            "FastCGI: process manager exiting, signal() failed");
-        exit(1);
-    }
+    setup_signals(&sigMask);
 
     if (fcgi_suexec) {
         ap_log_error(FCGI_LOG_INFO_NOERRNO, fcgi_apache_main_server,
@@ -1157,6 +1189,7 @@ int fcgi_pm_main(void *dummy, child_info *info)
                 goto ProcessSigTerm;
 
             childPid = waitpid(-1, &waitStatus, WNOHANG);
+            
             if (childPid == -1 || childPid == 0)
                 break;
 
@@ -1195,7 +1228,6 @@ ChildFound:
 
                 if (s->procs[i].state == STATE_VICTIM) {
                     s->procs[i].state = STATE_KILLED;
-                    continue;
                 }
                 else {
                     /* A dynamic app died or exited without provacation from the PM */
