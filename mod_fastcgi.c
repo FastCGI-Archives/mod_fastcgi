@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.119 2001/11/20 01:55:05 robs Exp $
+ *  $Id: mod_fastcgi.c,v 1.120 2001/11/28 03:31:02 robs Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -151,6 +151,7 @@ static void send_to_pm(const char id, const char * const fs_path,
     if (!(job = (fcgi_pm_job *) malloc(sizeof(fcgi_pm_job))))
        return;
 #else
+    static int failed_count = 0;
     int buflen = 0;
     char buf[FCGI_MAX_MSG_LEN];
 #endif
@@ -210,9 +211,14 @@ static void send_to_pm(const char id, const char * const fs_path,
 #else
     ap_assert(buflen <= FCGI_MAX_MSG_LEN);
 
-    if (write(fcgi_pm_pipe[1], (const void *)buf, buflen) != buflen) {
+    /* There is no apache flag or function that can be used to id
+     * restart/shutdown pending so ignore the first few failures as
+     * once it breaks it will stay broke */
+    if (write(fcgi_pm_pipe[1], (const void *)buf, buflen) != buflen 
+        && failed_count++ > 10) 
+    {
         ap_log_error(FCGI_LOG_WARN, fcgi_apache_main_server,
-            "FastCGI: write() to PM failed");
+            "FastCGI: write() to PM failed (ignore if a restart or shutdown is pending)");
     }
 #endif
 }
@@ -1609,25 +1615,29 @@ static int do_work(request_rec *r, fcgi_request *fr)
             }
 
             /* Write to the FastCGI server */
+            if (BufferLength(fr->serverOutputBuffer) > 0)
+            {
 #ifdef WIN32
-            /* XXX this is broke because it will cause a spin if the app doesn't read */
-            if ((fr->using_npipe_io && (BufferLength(fr->serverOutputBuffer) > 0)) 
-                || FD_ISSET(fr->fd, &write_set)) {
+                /* XXX this is broke because it will cause a spin if the app doesn't read */
+                if (fr->using_npipe_io || FD_ISSET(fr->fd, &write_set))
 #else
-            if (FD_ISSET(fr->fd, &write_set)) {
+                if (FD_ISSET(fr->fd, &write_set))
 #endif
-
-                if (fcgi_buf_get_to_fd(fr->serverOutputBuffer, fr->fd) < 0) {
-                    /* XXX this could fail even if the app finished sending a response */
+                {
+                    if (fcgi_buf_get_to_fd(fr->serverOutputBuffer, fr->fd) < 0) 
+                    {
+                        /* XXX this could fail even if the app finished sending a response */
 #ifdef WIN32
-                    if (! fr->using_npipe_io)
-                        ap_log_rerror(FCGI_LOG_ERR_ERRNO, r,
-                            "FastCGI: comm with server \"%s\" aborted: write failed", fr->fs_path);
-                    else
+                        if (! fr->using_npipe_io)
+                            ap_log_rerror(FCGI_LOG_ERR_ERRNO, r,
+                                "FastCGI: comm with server \"%s\" aborted: write failed", fr->fs_path);
+                        else
 #endif
-                    ap_log_rerror(FCGI_LOG_ERR, r,
-                        "FastCGI: comm with server \"%s\" aborted: write failed", fr->fs_path);
-                    return server_error(fr);
+                        ap_log_rerror(FCGI_LOG_ERR, r,
+                            "FastCGI: comm with server \"%s\" aborted: write failed", fr->fs_path);
+                        
+                        return server_error(fr);
+                    }
                 }
             }
 

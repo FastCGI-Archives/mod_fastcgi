@@ -1,9 +1,10 @@
 2.2.11
 
+ *) Delay the logging of write errors to the pm to account for shutdown/restart.
+
  *) (Win32) An assortment of fixes.
 
- *) Fix some broken casts that were likely the cause of an assert
-    on systems with a 64bit int.
+ *) Fix some broken casts that were likely the cause of an assert.
 
  *) Win32. Eliminate forward slashes from the named pipe path name.
     Gerald Richter [richter@ecos.de]
