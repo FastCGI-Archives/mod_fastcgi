@@ -2888,6 +2888,10 @@ void KillDynamicProcs()
 
     /* pass 1 - locate and mark all victims */
     for(s=fastCgiServers;  s!=NULL; s=s->next) {
+	/* Only kill dynamic apps */
+	if (s->directive != APP_CLASS_DYNAMIC)
+	    continue;
+
         /* If the number of non-victims is less than or equal to
 	   the minimum that may be running without being killed off,
 	   don't select any more victims.  */
@@ -2923,6 +2927,10 @@ void KillDynamicProcs()
     }
     /* pass 2 - kill procs off */
     for(s=fastCgiServers; s!=NULL; s=s->next) {
+	/* Only kill dynamic apps */
+	if (s->directive != APP_CLASS_DYNAMIC)
+	    continue;
+
         for(i=0;i<maxClassProcs;i++) {
 	    if(s->procInfo[i].state == STATE_VICTIM) {
 	        lockFileName = MakeLockFileName(DStringValue(&s->execPath));
