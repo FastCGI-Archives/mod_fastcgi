@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_pm.c,v 1.72 2002/07/23 00:54:18 robs Exp $
+ * $Id: fcgi_pm.c,v 1.73 2002/07/23 02:39:18 robs Exp $
  */
 
 
@@ -1081,27 +1081,40 @@ static void dynamic_read_msgs(int read_ready)
                 */
                 struct stat stbuf;
                 int i;
-
-#ifndef WIN32
-                if ((stat(execName, &stbuf)==0) &&
+#ifdef WIN32
+                char * app_path = cjob->fs_path;
 #else
-                if ((stat(cjob->fs_path, &stbuf)==0) &&
+                char * app_path = execName;
 #endif
-                        (stbuf.st_mtime > s->restartTime)) {
+
+                if (stat(app_path, &stbuf) == 0 && stbuf.st_mtime > s->startTime)
+                {
+                    int do_restart = 0;
+
+                    /* prevent addition restart requests */
+                    s->startTime = now;
+#ifndef WIN32
+                    utime(s->socket_path, NULL);
+#endif
+
                     /* kill old server(s) */
-                    for (i = 0; i < dynamicMaxClassProcs; i++) {
-                        if (s->procs[i].pid > 0) {
+                    for (i = 0; i < dynamicMaxClassProcs; i++) 
+                    {
+                        if (s->procs[i].pid > 0 
+                            && stbuf.st_mtime > s->procs[i].start_time) 
+                        {
                             fcgi_kill(&s->procs[i], SIGTERM);
+                            do_restart++;
                         }
                     }
 
-                    ap_log_error(FCGI_LOG_WARN_NOERRNO, fcgi_apache_main_server,
-                                 "FastCGI: restarting server \"%s\" processes, newer version found",
-#ifndef WIN32
-                                 execName);
-#else
-                                 cjob->fs_path);
-#endif
+                    if (do_restart)
+                    {
+                        ap_log_error(FCGI_LOG_WARN_NOERRNO, 
+                            fcgi_apache_main_server, "FastCGI: restarting "
+                            "old server \"%s\" processes, newer version "
+                            "found", app_path);
+                    }
                 }
 
                 /* If dynamicAutoRestart, don't mark any new processes
@@ -1726,6 +1739,10 @@ void fcgi_pm_main(void *dummy)
 
                         s->procs[i].start_time = now;
                         s->restartTime = now;
+
+                        if (s->startTime == 0) {
+                            s->startTime = now;
+                        }
                         
                         if (s->directive == APP_CLASS_DYNAMIC) {
                             s->numProcesses++;

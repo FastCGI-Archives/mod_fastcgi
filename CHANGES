@@ -1,5 +1,9 @@
 2.2.13
 
+ *) [*nix] When autoupdate is enabled touch the socket when restarting
+    the processes to prevent further requests.  
+    Eckebrecht von Pappenheim [evp@heise.de]
+
  *) Apache 2.0 support.
 
  *) [WIN32] Don't read from a potentially closed named pipe. 

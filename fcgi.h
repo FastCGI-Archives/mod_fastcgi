@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi.h,v 1.38 2002/07/23 00:54:18 robs Exp $
+ * $Id: fcgi.h,v 1.39 2002/07/23 02:39:18 robs Exp $
  */
 
 #ifndef FCGI_H
@@ -156,6 +156,7 @@ typedef struct _FastCgiServerInfo {
     u_int numProcesses;             /* max allowed processes of this class,
                                      * or for dynamic apps, the number of
                                      * processes actually running */
+    time_t startTime;               /* the time the application was started */
     time_t restartTime;             /* most recent time when the process
                                      * manager started a process in this
                                      * class. */

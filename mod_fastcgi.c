@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.133 2002/07/23 00:54:18 robs Exp $
+ *  $Id: mod_fastcgi.c,v 1.134 2002/07/23 02:39:18 robs Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -1012,7 +1012,7 @@ static int open_connection_to_fs(fcgi_request *fr)
                 if (stat(fr->fs_path, &app_stat) == 0)
                 {
 #ifdef WIN32
-                    if (fr->fs->restartTime < app_stat.st_mtime)
+                    if (fr->fs->startTime < app_stat.st_mtime)
 #else
                     if (sock_stat.st_mtime < app_stat.st_mtime)
 #endif
