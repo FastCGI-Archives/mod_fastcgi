@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_pm.c,v 1.81 2002/10/22 01:02:18 robs Exp $
+ * $Id: fcgi_pm.c,v 1.82 2002/10/22 02:37:32 robs Exp $
  */
 
 
@@ -39,8 +39,8 @@ HANDLE fcgi_event_handles[3];
 #ifndef WIN32
 static int seteuid_root(void)
 {
-    int rc = seteuid((uid_t)0);
-    if (rc == -1) {
+    int rc = seteuid(getuid());
+    if (rc) {
         ap_log_error(FCGI_LOG_ALERT, fcgi_apache_main_server,
             "FastCGI: seteuid(0) failed");
     }
@@ -50,7 +50,7 @@ static int seteuid_root(void)
 static int seteuid_user(void)
 {
     int rc = seteuid(ap_user_id);
-    if (rc == -1) {
+    if (rc) {
         ap_log_error(FCGI_LOG_ALERT, fcgi_apache_main_server,
             "FastCGI: seteuid(%u) failed", (unsigned)ap_user_id);
     }
