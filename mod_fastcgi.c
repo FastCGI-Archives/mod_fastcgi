@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.128 2002/03/12 13:06:29 robs Exp $
+ *  $Id: mod_fastcgi.c,v 1.129 2002/03/12 23:25:59 robs Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -1040,12 +1040,7 @@ static int open_connection_to_fs(fcgi_request *fr)
             }
         }
 
-        if (fcgi_util_ticks(&fr->startTime) < 0) {
-            ap_log_rerror(FCGI_LOG_ERR, r,
-                "FastCGI: failed to connect to server \"%s\": "
-                "can't get time of day", fr->fs_path);
-            return FCGI_FAILED;
-        }
+        fcgi_util_ticks(&fr->startTime);
 
         do 
         {
@@ -1077,12 +1072,7 @@ static int open_connection_to_fs(fcgi_request *fr)
                 send_to_pm(FCGI_REQUEST_TIMEOUT_JOB, fr->fs_path, fr->user, fr->group, 0, 0);
             }
 
-            if (fcgi_util_ticks(&fr->queueTime) < 0) {
-                ap_log_rerror(FCGI_LOG_ERR, r,
-                    "FastCGI: failed to connect to server \"%s\": "
-                    "can't get time of day", fr->fs_path);
-                return FCGI_FAILED;
-            }
+            fcgi_util_ticks(&fr->queueTime);
 
             connect_time = fr->queueTime.tv_sec - fr->startTime.tv_sec;
             
@@ -1135,11 +1125,8 @@ static int open_connection_to_fs(fcgi_request *fr)
         set_nonblocking(fr, TRUE);
     }
 
-    if (fr->dynamic && fcgi_util_ticks(&fr->startTime) < 0) {
-        ap_log_rerror(FCGI_LOG_ERR, r,
-            "FastCGI: failed to connect to server \"%s\": "
-            "can't get time of day", fr->fs_path);
-        return FCGI_FAILED;
+    if (fr->dynamic) {
+        fcgi_util_ticks(&fr->startTime);
     }
 
     /* Connect */
@@ -1192,12 +1179,7 @@ static int open_connection_to_fs(fcgi_request *fr)
             if (status < 0)
                 break;
 
-            if (fcgi_util_ticks(&fr->queueTime) < 0) {
-                ap_log_rerror(FCGI_LOG_ERR, r,
-                    "FastCGI: failed to connect to server \"%s\": "
-                    "can't get time of day", fr->fs_path);
-                return FCGI_FAILED;
-            }
+            fcgi_util_ticks(&fr->queueTime);
 
             if (status > 0)
                 break;
