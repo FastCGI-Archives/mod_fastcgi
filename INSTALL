@@ -1,0 +1,114 @@
+
+
+             ***  Apache FastCGI Module Installation  ***
+
+
+Notes
+=====
+
+  The FastCGI Module must be compiled into Apache.  If you have a binary
+  only distribution of Apache, you must first obtain the Apache source
+  (http://www.apache.org).
+
+  The FastCGI Module has not been tested on all of the Apache supported
+  platforms.  These are known to work: SunOS/Solaris, SCO, Linux, and
+  QNX (Static Inet sockets only).  Windows will not work.  If your
+  successful in using this module on other platforms, please email
+  fastcgi-developers@idle.com.
+
+  Please subscribe to fastcgi-announce@idle.com to receive notification
+  of module updates.  Send comments, questions, or problems regarding
+  FastCGI to fastcgi-developers@idle.com.  This is a forum for
+  discussing not only the Apache FastCGI module, but also FastCGI
+  applications.
+
+
+Introduction
+============
+
+  As of Apache 1.3, there are two approaches to configure, compile, and
+  install Apache.  
+
+    o APACI - (Apache 1.3+) described in <apache_dir>/INSTALL
+
+    o manual - (original) described in <apache_dir>/src/INSTALL.
+
+
+Installing mod_fastcgi with APACI (Apache 1.3+)
+===============================================
+
+  1. Copy or move the mod_fastcgi distribution directory to
+  <apache_dir>/src/modules/fastcgi.
+
+  2. Specify "--activate-module=src/modules/fastcgi/libfastcgi.a" as an
+  argument to ./configure from the <apache_dir> directory.  If you've
+  previously used APACI to configure Apache, you can also specify this
+  as an argument to ./config.status (Apache 1.3.1+) in order to
+  preserve the existing configuration.
+
+    <apache_dir>$ ./configure  \
+                  --activate-module=src/modules/fastcgi/libfastcgi.a
+
+    or
+
+    <apache_dir>$ ./config.status  \
+                  --activate-module=src/modules/fastcgi/libfastcgi.a
+
+  3. Rebuild and reinstall Apache.
+
+    <apache_dir>$ make
+    <apache_dir>$ make install
+
+  4. Edit the httpd configuration files to enable your FastCGI
+  application(s).  See docs/mod_fastcgi.html for details.
+
+  5. Restart the server.
+
+    <apache_dir>$ /usr/local/apache/sbin/apachectl stop
+    <apache_dir>$ /usr/local/apache/sbin/apachectl start
+
+
+Installing mod_fastcgi manually
+===============================
+
+  1. Copy or move the mod_fastcgi distribution directory to
+  <apache_dir>/src/modules/fastcgi.
+
+  2. Add the FastCGI module to <apache_dir>/src/Configuration.  Note that
+  modules are listed in reverse priority order --- the ones that come
+  later can override the behavior of those that come earlier.  I put mine
+  just after mod_cgi entry.
+
+    Apache 1.3+:
+    
+      AddModule modules/fastcgi/libfastcgi.a 
+
+    Apache 1.2.X:
+
+      Module fastcgi_module modules/fastcgi/libfcgi.a
+
+  3. Copy the Makefile.sample to Makefile and edit if/as appropriate.
+
+    <apache_dir>src$ cd modules/fastcgi
+    <apache_dir>src$ cp Makefile.sample Makefile
+
+  4. From the <apache_dir>/src directory, reconfigure and rebuild Apache.
+
+    <apache_dir>/src$ ./Configure
+    <apache_dir>/src$ make
+
+  5. Apache 1.2 is designed to be configured and run from the same set of
+  directories where it is compiled.  If your running Apache from a
+  directory other than <apache_dir>/src (and not using links), you'll
+  (of course) have to copy the new httpd to the <run_dir> directory.
+
+    <apache_dir>/src$ cp httpd <run_dir>/bin/
+
+  6. Edit the httpd configuration files to enable your FastCGI
+  application(s).  See docs/mod_fastcgi.html for details.
+
+  7. Restart the server.
+
+    $ kill -TERM `cat <run_dir>/logs/httpd.pid`
+    $ <run_dir>/bin/httpd	-f <run_dir>/conf/httpd.conf
+
