@@ -2849,7 +2849,7 @@ void KillDynamicProcs()
 	    break;
 	}
 	connTime = s->smoothConnTime ? s->smoothConnTime : s->totalConnTime;
-        totalTime = (s->numProcesses)*(now-epoch)*1000000;
+        totalTime = (s->numProcesses)*(now-epoch)*1000000 + 1;
 	/* XXX producing a heavy load with one client, I haven't been
 	   able to achieve a loadFactor greater than 0.5.  Perhaps this
 	   should be scaled up by another order of magnitude or two.  */
@@ -3274,8 +3274,13 @@ void FastCgiProcMgr(void *data)
 		    /* 
 		     * dynamic app dies when it shoudn't have.
 		     */
+		    s->numProcesses--;
+		    globalNumInstances--;
 		    if (restartDynamic) {
 		      s->procInfo[i].state = STATE_NEEDS_STARTING;
+		      s->restartDelay = s->numFailures;
+		      if (s->restartDelay > 10)
+			s->restartDelay = 10;
 		      s->numFailures++;
 		    } else {
 		      s->procInfo[i].state = STATE_READY;
@@ -3301,8 +3306,13 @@ void FastCgiProcMgr(void *data)
         } /* for (;;) */
 	prev = fastCgiServers;
 	for(s=fastCgiServers;s!=NULL;) {
-	    if(s->directive == APP_CLASS_DYNAMIC) {
-	        if(s->numProcesses == 0) {
+	    if(s->directive == APP_CLASS_DYNAMIC && s->numProcesses == 0) {
+	        numChildren = 0;
+		for (i = 0; i < maxClassProcs; i++) {
+		  if (s->procInfo[i].state == STATE_NEEDS_STARTING)
+		    numChildren++;
+		}
+	        if(numChildren == 0) {
 		    tmp=s->next;
 		    FreeFcgiServerInfo(s);
 		    if (s == fastCgiServers) {
