@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_util.c,v 1.25 2002/07/26 03:10:54 robs Exp $
+ * $Id: fcgi_util.c,v 1.26 2002/09/22 16:53:13 robs Exp $
  */
 
 #include "fcgi.h"
@@ -436,14 +436,17 @@ const char *
 fcgi_util_fs_set_uid_n_gid(pool *p, fcgi_server *s, uid_t uid, gid_t gid)
 {
 #ifndef WIN32
+
     struct passwd *pw;
     struct group  *gr;
-#endif
 
     if (fcgi_wrapper == NULL)
         return NULL;
 
-#ifndef WIN32
+    if (uid == 0 || gid == 0) {
+        return "invalid uid or gid, see the -user and -group options";
+    }
+
     s->uid = uid;
     pw = getpwuid(uid);
     if (pw == NULL) {
@@ -464,7 +467,9 @@ fcgi_util_fs_set_uid_n_gid(pool *p, fcgi_server *s, uid_t uid, gid_t gid)
             (long)gid, strerror(errno));
     }
     s->group = ap_pstrdup(p, gr->gr_name);
-#endif
+
+#endif /* !WIN32 */
+
     return NULL;
 }
 
