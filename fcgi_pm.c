@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_pm.c,v 1.63 2001/11/20 01:51:27 robs Exp $
+ * $Id: fcgi_pm.c,v 1.64 2001/11/20 03:13:29 robs Exp $
  */
 
 
@@ -62,7 +62,7 @@ static int seteuid_user(void)
  */
 static void fcgi_kill(ServerProcess *process, int sig)
 {
-    FCGIDBG3("fcgi_kill(%ld, %d)", process->pid, sig);
+    FCGIDBG3("fcgi_kill(%ld, %d)", (long) process->pid, sig);
 
     process->state = FCGI_VICTIM_STATE;                
 
@@ -622,7 +622,7 @@ static void schedule_start(fcgi_server *s, int proc)
     if ((s->procs[proc].pid && (time_passed < (int) s->restartDelay))
         || ((s->procs[proc].pid == 0) && (time_passed < s->initStartDelay)))
     {
-        FCGIDBG6("ignore_job: slot=%d, pid=%ld, time_passed=%ld, initStartDelay=%ld, restartDelay=%ld", proc, s->procs[proc].pid, time_passed, s->initStartDelay, s->restartDelay);
+        FCGIDBG6("ignore_job: slot=%d, pid=%ld, time_passed=%ld, initStartDelay=%ld, restartDelay=%ld", proc, (long) s->procs[proc].pid, time_passed, s->initStartDelay, s->restartDelay);
         return;
     }
 
@@ -835,7 +835,6 @@ static void dynamic_read_msgs(int read_ready)
             
             SetHandleInformation(mutex, HANDLE_FLAG_INHERIT, TRUE);
 #else
-            int fd;
             const char *err;
 #endif
             
@@ -1230,7 +1229,7 @@ static void dynamic_kill_idle_fs_procs(void)
 
             ap_log_error(FCGI_LOG_WARN_NOERRNO, fcgi_apache_main_server,
                 "FastCGI: (dynamic) server \"%s\" (pid %ld) termination signaled",
-                s->fs_path, s->procs[i].pid);
+                s->fs_path, (long) s->procs[i].pid);
 
             fcgi_kill(&s->procs[i], SIGTERM);
             
@@ -1323,7 +1322,7 @@ void child_wait_thread_main(void *dummy) {
                         ap_log_error(FCGI_LOG_WARN_NOERRNO, fcgi_apache_main_server,
                             "FastCGI:%s server \"%s\" (pid %d) terminated with exit with status '%d'",
                             (s->directive == APP_CLASS_DYNAMIC) ? " (dynamic)" : "",
-                            s->fs_path, s->procs[i].pid, exitStatus);
+                            s->fs_path, (long) s->procs[i].pid, exitStatus);
 
                         CloseHandle(s->procs[i].handle);
                         s->procs[i].handle = INVALID_HANDLE_VALUE;
@@ -1444,7 +1443,7 @@ void fcgi_pm_main(void *dummy)
         "FastCGI: process manager initialized");
 #else
     ap_log_error(FCGI_LOG_NOTICE_NOERRNO, fcgi_apache_main_server,
-        "FastCGI: process manager initialized (pid %ld)", (long)getpid());
+        "FastCGI: process manager initialized (pid %ld)", (long) getpid());
 #endif
 
     now = time(NULL);
@@ -1538,14 +1537,14 @@ void fcgi_pm_main(void *dummy)
                             ap_log_error(FCGI_LOG_WARN_NOERRNO, fcgi_apache_main_server,
                                 "FastCGI:%s server \"%s\" (uid %ld, gid %ld) %sstarted (pid %ld)",
                                 (s->directive == APP_CLASS_DYNAMIC) ? " (dynamic)" : "",
-                                s->fs_path, (long)s->uid, (long)s->gid,
-                                restart ? "re" : "", (long)s->procs[i].pid);
+                                s->fs_path, (long) s->uid, (long) s->gid,
+                                restart ? "re" : "", (long) s->procs[i].pid);
                         }
                         else {
                             ap_log_error(FCGI_LOG_WARN_NOERRNO, fcgi_apache_main_server,
                                 "FastCGI:%s server \"%s\" %sstarted (pid %ld)",
                                 (s->directive == APP_CLASS_DYNAMIC) ? " (dynamic)" : "",
-                                s->fs_path, restart ? "re" : "", (long)s->procs[i].pid);
+                                s->fs_path, restart ? "re" : "", (long) s->procs[i].pid);
                         }
                         ap_assert(s->procs[i].pid > 0);
                     } else {
@@ -1657,13 +1656,13 @@ ChildFound:
                 ap_log_error(FCGI_LOG_WARN_NOERRNO, fcgi_apache_main_server,
                     "FastCGI:%s server \"%s\" (pid %ld) terminated by calling exit with status '%d'",
                     (s->directive == APP_CLASS_DYNAMIC) ? " (dynamic)" : "",
-                    s->fs_path, childPid, WEXITSTATUS(waitStatus));
+                    s->fs_path, (long) childPid, WEXITSTATUS(waitStatus));
             }
             else if (WIFSIGNALED(waitStatus)) {
                 ap_log_error(FCGI_LOG_WARN_NOERRNO, fcgi_apache_main_server,
                     "FastCGI:%s server \"%s\" (pid %ld) terminated due to uncaught signal '%d' (%s)%s",
                     (s->directive == APP_CLASS_DYNAMIC) ? " (dynamic)" : "",
-                    s->fs_path, childPid, WTERMSIG(waitStatus), SYS_SIGLIST[WTERMSIG(waitStatus)],
+                    s->fs_path, (long) childPid, WTERMSIG(waitStatus), SYS_SIGLIST[WTERMSIG(waitStatus)],
 #ifdef WCOREDUMP
                     WCOREDUMP(waitStatus) ? ", a core file may have been generated" : "");
 #else
@@ -1674,7 +1673,7 @@ ChildFound:
                 ap_log_error(FCGI_LOG_WARN_NOERRNO, fcgi_apache_main_server,
                     "FastCGI:%s server \"%s\" (pid %ld) stopped due to uncaught signal '%d' (%s)",
                     (s->directive == APP_CLASS_DYNAMIC) ? " (dynamic)" : "",
-                    s->fs_path, childPid, WTERMSIG(waitStatus), SYS_SIGLIST[WTERMSIG(waitStatus)]);
+                    s->fs_path, (long) childPid, WTERMSIG(waitStatus), SYS_SIGLIST[WTERMSIG(waitStatus)]);
             }
         } /* for (;;), waitpid() */
 
