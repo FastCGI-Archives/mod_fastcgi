@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.124 2002/02/28 21:38:51 robs Exp $
+ *  $Id: mod_fastcgi.c,v 1.125 2002/03/04 02:29:33 robs Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -1289,16 +1289,69 @@ ConnectionComplete:
     return FCGI_OK;
 }
 
+static void sink_client_data(fcgi_request *fr)
+{
+    char *base;
+    int size;
+
+    fcgi_buf_reset(fr->clientInputBuffer);
+    fcgi_buf_get_free_block_info(fr->clientInputBuffer, &base, &size);
+	while (ap_get_client_block(fr->r, base, size) > 0);
+}
+
+
 static int server_error(fcgi_request *fr)
 {
+    int rv;
+    request_rec *r = fr->r;
+
 #if defined(SIGPIPE) && MODULE_MAGIC_NUMBER < 19990320
     /* Make sure we leave with Apache's sigpipe_handler in place */
     if (fr->apache_sigpipe_handler != NULL)
         signal(SIGPIPE, fr->apache_sigpipe_handler);
 #endif
+
     close_connection_to_fs(fr);
-    ap_kill_timeout(fr->r);
-    return SERVER_ERROR;
+
+    if (fr->role == FCGI_RESPONDER) {
+        sink_client_data(fr);
+    }
+
+    switch (fr->parseHeader) {
+
+    case SCAN_CGI_FINISHED:
+
+        if (fr->role == FCGI_RESPONDER) {
+
+            write_to_client(fr);
+
+#ifdef RUSSIAN_APACHE
+            ap_rflush(r);
+#else
+            ap_bflush(r->connection->client);
+#endif
+            ap_bgetopt(r->connection->client, BO_BYTECT, &r->bytes_sent);
+        }
+        
+        /* fall through */
+
+    case SCAN_CGI_INT_REDIRECT:
+    case SCAN_CGI_SRV_REDIRECT:
+
+        rv = OK;
+        break;
+
+    case SCAN_CGI_READING_HEADERS:
+    case SCAN_CGI_BAD_HEADER:
+    default:
+
+        rv = SERVER_ERROR;
+        break;
+    }
+
+    ap_kill_timeout(r);
+
+    return rv;
 }
 
 static void cleanup(void *data)
@@ -1613,6 +1666,20 @@ static int do_work(request_rec *r, fcgi_request *fr)
                     fr->keepReadingFromFcgiApp = FALSE;
                     close_connection_to_fs(fr);
                 }
+                else {
+                    if (fcgi_protocol_dequeue(rp, fr) != OK) {
+                        return server_error(fr);
+                    }
+                    
+                    if (fr->parseHeader == SCAN_CGI_READING_HEADERS) {
+                        if ((err = process_headers(r, fr))) {
+                            ap_log_rerror(FCGI_LOG_ERR_NOERRNO, r,
+                                "FastCGI: comm with server \"%s\" aborted: "
+                                "error parsing headers: %s", fr->fs_path, err);
+                            return server_error(fr);
+                        }
+                    }
+                }
             }
 
             /* Write to the FastCGI server */
@@ -1684,9 +1751,14 @@ static int do_work(request_rec *r, fcgi_request *fr)
 
     } /* while */
 
+    if (fr->role == FCGI_RESPONDER) {
+        sink_client_data(fr);
+    }
+
     switch (fr->parseHeader) {
 
         case SCAN_CGI_FINISHED:
+
             if (fr->role == FCGI_RESPONDER) {
 #ifdef RUSSIAN_APACHE
                 ap_rflush(r);
@@ -1698,22 +1770,19 @@ static int do_work(request_rec *r, fcgi_request *fr)
             break;
 
         case SCAN_CGI_READING_HEADERS:
+
             ap_log_rerror(FCGI_LOG_ERR_NOERRNO, r,
                 "FastCGI: incomplete headers (%d bytes) received from server \"%s\"",
                 fr->header->nelts, fr->fs_path);
             return server_error(fr);
 
         case SCAN_CGI_BAD_HEADER:
+
             return server_error(fr);
 
         case SCAN_CGI_INT_REDIRECT:
         case SCAN_CGI_SRV_REDIRECT:
-            /*
-             * XXX We really should be soaking all client input
-             * and all script output.  See mod_cgi.c.
-             * There's other differences we need to pick up here as well!
-             * This has to be revisited.
-             */
+
             break;
 
         default:

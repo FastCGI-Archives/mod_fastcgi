@@ -1,5 +1,10 @@
 2.2.13
 
+ *) Handle an application returning a complete and valid response without 
+    having consumed all of the data sent to it.
+
+ *) Consume remaining client data (RESPONDERs only) if any.
+
  *) Add support for backing off attempts to start applications that continuously
     fail to start.  Three new macros defined in mod_fastcgi.h control this 
     behaviour: MAX_FAILED_STARTS, RUNTIME_SUCCESS_INTERVAL, FAILED_STARTS_DELAY
