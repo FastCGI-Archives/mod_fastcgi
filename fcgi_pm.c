@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_pm.c,v 1.43 2001/02/19 05:50:50 robs Exp $
+ * $Id: fcgi_pm.c,v 1.44 2001/02/19 06:00:09 robs Exp $
  */
 
 
@@ -1185,8 +1185,8 @@ static void dynamic_kill_idle_fs_procs(void)
         loadFactor = 100.0 * connTime / totalTime;
 
         if ((s->numProcesses > 1
-                && s->numProcesses/(s->numProcesses - 1)*loadFactor < dynamicThreshholdN) 
-            || (s->numProcesses == 1 && loadFactor < dynamicThreshhold1))
+                && s->numProcesses/(s->numProcesses - 1)*loadFactor < dynamicThresholdN) 
+            || (s->numProcesses == 1 && loadFactor < dynamicThreshold1))
         {
             int got_one = 0;
 

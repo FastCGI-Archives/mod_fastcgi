@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_config.c,v 1.24 2000/10/23 20:20:49 robs Exp $
+ * $Id: fcgi_config.c,v 1.25 2001/02/19 06:00:09 robs Exp $
  */
 
 #include "fcgi.h"
@@ -223,8 +223,8 @@ void fcgi_config_reset_globals(void* dummy)
     dynamicKillInterval = FCGI_DEFAULT_KILL_INTERVAL;
     dynamicUpdateInterval = FCGI_DEFAULT_UPDATE_INTERVAL;
     dynamicGain = FCGI_DEFAULT_GAIN;
-    dynamicThreshhold1 = FCGI_DEFAULT_THRESHHOLD_1;
-    dynamicThreshholdN = FCGI_DEFAULT_THRESHHOLD_N;
+    dynamicThreshold1 = FCGI_DEFAULT_THRESHOLD_1;
+    dynamicThresholdN = FCGI_DEFAULT_THRESHOLD_N;
     dynamicPleaseStartDelay = FCGI_DEFAULT_START_PROCESS_DELAY;
     dynamicAppConnectTimeout = FCGI_DEFAULT_APP_CONN_TIMEOUT;
     dynamicEnvp = &fcgi_empty_env;
@@ -802,12 +802,14 @@ const char *fcgi_config_set_config(cmd_parms *cmd, void *dummy, const char *arg)
             if ((err = get_float(tp, &arg, &dynamicGain, 0.0, 1.0)))
                 return invalid_value(tp, name, NULL, option, err);
         }
-        else if (strcasecmp(option, "-singleThreshhold") == 0) {
-            if ((err = get_u_int(tp, &arg, &dynamicThreshhold1, 0)))
+        else if ((strcasecmp(option, "-singleThreshold") == 0)
+		|| (strcasecmp(option, "-singleThreshhold") == 0)) {
+            if ((err = get_u_int(tp, &arg, &dynamicThreshold1, 0)))
                 return invalid_value(tp, name, NULL, option, err);
         }
-        else if (strcasecmp(option, "-multiThreshhold") == 0) {
-            if ((err = get_u_int(tp, &arg, &dynamicThreshholdN, 0)))
+        else if ((strcasecmp(option, "-multiThreshold") == 0)
+		|| (strcasecmp(option, "-multiThreshhold") == 0)) {
+            if ((err = get_u_int(tp, &arg, &dynamicThresholdN, 0)))
                 return invalid_value(tp, name, NULL, option, err);
         }
         else if (strcasecmp(option, "-startDelay") == 0) {

@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.104 2001/02/19 05:14:53 robs Exp $
+ *  $Id: mod_fastcgi.c,v 1.105 2001/02/19 06:00:10 robs Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -118,8 +118,8 @@ u_int dynamicMaxClassProcs = FCGI_DEFAULT_MAX_CLASS_PROCS;
 u_int dynamicKillInterval = FCGI_DEFAULT_KILL_INTERVAL;
 u_int dynamicUpdateInterval = FCGI_DEFAULT_UPDATE_INTERVAL;
 float dynamicGain = FCGI_DEFAULT_GAIN;
-u_int dynamicThreshhold1 = FCGI_DEFAULT_THRESHHOLD_1;
-u_int dynamicThreshholdN = FCGI_DEFAULT_THRESHHOLD_N;
+u_int dynamicThreshold1 = FCGI_DEFAULT_THRESHOLD_1;
+u_int dynamicThresholdN = FCGI_DEFAULT_THRESHOLD_N;
 u_int dynamicPleaseStartDelay = FCGI_DEFAULT_START_PROCESS_DELAY;
 u_int dynamicAppConnectTimeout = FCGI_DEFAULT_APP_CONN_TIMEOUT;
 char **dynamicEnvp = &fcgi_empty_env;

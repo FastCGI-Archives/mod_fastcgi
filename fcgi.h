@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi.h,v 1.27 2000/09/19 16:26:51 robs Exp $
+ * $Id: fcgi.h,v 1.28 2001/02/19 06:00:09 robs Exp $
  */
 
 #ifndef FCGI_H
@@ -473,8 +473,8 @@ extern u_int dynamicMaxClassProcs;
 extern u_int dynamicKillInterval;
 extern u_int dynamicUpdateInterval;
 extern float dynamicGain;
-extern u_int dynamicThreshhold1;
-extern u_int dynamicThreshholdN;
+extern u_int dynamicThreshold1;
+extern u_int dynamicThresholdN;
 extern u_int dynamicPleaseStartDelay;
 extern u_int dynamicAppConnectTimeout;
 extern char **dynamicEnvp;
