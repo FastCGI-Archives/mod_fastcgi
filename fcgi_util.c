@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_util.c,v 1.5 1999/09/03 19:04:42 roberts Exp $
+ * $Id: fcgi_util.c,v 1.6 1999/09/10 02:05:21 roberts Exp $
  */
 
 #include "fcgi.h"
@@ -306,7 +306,7 @@ fcgi_util_fs_new(pool *p)
     s->directive = APP_CLASS_UNKNOWN;
     s->processPriority = FCGI_DEFAULT_PRIORITY;
     s->listenFd = -2;
-    s->envp = (const char **)"";
+    s->envp = &fcgi_empty_env;
 
     return s;
 }

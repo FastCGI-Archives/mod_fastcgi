@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi.h,v 1.14 1999/09/03 19:04:40 roberts Exp $
+ * $Id: fcgi.h,v 1.15 1999/09/10 02:05:20 roberts Exp $
  */
 
 #ifndef FCGI_H
@@ -346,6 +346,8 @@ extern pid_t fcgi_pm_pid;
 extern char *fcgi_dynamic_dir;            /* directory for the dynamic
                                            * fastcgi apps' sockets */
 extern char *fcgi_dynamic_mbox;           /* file through which the fcgi */
+
+extern const char * const fcgi_empty_env;
 
 extern int fcgi_dynamic_total_proc_count;
 extern time_t fcgi_dynamic_epoch;
