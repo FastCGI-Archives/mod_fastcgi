@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.34 1998/05/22 16:07:31 roberts Exp $
+ *  $Id: mod_fastcgi.c,v 1.35 1998/05/22 20:18:54 roberts Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -2612,7 +2612,8 @@ int RemoveRecords(FILE *errorLogFile)
     /* Obtain the data from the mbox file */
     if((fd = open(mbox, O_RDWR))<0) {
         fprintf(errorLogFile,
-                "[%s] mod_fastcgi: Unable to open mbox\n", get_time());
+                "[%s] mod_fastcgi: unable to open mbox: %s\n",
+                get_time(), strerror(errno));
         fflush(errorLogFile);
         return -1;
     }
@@ -3091,7 +3092,13 @@ static FILE *FastCgiProcMgrGetErrLog(void)
 
 static void FastCgiProcMgrSignalHander(int signo)
 {
-    if(signo == SIGTERM) {
+    if ((signo == SIGTERM) || (signo == SIGUSR1) || (signo == SIGHUP)) {
+        /* SIGUSR1 & SIGHUP are sent by apache to its process group
+         * when apache get 'em.  Apache follows up (1.2.x) with attacks
+         * on each of its child processes, but we've got the KillMgr
+         * sitting between us so we never see the KILL.  The main loop
+         * in ProcMgr also checks to see if the KillMgr has terminated,
+         * and if it has, we handl it as if we should shutdown too. */ 
         caughtSigTerm = TRUE;
     } else if(signo == SIGCHLD) {
         caughtSigChld = TRUE;
@@ -3155,10 +3162,15 @@ void FastCgiProcMgr(void *data)
     sigdelset(&sigMask, SIGCHLD);
     sigdelset(&sigMask, SIGALRM);
     sigdelset(&sigMask, SIGUSR2);
+    sigdelset(&sigMask, SIGUSR1);
+    sigdelset(&sigMask, SIGHUP);
+
     if ((OS_Signal(SIGTERM, FastCgiProcMgrSignalHander) == SIG_ERR) ||
             (OS_Signal(SIGCHLD, FastCgiProcMgrSignalHander) == SIG_ERR) ||
             (OS_Signal(SIGALRM, FastCgiProcMgrSignalHander) == SIG_ERR) ||
-            (OS_Signal(SIGUSR2, FastCgiProcMgrSignalHander) == SIG_ERR)) {
+            (OS_Signal(SIGUSR2, FastCgiProcMgrSignalHander) == SIG_ERR) ||
+            (OS_Signal(SIGUSR1, FastCgiProcMgrSignalHander) == SIG_ERR) ||
+            (OS_Signal(SIGHUP, FastCgiProcMgrSignalHander) == SIG_ERR)) {
         fprintf(errorLogFile,
                 "[%s] mod_fastcgi: signal() failed (exiting): %s\n",
                 get_time(), strerror(errno));
