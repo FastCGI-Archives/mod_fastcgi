@@ -1,5 +1,10 @@
 Changes with mod_fastcgi 2.2.1
 
+ *) Fix logging from the process manager.  Previously, all calls to the 
+    logging routines used NULL for the server_rec.  This works fine in a dev
+    environment, but results in most of these messages being tossed by
+    log_error_core() because DEFAULT_LOGLEVEL is too low.  Odd logic.
+        
  *) Always setup fr->header so that in the event the FastCGI server
     doesn't get a valid FastCGI protocol header over the wire, we
     can still print our error message to the log from do_work().

@@ -1,5 +1,5 @@
 /* 
- * $Id: fcgi.h,v 1.4 1999/02/20 22:46:43 roberts Exp $
+ * $Id: fcgi.h,v 1.5 1999/02/21 01:19:54 roberts Exp $
  */
 
 #ifndef FCGI_H
@@ -308,7 +308,7 @@ int fcgi_util_lock_fd(int fd, int cmd, int type, off_t offset, int whence, off_t
 
 extern pool *fcgi_config_pool;
 
-extern server_rec *fcgi_apache_parent_server;
+extern server_rec *fcgi_apache_main_server;
 
 extern const char *fcgi_suexec;           /* suexec_bin path */
 extern uid_t fcgi_user_id;                       /* the run uid of Apache & PM */

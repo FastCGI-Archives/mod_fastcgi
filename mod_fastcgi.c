@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.64 1999/02/20 05:24:38 roberts Exp $
+ *  $Id: mod_fastcgi.c,v 1.65 1999/02/21 01:19:56 roberts Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -91,7 +91,7 @@
  * Global variables
  */
 pool *fcgi_config_pool;            	 /* the config pool */
-server_rec *fcgi_apache_parent_server;
+server_rec *fcgi_apache_main_server;
 
 const char *fcgi_suexec = NULL;           /* suexec_bin path */
 uid_t fcgi_user_id;                       /* the run uid of Apache & PM */
@@ -201,7 +201,7 @@ static void init_module(server_rec *s, pool *p)
 
     /* keep these handy */
     fcgi_config_pool = p;
-    fcgi_apache_parent_server = s;
+    fcgi_apache_main_server = s;
     
     /* Create Unix/Domain socket directory */
     if ((err = fcgi_config_make_dir(p, fcgi_socket_dir)))
@@ -240,7 +240,7 @@ static void send_to_pm(pool * const rp, const char id,
     if (write_to_mbox(rp, id, fs_path, user, group, qsecs, start_time, now) == 0) {
         if (id != REQ_COMPLETE) {
             if (kill(fcgi_pm_pid, SIGUSR2)) {
-                ap_log_error(FCGI_LOG_ALERT, NULL, 
+                ap_log_error(FCGI_LOG_ALERT, fcgi_apache_main_server, 
                     "FastCGI: can't notify process manager (is it running?), kill(SIGUSR2) failed");
             }
         } 
