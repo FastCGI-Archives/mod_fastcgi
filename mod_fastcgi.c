@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.32 1998/05/05 22:38:19 roberts Exp $
+ *  $Id: mod_fastcgi.c,v 1.33 1998/05/11 14:08:16 roberts Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -687,6 +687,7 @@ ErrorExit:
             strerror(save_errno));
     fflush(errorLogFile);
     exit(save_errno);
+    return(0);          /* avoid an irrelevant compiler warning */
 }
 
 /*
@@ -3221,8 +3222,10 @@ void FastCgiProcMgr(void *data)
                             ASSERT(s->procInfo[i].pid < 0);
                             break;
                         }
-                        s->numProcesses++;
-                        globalNumInstances++;
+                        if (s->directive == APP_CLASS_DYNAMIC) {
+                            s->numProcesses++;
+                            globalNumInstances++;
+                        }
                         s->procInfo[i].state = STATE_STARTED;
                         if(restart) {
                             fprintf(errorLogFile,
@@ -3334,19 +3337,17 @@ ChildFound:
                 s->procInfo[i].state = STATE_NEEDS_STARTING;
                 s->numFailures++;
             } else {
+                s->numProcesses--;
+                globalNumInstances--;
                 if(s->procInfo[i].state == STATE_VICTIM) {
-                    s->procInfo[i].state = STATE_KILLED;
-                    s->numProcesses--;
-                    globalNumInstances--;
+                        s->procInfo[i].state = STATE_KILLED;
                     continue;
                 } else {
                     /*
                      * dynamic app dies when it shoudn't have.
                      */
-                    s->numProcesses--;
-                    globalNumInstances--;
                     if (restartDynamic) {
-                        s->procInfo[i].state = STATE_NEEDS_STARTING;
+                            s->procInfo[i].state = STATE_NEEDS_STARTING;
                         s->restartDelay = s->numFailures;
                         if (s->restartDelay > 10)
                             s->restartDelay = 10;
