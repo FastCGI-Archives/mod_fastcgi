@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.109 2001/03/27 14:07:53 robs Exp $
+ *  $Id: mod_fastcgi.c,v 1.110 2001/05/03 20:51:24 robs Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -98,17 +98,21 @@ fcgi_server *fcgi_servers = NULL; 		 /* AppClasses */
 
 char *fcgi_socket_dir = DEFAULT_SOCK_DIR; /* default FastCgiIpcDir */
 
-int fcgi_pm_pipe[2];
-pid_t fcgi_pm_pid = -1;
-
 char *fcgi_dynamic_dir = NULL;            /* directory for the dynamic
                                                   * fastcgi apps' sockets */
 
 #ifdef WIN32
+
 #pragma warning( disable : 4706 4100 4127)
 fcgi_pm_job *fcgi_dynamic_mbox = NULL;
 HANDLE *fcgi_dynamic_mbox_mutex = NULL;
 HANDLE fcgi_pm_thread = INVALID_HANDLE_VALUE;
+
+#else
+
+int fcgi_pm_pipe[2] = { -1, -1 };
+pid_t fcgi_pm_pid = -1;
+
 #endif
 
 char *fcgi_empty_env = NULL;
@@ -257,11 +261,6 @@ static void init_module(server_rec *s, pool *p)
         ap_log_error(FCGI_LOG_ERR, s, "FastCGI: %s", err);
 
 #ifndef WIN32
-    /* Create the pipe for comm with the PM */
-    if (pipe(fcgi_pm_pipe) < 0) {
-        ap_log_error(FCGI_LOG_ERR, s, "FastCGI: pipe() failed");
-    }
-
     /* Spawn the PM only once.  Under Unix, Apache calls init() routines
      * twice, once before detach() and once after.  Win32 doesn't detach.
      * Under DSO, DSO modules are unloaded between the two init() calls.
@@ -270,6 +269,11 @@ static void init_module(server_rec *s, pool *p)
 
     if (ap_standalone && getppid() != 1)
         return;
+
+    /* Create the pipe for comm with the PM */
+    if (pipe(fcgi_pm_pipe) < 0) {
+        ap_log_error(FCGI_LOG_ERR, s, "FastCGI: pipe() failed");
+    }
 
     /* Start the Process Manager */
     fcgi_pm_pid = ap_spawn_child(p, fcgi_pm_main, NULL, kill_only_once, NULL, NULL, NULL);

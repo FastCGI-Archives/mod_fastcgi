@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_config.c,v 1.27 2001/03/29 19:11:07 robs Exp $
+ * $Id: fcgi_config.c,v 1.28 2001/05/03 20:51:24 robs Exp $
  */
 
 #include "fcgi.h"
@@ -263,6 +263,18 @@ void fcgi_config_reset_globals(void* dummy)
     dynamicRestartDelay = FCGI_DEFAULT_RESTART_DELAY;
     dynamic_pass_headers = NULL;
     dynamic_idle_timeout = FCGI_DEFAULT_IDLE_TIMEOUT;
+
+#ifndef WIN32
+	/* Close any old pipe (HUP/USR1) */
+	if (fcgi_pm_pipe[0] != -1) {
+		close(fcgi_pm_pipe[0]);
+		fcgi_pm_pipe[0] = -1;
+	}
+	if (fcgi_pm_pipe[1] != -1) {
+		close(fcgi_pm_pipe[1]);
+		fcgi_pm_pipe[1] = -1;
+	}
+#endif
 }
 
 /*******************************************************************************

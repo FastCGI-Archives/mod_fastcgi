@@ -1,5 +1,8 @@
 2.2.11
 
+ *) Close the old pipe file descriptor in apache main on USR1/HUP 
+    (elimnates a small leak).  James E. Jurach Jr. jjurach@fundsxpress.com
+
  *) Fix a bug in fcgi_config_set_authoritative_slot(). Tetsuya Furukawa
     [tetsuya@secom-sis.co.jp]
 
