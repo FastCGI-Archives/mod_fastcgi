@@ -89,22 +89,17 @@ Introduction
 
        AddModule modules/fastcgi/libfastcgi.a
 
-  3. Copy the Makefile.sample to Makefile and edit if/as appropriate.
-
-       <apache_dir>/src$ cd modules/fastcgi
-       <apache_dir>/src$ cp Makefile.sample Makefile
-
-  4. From the <apache_dir>/src directory, reconfigure and rebuild Apache.
+  3. From the <apache_dir>/src directory, reconfigure and rebuild Apache.
 
        <apache_dir>/src$ ./Configure
        <apache_dir>/src$ make
     
      Install the new httpd.
 
-  5. Edit the httpd configuration files to enable your FastCGI
+  4. Edit the httpd configuration files to enable your FastCGI
      application(s).  See docs/mod_fastcgi.html for details.
 
-  6. Stop and start the server.
+  5. Stop and start the server.
 
        $ kill -TERM `cat <run_dir>/logs/httpd.pid`
        $ <run_dir>/bin/httpd -f <run_dir>/conf/httpd.conf
