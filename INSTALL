@@ -115,11 +115,11 @@ Introduction
   1. From the mod_fastcgi directory, compile the module.
   
        $ cd <mod_fastcgi_dir>
-   	   <mod_fastcgi_dir>$ apxs -o mod_fastcgi.so -c *.c
+       <mod_fastcgi_dir>$ apxs -o mod_fastcgi.so -c *.c
     
   2. Install the module.
   
-	   <mod_fastcgi_dir>$ apxs -i -a -n fastcgi mod_fastcgi.so
+       <mod_fastcgi_dir>$ apxs -i -a -n fastcgi mod_fastcgi.so
     
      This should create an entry in httpd.conf that looks like this: 
  
@@ -127,16 +127,16 @@ Introduction
     
      Note that if there's a ClearModuleList directive after new entry,
      you'll have to either move the LoadModule after the ClearModuleList
-     or add:
+     or add (have a look at how the other modules are handled):
 
-	   AddModule mod_fastcgi.c
+       AddModule mod_fastcgi.c
 
   3. Edit the httpd configuration file(s) to enable your FastCGI
      application(s).  See docs/mod_fastcgi.html for details.
 
      If you want to wrap the mod_fastcgi directives, use:
 
-	   <IfModule mod_fastcgi.c>
+       <IfModule mod_fastcgi.c>
        .
        .
        </IfModule>
@@ -196,10 +196,10 @@ Introduction
        
     4. Select "Build mod_fastcgi.dll" from the "Build" menu.
 
-  To install mod_fastcgi:
+  To install mod_fastcgi (built above or retrieved from 
+  http://fastcgi.com/dist/):
 
-    1. Copy the mod_fastcgi.dll (from either the Debug or Release 
-       directory, as appropriate) to the Apache modules directory 
+    1. Copy the mod_fastcgi.dll to the Apache modules directory 
        (e.g. C:\Apache\modules)
       
     2. Edit the httpd configurion file (e.g. C:\Apache\conf\httpd.conf)
@@ -207,5 +207,12 @@ Introduction
 
          LoadModule fastcgi_module modules/mod_fastcgi.dll
 
+       Note that if there's a ClearModuleList directive after new entry,
+       you'll have to either move the LoadModule after the ClearModuleList
+       or add (have a look at how the other modules are handled):
+
+         AddModule mod_fastcgi.c
+
     3. Edit the httpd configuration file(s) to enable your FastCGI
        application(s).  See docs/mod_fastcgi.html for details.
+
