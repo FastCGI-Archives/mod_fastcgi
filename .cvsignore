@@ -1,2 +1,3 @@
 .bak  *.bak
 .snprj
+*.o *.slo *.lo
