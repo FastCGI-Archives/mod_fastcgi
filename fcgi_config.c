@@ -1,7 +1,8 @@
 /*
- * $Id: fcgi_config.c,v 1.38 2002/09/22 19:01:59 robs Exp $
+ * $Id: fcgi_config.c,v 1.39 2002/09/22 23:41:20 robs Exp $
  */
 
+#define CORE_PRIVATE
 #include "fcgi.h"
 
 #ifdef APACHE2
@@ -543,7 +544,13 @@ const char *fcgi_config_set_wrapper(cmd_parms *cmd, void *dummy, const char *arg
         fcgi_wrapper = NULL;
     }
     else {
-        wrapper = (char *) ap_os_canonical_filename(cmd->pool, arg);
+#ifdef APACHE2
+    if (apr_filepath_merge((char **) &arg, "", arg, 0, cmd->pool))
+        return ap_psprintf(tp, "%s %s: invalid filepath", name, arg);
+#else
+        wrapper = ap_os_canonical_filename(cmd->pool, (char *) arg);
+#endif
+
         wrapper = ap_server_root_relative(cmd->pool, wrapper);
 
         err = fcgi_util_check_access(tp, wrapper, NULL, X_OK, fcgi_user_id, fcgi_group_id);
