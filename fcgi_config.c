@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_config.c,v 1.23 2000/09/19 16:26:51 robs Exp $
+ * $Id: fcgi_config.c,v 1.24 2000/10/23 20:20:49 robs Exp $
  */
 
 #include "fcgi.h"
@@ -192,7 +192,7 @@ const char *fcgi_config_set_fcgi_uid_n_gid(int set)
     }
 
     uid = uid ? uid : ap_user_id;
-    gid = uid ? gid : ap_group_id;
+    gid = gid ? gid : ap_group_id;
 
     if (isSet && (uid != fcgi_user_id || gid != fcgi_group_id)) {
         return "User/Group commands must preceed FastCGI server definitions";
