@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_pm.c,v 1.79 2002/10/06 00:41:41 robs Exp $
+ * $Id: fcgi_pm.c,v 1.80 2002/10/11 00:07:03 robs Exp $
  */
 
 
@@ -258,8 +258,14 @@ static int init_listen_sock(fcgi_server * fs)
         return 0;
     }
 
+#ifdef WIN32
     closesocket(fs->listenFd);
+#else
+    close(fs->listenFd);
+#endif
+
     fs->listenFd = -1;
+    
     return -2;
 }
 
