@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.89 2000/04/27 15:14:28 robs Exp $
+ *  $Id: mod_fastcgi.c,v 1.90 2000/04/27 19:03:34 robs Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -160,7 +160,7 @@ static void send_to_pm(pool * const p, const char id, const char * const fs_path
     if (!(job = (fcgi_pm_job *) malloc(sizeof(fcgi_pm_job))))
        return;
 #else
-    int buflen;
+    int buflen = 0;
     char buf[FCGI_MAX_MSG_LEN];
 #endif
 

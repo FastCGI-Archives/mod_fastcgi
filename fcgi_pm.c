@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_pm.c,v 1.23 2000/04/27 15:51:32 robs Exp $
+ * $Id: fcgi_pm.c,v 1.24 2000/04/27 19:03:34 robs Exp $
  */
 
 
@@ -553,7 +553,6 @@ static void dynamic_read_msgs(int read_ready)
     HANDLE hPipeMutex;
 #endif
 
-    time_t now = time(NULL);
     pool *sp, *tp;
 
 #ifndef WIN32
@@ -1692,9 +1691,9 @@ ChildFound:
 				read_ready = 1;    
             }
 
-            dynamic_read_msgs(read_ready);
-
             now = time(NULL);
+
+            dynamic_read_msgs(read_ready);
 
             if(fcgi_dynamic_epoch == 0) {
                 fcgi_dynamic_epoch = now;

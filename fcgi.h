@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi.h,v 1.21 2000/04/27 15:14:27 robs Exp $
+ * $Id: fcgi.h,v 1.22 2000/04/27 19:03:34 robs Exp $
  */
 
 #ifndef FCGI_H
@@ -291,7 +291,7 @@ typedef struct
  * A quick hack to dump the static vars for the NT port.
  */
 typedef struct {
-    enum { prep, header, name, value } pass;
+    enum { PREP, HEADER, NAME, VALUE } pass;
     char **envp; 
     int headerLen, nameLen, valueLen, totalLen;
     char *equalPtr;
