@@ -1,12 +1,16 @@
 /*
- * $Id: fcgi_config.c,v 1.32 2002/07/23 00:54:18 robs Exp $
+ * $Id: fcgi_config.c,v 1.33 2002/07/26 03:10:53 robs Exp $
  */
 
 #include "fcgi.h"
 
 #ifdef APACHE2
 #include <limits.h>
+#ifdef WIN32
 #include <direct.h>
+#else
+#include <unistd.h>
+#endif
 #endif
 
 #ifdef WIN32
@@ -214,7 +218,9 @@ static const char *invalid_value(pool *p, const char *cmd, const char *id,
 const char *fcgi_config_set_fcgi_uid_n_gid(int set)
 {
     static int isSet = 0;
-#ifndef WIN32
+
+#if !defined(WIN32) && !defined(APACHE2)
+
     uid_t uid = geteuid();
     gid_t gid = getegid();
 
@@ -235,7 +241,9 @@ const char *fcgi_config_set_fcgi_uid_n_gid(int set)
     isSet = 1;
     fcgi_user_id = uid;
     fcgi_group_id = gid;
+
 #endif
+
     return NULL;
 }
 
@@ -320,7 +328,7 @@ const char *fcgi_config_make_dir(pool *tp, char *path)
                 strerror(errno));
         }
 
-#ifndef WIN32
+#if !defined(WIN32) && !defined(APACHE2)
         /* If we're root, we're gonna setuid/setgid so we need to chown */
         if (geteuid() == 0 && chown(path, ap_user_id, ap_group_id) != 0) {
             return ap_psprintf(tp,
@@ -357,8 +365,6 @@ const char *fcgi_config_make_dir(pool *tp, char *path)
 const char *fcgi_config_make_dynamic_dir(pool *p, const int wax)
 {
 #ifndef WIN32
-    DIR *dp = NULL;
-    struct dirent *dirp = NULL;
     const char *err;
     pool *tp;
 
@@ -371,25 +377,54 @@ const char *fcgi_config_make_dynamic_dir(pool *p, const int wax)
     if (!wax)
         return NULL;
 
-    /* Create a subpool for the directory operations */
-    tp = ap_make_sub_pool(p);
+#ifdef APACHE2
+    {
+        apr_dir_t * dir;
+        apr_finfo_t finfo;
 
-    dp = ap_popendir(tp, fcgi_dynamic_dir);
-    if (dp == NULL) {
-        ap_destroy_pool(tp);
-        return ap_psprintf(p, "can't open dynamic directory \"%s\": %s",
-            fcgi_dynamic_dir, strerror(errno));
+        if (apr_pool_create(&tp, p))
+            return "apr_pool_create() failed";
+
+        if (apr_dir_open(&dir, fcgi_dynamic_dir, tp))
+            return "apr_dir_open() failed";
+
+        /* delete the contents */
+
+        while (apr_dir_read(&finfo, APR_FINFO_NAME, dir) == APR_SUCCESS)
+        {
+            if (strcmp(finfo.name, ".") == 0 || strcmp(finfo.name, "..") == 0)
+                continue;
+
+            apr_file_remove(finfo.name, tp);
+        }
     }
 
-    /* Delete everything in the directory, its all FCGI specific */
-    while ((dirp = readdir(dp)) != NULL) {
-        if (strcmp(dirp->d_name, ".") == 0
-                || strcmp(dirp->d_name, "..") == 0) {
-            continue;
+#else /* !APACHE2 */
+    {
+        DIR *dp;
+        struct dirent *dirp = NULL;
+
+        tp = ap_make_sub_pool(p);
+
+        dp = ap_popendir(tp, fcgi_dynamic_dir);
+        if (dp == NULL) {
+            ap_destroy_pool(tp);
+            return ap_psprintf(p, "can't open dynamic directory \"%s\": %s",
+                fcgi_dynamic_dir, strerror(errno));
         }
 
-        unlink(ap_pstrcat(tp, fcgi_dynamic_dir, "/", dirp->d_name, NULL));
+        /* delete the contents */
+
+        while ((dirp = readdir(dp)) != NULL) 
+        {
+            if (strcmp(dirp->d_name, ".") == 0 || strcmp(dirp->d_name, "..") == 0)
+                continue;
+
+            unlink(ap_pstrcat(tp, fcgi_dynamic_dir, "/", dirp->d_name, NULL));
+        }
     }
+
+#endif /* !APACHE2 */
 
     ap_destroy_pool(tp);
 
@@ -404,11 +439,12 @@ const char *fcgi_config_make_dynamic_dir(pool *p, const int wax)
  * Change the directory used for the Unix/Domain sockets from the default.
  * Create the directory and the "dynamic" subdirectory.
  */
-const char *fcgi_config_set_socket_dir(cmd_parms *cmd, void *dummy, char *arg)
+const char *fcgi_config_set_socket_dir(cmd_parms *cmd, void *dummy, const char *arg)
 {
     pool * const tp = cmd->temp_pool;
     const char * const name = cmd->cmd->name;
     const char *err;
+    char * arg_nc;
 
     if (strcmp(fcgi_socket_dir, DEFAULT_SOCK_DIR) != 0) {
         return ap_psprintf(tp, "%s %s: already defined as \"%s\"",
@@ -427,29 +463,34 @@ const char *fcgi_config_set_socket_dir(cmd_parms *cmd, void *dummy, char *arg)
 
 #ifndef WIN32
 
+    arg_nc = ap_pstrdup(cmd->pool, arg);
+
 #ifdef APACHE2
-    if (apr_filepath_merge(&arg, "", arg, 0, cmd->pool))
+    if (apr_filepath_merge(&arg_nc, "", arg, 0, cmd->pool))
         return ap_psprintf(tp, "%s %s: invalid filepath", name, arg);
 #else
-    arg = ap_os_canonical_filename(cmd->pool, arg);
+    arg_nc = ap_os_canonical_filename(cmd->pool, arg_nc);
 #endif
 
-    arg = ap_server_root_relative(cmd->pool, arg);
+    arg_nc = ap_server_root_relative(cmd->pool, arg_nc);
+
 #else /* WIN32 */
-	if (strncmp(arg, "\\\\.\\pipe\\", 9) != 0)
-		return ap_psprintf(tp, "%s %s is invalid format",name, arg);
+
+	if (strncmp(arg_nc, "\\\\.\\pipe\\", 9) != 0)
+		return ap_psprintf(tp, "%s %s is invalid format",name, arg_nc);
+
 #endif
 
-    fcgi_socket_dir = arg;
+    fcgi_socket_dir = arg_nc;
 
 #ifndef WIN32
     err = fcgi_config_make_dir(tp, fcgi_socket_dir);
     if (err != NULL)
-        return ap_psprintf(tp, "%s %s: %s", name, arg, err);
+        return ap_psprintf(tp, "%s %s: %s", name, arg_nc, err);
 
     err = fcgi_config_make_dynamic_dir(cmd->pool, 0);
     if (err != NULL)
-        return ap_psprintf(tp, "%s %s: %s", name, arg, err);
+        return ap_psprintf(tp, "%s %s: %s", name, arg_nc, err);
 #endif
 
     return NULL;
@@ -581,6 +622,7 @@ const char *fcgi_config_new_static_server(cmd_parms *cmd, void *dummy, const cha
     s->numProcesses = 1;
 
 #ifdef WIN32
+
     // TCP FastCGI applications require SystemRoot be present in the environment
     // Put it in both for consistency to the application
     fcgi_config_set_env_var(tp, envp, &envc, "SystemRoot");
@@ -596,8 +638,10 @@ const char *fcgi_config_new_static_server(cmd_parms *cmd, void *dummy, const cha
     
     SetHandleInformation(mutex, HANDLE_FLAG_INHERIT, TRUE);
 
-    s->mutex_env_string = ap_psprintf(p, "_FCGI_MUTEX_=%ld", mutex);;
-#else
+    s->mutex_env_string = ap_psprintf(p, "_FCGI_MUTEX_=%ld", mutex);
+
+#elif !defined(APACHE2)
+
     if (fcgi_wrapper) {
         struct passwd *pw;
         struct group  *gr;
@@ -985,9 +1029,10 @@ void *fcgi_config_create_dir_config(pool *p, char *dummy)
 }
 
 
-const char *fcgi_config_new_auth_server(cmd_parms * const cmd,
-    fcgi_dir_config *dir_config, const char *fs_path, const char * const compat)
+const char *fcgi_config_new_auth_server(cmd_parms * cmd,
+    void * dircfg, const char *fs_path, const char * compat)
 {
+    fcgi_dir_config * dir_config = (fcgi_dir_config *) dircfg;
     pool * const tp = cmd->temp_pool;
     char * auth_server;
 
@@ -1030,8 +1075,8 @@ const char *fcgi_config_new_auth_server(cmd_parms * const cmd,
     return NULL;
 }
 
-const char *fcgi_config_set_authoritative_slot(const cmd_parms * const cmd,
-    fcgi_dir_config * const dir_config, int arg)
+const char *fcgi_config_set_authoritative_slot(cmd_parms * cmd,
+    void * dir_config, int arg)
 {
     int offset = (int)(long)cmd->info;
 

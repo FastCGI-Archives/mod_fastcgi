@@ -1,9 +1,13 @@
 /*
- * $Id: fcgi_pm.c,v 1.73 2002/07/23 02:39:18 robs Exp $
+ * $Id: fcgi_pm.c,v 1.74 2002/07/26 03:10:54 robs Exp $
  */
 
 
 #include "fcgi.h"
+
+#if defined(APACHE2) && !defined(WIN32)
+#include <pwd.h>
+#endif
 
 #ifdef _HPUX_SOURCE
 #include <unistd.h>
@@ -28,7 +32,7 @@ HANDLE fcgi_event_handles[3];
 #endif
 
 
-#ifndef WIN32
+#if !defined(WIN32) && !defined(APACHE2)
 static int seteuid_root(void)
 {
     int rc = seteuid((uid_t)0);
@@ -369,9 +373,9 @@ static pid_t spawn_fs_process(fcgi_server *fs, ServerProcess *process)
      * main server error_log - @@@ provide a directive control where this goes.
      */
     ap_error_log2stderr(fcgi_apache_main_server);
-    dup2(STDERR_FILENO, STDOUT_FILENO);
+    dup2(2, 1);
     for (i = 0; i < FCGI_MAX_FD; i++) {
-        if (i != FCGI_LISTENSOCK_FILENO && i != STDERR_FILENO && i != STDOUT_FILENO) {
+        if (i != FCGI_LISTENSOCK_FILENO && i != 2 && i != 1) {
             close(i);
         }
     }
@@ -383,9 +387,11 @@ static pid_t spawn_fs_process(fcgi_server *fs, ServerProcess *process)
     if (fcgi_wrapper && (fcgi_user_id != fs->uid || fcgi_group_id != fs->gid)) {
         char *shortName = strrchr(fs->fs_path, '/') + 1;
 
+#ifndef APACHE2
         /* Relinquish our root real uid powers */
         seteuid_root();
         setuid(ap_user_id);
+#endif
 
         do {
             execle(fcgi_wrapper, fcgi_wrapper, fs->username, fs->group, shortName, NULL, fs->envp);
@@ -669,7 +675,7 @@ CLEANUP:
 #endif /* WIN32 */
 }
 
-#ifndef WIN32
+#if !defined(WIN32) && !defined(APACHE2)
 static void reduce_privileges(void)
 {
     char *name;
@@ -1536,7 +1542,7 @@ static void setup_signals(void)
 }
 #endif
 
-#ifndef WIN32
+#if !defined(WIN32) && !defined(APACHE2)
 int fcgi_pm_main(void *dummy, child_info *info)
 #else
 void fcgi_pm_main(void *dummy)

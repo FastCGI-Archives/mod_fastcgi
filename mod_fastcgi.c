@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.134 2002/07/23 02:39:18 robs Exp $
+ *  $Id: mod_fastcgi.c,v 1.135 2002/07/26 03:10:54 robs Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -242,7 +242,7 @@ static void send_to_pm(const char id, const char * const fs_path,
  */
 #ifdef APACHE2
 static apcb_t init_module(apr_pool_t * p, apr_pool_t * plog, 
-                          apr_pool_t * ptemp, server_rec * s)
+                          apr_pool_t * tp, server_rec * s)
 #else
 static apcb_t init_module(server_rec *s, pool *p)
 #endif
@@ -283,8 +283,10 @@ static apcb_t init_module(server_rec *s, pool *p)
      * Under Unix, the -X switch causes two calls to init() but no detach
      * (but all subprocesses are wacked so the PM is toasted anyway)! */
 
+#ifndef APACHE2
     if (ap_standalone && ap_restart_time == 0)
         return;
+#endif
 
     /* Create the pipe for comm with the PM */
     if (pipe(fcgi_pm_pipe) < 0) {
@@ -292,14 +294,46 @@ static apcb_t init_module(server_rec *s, pool *p)
     }
 
     /* Start the Process Manager */
+
+#ifdef APACHE2
+    {
+        apr_proc_t * proc = apr_palloc(p, sizeof(*proc));
+        apr_status_t rv;
+
+        rv = apr_proc_fork(proc, tp);
+        if (rv)
+            return rv;
+
+        if (proc->pid == 0)
+        {
+            /* child */
+
+            close(fcgi_pm_pipe[1]);
+	    dup2(fcgi_pm_pipe[0], 0);
+	    close(fcgi_pm_pipe[0]);
+
+            fcgi_pm_main(NULL);
+
+            exit(1);
+        }
+
+        /* parent */
+
+        apr_pool_note_subprocess(p, proc, APR_KILL_ONLY_ONCE);
+    }
+#else /* !APACHE2 */
+
     fcgi_pm_pid = ap_spawn_child(p, fcgi_pm_main, NULL, kill_only_once, NULL, NULL, NULL);
     if (fcgi_pm_pid <= 0) {
         ap_log_error(FCGI_LOG_ALERT, s,
             "FastCGI: can't start the process manager, spawn_child() failed");
     }
 
+#endif /* !APACHE2 */
+
     close(fcgi_pm_pipe[0]);
-#endif
+
+#endif /* !WIN32 */
 
     return APCB_OK;
 }
@@ -322,9 +356,9 @@ static apcb_t fcgi_child_exit(server_rec *dc0, pool *dc1)
 }
 
 #ifdef APACHE2
-static apcb_t fcgi_child_init(apr_pool_t * p, server_rec * dc)
+static void fcgi_child_init(apr_pool_t * p, server_rec * dc)
 #else
-static apcb_t fcgi_child_init(server_rec *dc, pool *p)
+static void fcgi_child_init(server_rec *dc, pool *p)
 #endif
 {
 #ifdef WIN32
@@ -363,8 +397,6 @@ static apcb_t fcgi_child_init(server_rec *dc, pool *p)
     apr_pool_cleanup_register(p, NULL, fcgi_child_exit, fcgi_child_exit);
 #endif
 #endif
-
-    return APCB_OK;
 }
 
 /*
@@ -2672,42 +2704,55 @@ AccessFailed:
     return (res == OK) ? HTTP_FORBIDDEN : res;
 }
 
+#ifndef APACHE2
+
+# define AP_INIT_RAW_ARGS(directive, func, mconfig, where, help) \
+    { directive, func, mconfig, where, RAW_ARGS, help }
+# define AP_INIT_TAKE1(directive, func, mconfig, where, help) \
+    { directive, func, mconfig, where, TAKE1, help }
+# define AP_INIT_TAKE12(directive, func, mconfig, where, help) \
+    { directive, func, mconfig, where, TAKE12, help }
+# define AP_INIT_FLAG(directive, func, mconfig, where, help) \
+    { directive, func, mconfig, where, FLAG, help }
+
+#endif
+
 static const command_rec fastcgi_cmds[] = 
 {
-    { "AppClass",      fcgi_config_new_static_server, NULL, RSRC_CONF, RAW_ARGS, NULL },
-    { "FastCgiServer", fcgi_config_new_static_server, NULL, RSRC_CONF, RAW_ARGS, NULL },
+    AP_INIT_RAW_ARGS("AppClass",      fcgi_config_new_static_server, NULL, RSRC_CONF, NULL),
+    AP_INIT_RAW_ARGS("FastCgiServer", fcgi_config_new_static_server, NULL, RSRC_CONF, NULL),
 
-    { "ExternalAppClass",      fcgi_config_new_external_server, NULL, RSRC_CONF, RAW_ARGS, NULL },
-    { "FastCgiExternalServer", fcgi_config_new_external_server, NULL, RSRC_CONF, RAW_ARGS, NULL },
+    AP_INIT_RAW_ARGS("ExternalAppClass",      fcgi_config_new_external_server, NULL, RSRC_CONF, NULL),
+    AP_INIT_RAW_ARGS("FastCgiExternalServer", fcgi_config_new_external_server, NULL, RSRC_CONF, NULL),
 
-    { "FastCgiIpcDir", fcgi_config_set_socket_dir, NULL, RSRC_CONF, TAKE1, NULL },
+    AP_INIT_TAKE1("FastCgiIpcDir", fcgi_config_set_socket_dir, NULL, RSRC_CONF, NULL),
 
-    { "FastCgiSuexec",  fcgi_config_set_wrapper, NULL, RSRC_CONF, TAKE1, NULL },
-    { "FastCgiWrapper", fcgi_config_set_wrapper, NULL, RSRC_CONF, TAKE1, NULL },
+    AP_INIT_TAKE1("FastCgiSuexec",  fcgi_config_set_wrapper, NULL, RSRC_CONF, NULL),
+    AP_INIT_TAKE1("FastCgiWrapper", fcgi_config_set_wrapper, NULL, RSRC_CONF, NULL),
 
-    { "FCGIConfig",    fcgi_config_set_config, NULL, RSRC_CONF, RAW_ARGS, NULL },
-    { "FastCgiConfig", fcgi_config_set_config, NULL, RSRC_CONF, RAW_ARGS, NULL },
+    AP_INIT_RAW_ARGS("FCGIConfig",    fcgi_config_set_config, NULL, RSRC_CONF, NULL),
+    AP_INIT_RAW_ARGS("FastCgiConfig", fcgi_config_set_config, NULL, RSRC_CONF, NULL),
 
-    { "FastCgiAuthenticator", fcgi_config_new_auth_server,
-        (void *)FCGI_AUTH_TYPE_AUTHENTICATOR, ACCESS_CONF, TAKE12,
-        "a fastcgi-script path (absolute or relative to ServerRoot) followed by an optional -compat" },
-    { "FastCgiAuthenticatorAuthoritative", fcgi_config_set_authoritative_slot,
-        (void *)XtOffsetOf(fcgi_dir_config, authenticator_options), ACCESS_CONF, FLAG,
-        "Set to 'off' to allow authentication to be passed along to lower modules upon failure" },
+    AP_INIT_TAKE12("FastCgiAuthenticator", fcgi_config_new_auth_server,
+        (void *)FCGI_AUTH_TYPE_AUTHENTICATOR, ACCESS_CONF,
+        "a fastcgi-script path (absolute or relative to ServerRoot) followed by an optional -compat"),
+    AP_INIT_FLAG("FastCgiAuthenticatorAuthoritative", fcgi_config_set_authoritative_slot,
+        (void *)XtOffsetOf(fcgi_dir_config, authenticator_options), ACCESS_CONF,
+        "Set to 'off' to allow authentication to be passed along to lower modules upon failure"),
 
-    { "FastCgiAuthorizer", fcgi_config_new_auth_server,
-        (void *)FCGI_AUTH_TYPE_AUTHORIZER, ACCESS_CONF, TAKE12,
-        "a fastcgi-script path (absolute or relative to ServerRoot) followed by an optional -compat" },
-    { "FastCgiAuthorizerAuthoritative", fcgi_config_set_authoritative_slot,
-        (void *)XtOffsetOf(fcgi_dir_config, authorizer_options), ACCESS_CONF, FLAG,
-        "Set to 'off' to allow authorization to be passed along to lower modules upon failure" },
+    AP_INIT_TAKE12("FastCgiAuthorizer", fcgi_config_new_auth_server,
+        (void *)FCGI_AUTH_TYPE_AUTHORIZER, ACCESS_CONF,
+        "a fastcgi-script path (absolute or relative to ServerRoot) followed by an optional -compat"),
+    AP_INIT_FLAG("FastCgiAuthorizerAuthoritative", fcgi_config_set_authoritative_slot,
+        (void *)XtOffsetOf(fcgi_dir_config, authorizer_options), ACCESS_CONF,
+        "Set to 'off' to allow authorization to be passed along to lower modules upon failure"),
 
-    { "FastCgiAccessChecker", fcgi_config_new_auth_server,
-        (void *)FCGI_AUTH_TYPE_ACCESS_CHECKER, ACCESS_CONF, TAKE12,
-        "a fastcgi-script path (absolute or relative to ServerRoot) followed by an optional -compat" },
-    { "FastCgiAccessCheckerAuthoritative", fcgi_config_set_authoritative_slot,
-        (void *)XtOffsetOf(fcgi_dir_config, access_checker_options), ACCESS_CONF, FLAG,
-        "Set to 'off' to allow access control to be passed along to lower modules upon failure" },
+    AP_INIT_TAKE12("FastCgiAccessChecker", fcgi_config_new_auth_server,
+        (void *)FCGI_AUTH_TYPE_ACCESS_CHECKER, ACCESS_CONF,
+        "a fastcgi-script path (absolute or relative to ServerRoot) followed by an optional -compat"),
+    AP_INIT_FLAG("FastCgiAccessCheckerAuthoritative", fcgi_config_set_authoritative_slot,
+        (void *)XtOffsetOf(fcgi_dir_config, access_checker_options), ACCESS_CONF,
+        "Set to 'off' to allow access control to be passed along to lower modules upon failure"),
     { NULL }
 };
 

@@ -1,11 +1,16 @@
 /*
- * $Id: fcgi_util.c,v 1.24 2002/07/24 02:30:58 robs Exp $
+ * $Id: fcgi_util.c,v 1.25 2002/07/26 03:10:54 robs Exp $
  */
 
 #include "fcgi.h"
 
 #ifdef WIN32
 #pragma warning( disable : 4100 )
+#elif defined(APACHE2)
+#include <netdb.h>
+#include <unistd.h>
+#include <grp.h>
+#include <pwd.h>
 #endif
 
 uid_t 
@@ -147,6 +152,10 @@ convert_string_to_in_addr(const char * const hostname, struct in_addr * const ad
     int count;
 
     addr->s_addr = inet_addr((char *)hostname);
+
+#if !defined(INADDR_NONE) && defined(APACHE2)
+#define INADDR_NONE APR_INADDR_NONE
+#endif
     
     if (addr->s_addr == INADDR_NONE) {
         if ((hp = gethostbyname((char *)hostname)) == NULL)

@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi.h,v 1.39 2002/07/23 02:39:18 robs Exp $
+ * $Id: fcgi.h,v 1.40 2002/07/26 03:10:54 robs Exp $
  */
 
 #ifndef FCGI_H
@@ -420,11 +420,13 @@ const char *fcgi_config_new_static_server(cmd_parms *cmd, void *dummy, const cha
 const char *fcgi_config_new_external_server(cmd_parms *cmd, void *dummy, const char *arg);
 const char *fcgi_config_set_config(cmd_parms *cmd, void *dummy, const char *arg);
 const char *fcgi_config_set_fcgi_uid_n_gid(int set);
-const char *fcgi_config_new_auth_server(cmd_parms * const cmd,
-    fcgi_dir_config *dir_config, const char *fs_path, const char * const compat);
-const char *fcgi_config_set_authoritative_slot(const cmd_parms * const cmd,
-    fcgi_dir_config * const dir_config, int arg);
-const char *fcgi_config_set_socket_dir(cmd_parms *cmd, void *dummy, char *arg);
+
+const char *fcgi_config_new_auth_server(cmd_parms * cmd,
+    void *dir_config, const char *fs_path, const char * compat);
+
+const char *fcgi_config_set_authoritative_slot(cmd_parms * cmd,
+    void * dir_config, int arg);
+const char *fcgi_config_set_socket_dir(cmd_parms *cmd, void *dummy, const char *arg);
 const char *fcgi_config_set_wrapper(cmd_parms *cmd, void *dummy, const char *arg);
 apcb_t fcgi_config_reset_globals(void * dummy);
 const char *fcgi_config_set_env_var(pool *p, char **envp, unsigned int *envc, char * var);
@@ -432,7 +434,7 @@ const char *fcgi_config_set_env_var(pool *p, char **envp, unsigned int *envc, ch
 /*
  * fcgi_pm.c
  */
-#ifdef WIN32
+#if defined(WIN32) || defined(APACHE2)
 void fcgi_pm_main(void *dummy);
 #else
 int fcgi_pm_main(void *dummy, child_info *info);
