@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.120 2001/11/28 03:31:02 robs Exp $
+ *  $Id: mod_fastcgi.c,v 1.121 2002/02/12 03:20:53 robs Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -706,7 +706,7 @@ static int write_to_client(fcgi_request *fr)
 
     /* The default behaviour used to be to flush with every write, but this
      * can tie up the FastCGI server longer than is necessary so its an option now */
-    if (fr->fs && fr->fs->flush) {
+    if (fr->fs ? fr->fs->flush : dynamicFlush) {
 #ifdef RUSSIAN_APACHE
        if (ap_rflush(fr->r)) {
             ap_log_rerror(FCGI_LOG_INFO_NOERRNO, fr->r,
