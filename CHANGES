@@ -1,5 +1,8 @@
 2.2.13
 
+ *) [WIN32] Prevent intermittent ReadFile() failures (properly initialize the
+    OVERLAPPED structure). 
+
  *) Eliminate need for dummy files for external servers under Apache2
 
  *) Fix auth compatibility mode handling for access checker and authorizer

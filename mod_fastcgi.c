@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.138 2002/09/21 03:25:56 robs Exp $
+ *  $Id: mod_fastcgi.c,v 1.139 2002/09/21 13:55:35 robs Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -1485,8 +1485,8 @@ static int npipe_io(fcgi_request * const fr)
     int recv_pending = 0;
     int client_send = 0;
     int rv;
-    OVERLAPPED rov; 
-    OVERLAPPED sov;
+    OVERLAPPED rov = { 0 }; 
+    OVERLAPPED sov = { 0 };
     HANDLE events[2];
     struct timeval timeout;
     struct timeval dynamic_last_io_time = {0, 0};
