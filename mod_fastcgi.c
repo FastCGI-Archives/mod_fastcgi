@@ -2728,6 +2728,11 @@ NothingToDo:
 		  if ((stat(execName, &stbuf)>=0) &&
 		      (stbuf.st_mtime > s->restartTime)) {
 		    /* kill old server(s) */
+		    if (s->directive == APP_CLASS_DYNAMIC) {
+		      numChildren = maxClassProcs;
+		    } else {
+		      numChildren = s->numProcesses;
+		    }
 		    for (i = 0; i < s->numProcesses; i++) {
 		      kill(s->procInfo[i].pid, SIGTERM);
 		    }
@@ -2748,7 +2753,28 @@ NothingToDo:
 		     */
 		  }
 		} else {
-		  continue;
+		  /* we've been asked to start a process--only start
+		   * it if we're not already running at least one
+		   * instance.
+		   */
+		  int count = 0;
+		  int numChildren;
+ 
+		  /* see if any instances of this app are running */
+		  if (s->directive == APP_CLASS_DYNAMIC) {
+		    numChildren = maxClassProcs;
+		  } else {
+		    numChildren = s->numProcesses;
+		  }
+
+		  for (i = 0; i < numChildren; i++) {
+		    if (s->procInfo[i].state == STATE_STARTED)
+		      count++;
+		  }
+		  /* if already running, don't start another one */
+		  if (count > 0) {
+		    continue;
+		  }
 		}
 	    }
 	}
