@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_util.c,v 1.28 2002/10/22 01:02:18 robs Exp $
+ * $Id: fcgi_util.c,v 1.29 2002/10/22 02:44:15 robs Exp $
  */
 
 #include "fcgi.h"
@@ -22,7 +22,9 @@
 uid_t 
 fcgi_util_get_server_uid(const server_rec * const s)
 {
-#ifdef APACHE2
+#if defined(WIN32) 
+    return (uid_t) 0;
+#elif defined(APACHE2)
     /* the main server's uid */
     return ap_user_id;
 #else
@@ -34,7 +36,9 @@ fcgi_util_get_server_uid(const server_rec * const s)
 uid_t 
 fcgi_util_get_server_gid(const server_rec * const s)
 {
-#ifdef APACHE2
+#if defined(WIN32) 
+    return (uid_t) 0;
+#elif defined(APACHE2)
     /* the main server's gid */
     return ap_group_id;
 #else
