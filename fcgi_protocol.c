@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_protocol.c,v 1.15 2000/04/27 15:14:28 robs Exp $
+ * $Id: fcgi_protocol.c,v 1.16 2000/04/27 19:08:44 robs Exp $
  */
 
 
@@ -197,49 +197,49 @@ int fcgi_protocol_queue_env(request_rec *r, fcgi_request *fr, env_status *env)
             add_auth_cgi_vars(r, fr->auth_compat);
 
         env->envp = ap_create_environment(r->pool, r->subprocess_env);
-        env->pass = prep;
+        env->pass = PREP;
     }
 
     while (*env->envp) {
         switch (env->pass) 
         {
-        case prep:
+        case PREP:
             env->equalPtr = strchr(*env->envp, '=');
             ap_assert(env->equalPtr != NULL);
             env->nameLen = env->equalPtr - *env->envp;
             env->valueLen = strlen(++env->equalPtr);
             build_env_header(env->nameLen, env->valueLen, env->headerBuff, &env->headerLen);
             env->totalLen = env->headerLen + env->nameLen + env->valueLen;
-            env->pass = header;
+            env->pass = HEADER;
             /* drop through */
 
-        case header:
+        case HEADER:
             if (BufferFree(fr->serverOutputBuffer) < (int)(sizeof(FCGI_Header) + env->headerLen)) {
                 return (FALSE);
             }
             queue_header(fr, FCGI_PARAMS, env->totalLen);
             fcgi_buf_add_block(fr->serverOutputBuffer, (char *)env->headerBuff, env->headerLen);
-            env->pass = name;
+            env->pass = NAME;
             /* drop through */
 
-        case name:
+        case NAME:
             charCount = fcgi_buf_add_block(fr->serverOutputBuffer, *env->envp, env->nameLen);
             if (charCount != env->nameLen) {
                 *env->envp += charCount;
                 env->nameLen -= charCount;
                 return (FALSE);
             }
-            env->pass = value;
+            env->pass = VALUE;
             /* drop through */
 
-        case value:
+        case VALUE:
             charCount = fcgi_buf_add_block(fr->serverOutputBuffer, env->equalPtr, env->valueLen);
             if (charCount != env->valueLen) {
                 env->equalPtr += charCount;
                 env->valueLen -= charCount;
                 return (FALSE);
             }
-            env->pass = prep;
+            env->pass = PREP;
         }
         (*env->envp)++;
     }
