@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.108 2001/03/26 15:35:40 robs Exp $
+ *  $Id: mod_fastcgi.c,v 1.109 2001/03/27 14:07:53 robs Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -213,7 +213,6 @@ static void send_to_pm(const char id, const char * const fs_path,
 #endif
 }
 
-
 /*
  *----------------------------------------------------------------------
  *
@@ -373,7 +372,7 @@ static char *get_header_line(char *start, int continuation)
     *p = '\0';
     return end;
 }
-
+
 /*
  *----------------------------------------------------------------------
  *
@@ -595,7 +594,7 @@ DuplicateNotAllowed:
     fr->parseHeader = SCAN_CGI_BAD_HEADER;
     return ap_psprintf(r->pool, "duplicate header '%s'", name);
 }
-
+
 /*
  * Read from the client filling both the FastCGI server buffer and the
  * client buffer with the hopes of buffering the client data before
@@ -1205,7 +1204,7 @@ ConnectionComplete:
 
     return FCGI_OK;
 }
-
+
 static int server_error(fcgi_request *fr)
 {
 #if defined(SIGPIPE) && MODULE_MAGIC_NUMBER < 19990320
@@ -1643,7 +1642,6 @@ static int do_work(request_rec *r, fcgi_request *fr)
     ap_kill_timeout(r);
     return OK;
 }
-
 
 static fcgi_request *create_fcgi_request(request_rec * const r, const char *fs_path)
 {
@@ -2016,8 +2014,6 @@ AccessFailed:
     return (res == OK) ? FORBIDDEN : res;
 }
 
-
-
 command_rec fastcgi_cmds[] = {
     { "AppClass",      fcgi_config_new_static_server, NULL, RSRC_CONF, RAW_ARGS, NULL },
     { "FastCgiServer", fcgi_config_new_static_server, NULL, RSRC_CONF, RAW_ARGS, NULL },
