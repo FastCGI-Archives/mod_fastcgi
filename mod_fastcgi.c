@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.25 1998/02/24 17:11:49 roy Exp $
+ *  $Id: mod_fastcgi.c,v 1.26 1998/02/25 17:35:30 roberts Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -3463,57 +3463,6 @@ int FCGIProcMgrBoot(void *data)
 /*
  *----------------------------------------------------------------------
  * 
- * DoesAnyFileExist --
- *
- *      Check if the file is present in the file system in the
- *      directory specified by ipcDynamicDir.  Also check that
- *      a given filename is of the given type, such as regular or
- *      socket (FIFO).
- *
- * Results:
- *      1 if file exists, 0 if not, -1 on error
- *
- *----------------------------------------------------------------------
- */
-#define FILETYPE_SOCKET  0
-#define FILETYPE_REGULAR 1
-
-int DoesAnyFileExist(char *fileName, int fileType)
-{
-    struct stat statBuf;
-    int result = 0;
-
-    if (stat(fileName, &statBuf)<0) {
-      return(0);
-    }
-    switch (fileType) {
-    case FILETYPE_SOCKET:
-      if(S_ISFIFO(statBuf.st_mode)) {
-	result = 1;
-      } else {
-	result = 0;
-      }
-      break;
-    case FILETYPE_REGULAR:
-      if(S_ISREG(statBuf.st_mode)) {
-	result = 1;
-      } else {
-	result = 0;
-      }
-      break;
-    default: 
-      result = (-1);
-      break;
-    }
-    return (result);
-}
-#define DoesLockExist(a) DoesAnyFileExist(a, FILETYPE_REGULAR)
-#define DoesFileExist(a) DoesAnyFileExist(a, FILETYPE_REGULAR)
-#define DoesSocketExist(a) DoesAnyFileExist(a, FILETYPE_SOCKET)
-
-/*
- *----------------------------------------------------------------------
- * 
  * ModFastCgiInit
  *
  *      An Apache module initializer, called by the Apache core
@@ -4767,40 +4716,28 @@ static int FastCgiHandler(WS_Request *reqPtr)
      */
     if(dynamic==TRUE) {
         char *lockFileName = MakeLockFileName(reqPtr->filename);
-	do {
-	    result = DoesLockExist(lockFileName);
-	    switch (result) {
-	        case -1:
-	            sprintf(infoPtr->errorMsg,
-                    "mod_fastcgi: Error in DoesLockExist()");
-	            goto ErrorReturn;
-	        case 0:
-		    SignalProcessManager(PLEASE_START, 
-		            reqPtr->filename, 0, 0, 0);
-		    sleep(1);
-                    break;
-	        case 1:
-		    if (autoUpdate) {
-		      /* there's a process running. See if the binary is newer,
-		       * meaning we need to restart the process.
-		       */
-		      struct stat lstbuf, bstbuf;
-		      if (stat(reqPtr->filename, &bstbuf)==0 &&
-			  lstbuf.st_mtime < bstbuf.st_mtime) {
-			/* ask the process manager to start it.
-			 * it will notice that the binary is newer,
-			 * and do a restart instead.
-			 */
-			SignalProcessManager(PLEASE_START, 
-					     reqPtr->filename, 0, 0, 0);
-			sleep(1);
-			break;
-		      }
-		    }
-   	    	    lockFd = open(lockFileName,O_APPEND);
-		    result = (lockFd<0)?(0):(1);
-		    break;
-	    }
+        struct stat lstbuf, bstbuf;
+        result = 0;
+		do {
+            if( stat(lockFileName,&lstbuf)==0 && S_ISREG(lstbuf.st_mode) ) {
+				if (autoUpdate && stat(reqPtr->filename, &bstbuf)==0 &&
+				  lstbuf.st_mtime < bstbuf.st_mtime) {
+					/* Its already running, but there's a newer one,
+					 * ask the process manager to start it.
+					 * it will notice that the binary is newer,
+					 * and do a restart instead.
+					 */
+					SignalProcessManager(PLEASE_START, 
+					  reqPtr->filename, 0, 0, 0);
+					sleep(1);
+				}
+				lockFd = open(lockFileName,O_APPEND);
+				result = (lockFd<0)?(0):(1);
+			} else {
+				SignalProcessManager(PLEASE_START,
+				  reqPtr->filename, 0, 0, 0);
+				sleep(1);
+            }
 	} while (result!=1);
 	if(ReadwLock(lockFd)<0) {
 	    sprintf(infoPtr->errorMsg,
