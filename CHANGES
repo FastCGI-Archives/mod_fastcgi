@@ -1,3 +1,7 @@
+Changes with mod_fastcgi 2.2.7
+
+ *) Tweak to Makefile.tmpl to support DSOs.  Dave Hill [ddhill@zk3.dec.com]
+
 Changes with mod_fastcgi 2.2.6
 
  *) Shutdown the PM when Apache appears to have disappeared.

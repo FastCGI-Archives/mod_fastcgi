@@ -3,7 +3,7 @@
 #
 #   Apache v1.3's Configure uses this to create a Makefile 
 # 
-# $Id: Makefile.tmpl,v 1.5 2000/04/06 19:10:52 robs Exp $
+# $Id: Makefile.tmpl,v 1.6 2000/08/16 01:51:47 robs Exp $
 
 LIB=libfastcgi.$(LIBEXT)
 
@@ -14,11 +14,15 @@ OBJS=mod_fastcgi.o fcgi_buf.o fcgi_pm.o fcgi_protocol.o	fcgi_config.o fcgi_util.
 all:  lib
 lib: $(LIB)
 
-$(LIB): $(OBJS)
+libfastcgi.a: $(OBJS)
 	rm -f $@
 	ar cr $@ $(OBJS)
 	$(RANLIB) $@
  
+libfastcgi.so: $(OBJS)
+	rm -f $@
+	$(LD_SHLIB) $(LDFLAGS_SHLIB) -o $@ $(OBJS)
+
 .c.o:
 	$(CC) -c $(INCLUDES) $(CFLAGS) $<
 
