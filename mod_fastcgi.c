@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.146 2002/12/05 02:41:26 robs Exp $
+ *  $Id: mod_fastcgi.c,v 1.147 2002/12/05 03:02:05 robs Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -859,7 +859,12 @@ static int read_from_client_n_queue(fcgi_request *fr)
             return OK;
 
         if ((countRead = ap_get_client_block(fr->r, end, count)) < 0)
+        {
+            /* set the header scan state to done to prevent logging an error 
+             * - hokey approach - probably should be using a unique value */
+            fr->parseHeader = SCAN_CGI_FINISHED;
             return -1;
+        }
 
         if (countRead == 0) {
             fr->expectingClientContent = 0;
@@ -1521,7 +1526,6 @@ static int npipe_io(fcgi_request * const fr)
         STATE_SERVER_SEND,
         STATE_SERVER_RECV,
         STATE_CLIENT_SEND,
-        STATE_CLIENT_ERROR,
         STATE_ERROR
     }
     state = STATE_ENV_SEND;
@@ -1592,7 +1596,7 @@ DWORD recv_count = 0;
 
             if (read_from_client_n_queue(fr) != OK)
             {
-                state = STATE_CLIENT_ERROR;
+                state = STATE_ERROR;
                 break;
             }
 
@@ -1691,7 +1695,7 @@ SERVER_SEND:
             {
                 if (write_to_client(fr)) 
                 {
-                    state = STATE_CLIENT_ERROR;
+                    state = STATE_ERROR;
                     break;
                 }
 
@@ -1705,7 +1709,7 @@ SERVER_SEND:
             ap_assert(0);
         }
 
-        if (state == STATE_CLIENT_ERROR || state == STATE_ERROR)
+        if (state == STATE_ERROR)
         {
             break;
         }
