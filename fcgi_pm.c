@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_pm.c,v 1.6 1999/06/18 03:26:42 roberts Exp $
+ * $Id: fcgi_pm.c,v 1.7 1999/09/01 02:40:54 roberts Exp $
  */
 
 #include "fcgi.h"
@@ -274,10 +274,17 @@ static int spawn_fs_process(
     if (listenFd != FCGI_LISTENSOCK_FILENO)
         dup2(listenFd, FCGI_LISTENSOCK_FILENO);
     
-    /* Close any other open fds */    
+    /* Close all other open fds, except stdout/stderr.  Leave these two open so
+     * FastCGI applications don't have to find and fix ALL 3rd party libs that
+     * write to stdout/stderr inadvertantly.  For now, just leave 'em open to the
+     * main server error_log - @@@ provide a directive control where this goes. 
+     */    
+    ap_error_log2stderr(fcgi_apache_main_server);
+    dup2(STDERR_FILENO, STDOUT_FILENO);
     for (i = 0; i < MAX_OPEN_FDS; i++) {
-        if (i != FCGI_LISTENSOCK_FILENO)
+        if (i != FCGI_LISTENSOCK_FILENO && i != STDERR_FILENO && i != STDOUT_FILENO) {
             close(i);
+        }
     }
     
     /* Ignore SIGPIPE by default rather than terminate.  The fs SHOULD 

@@ -1,5 +1,11 @@
 Changes with mod_fastcgi 2.2.3
 
+ *) Leave STDOUT and STDERR open to the main server error_log.  This should
+    eliminate a pile of protocol errors and having to track down 3rd party
+    libs writing to stderr inadvertantly.  This doesn't mean these shouldn't
+    be fixed in the application to use the FastCGI I/O, it just allows these
+    applications to run when previously they'd crash and burn.
+
  *) Add the pass-header arg to server directives.
 
  *) Allow supplementary groups to be passed to spawned FastCGI applications (as
