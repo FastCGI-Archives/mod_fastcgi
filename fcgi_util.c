@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_util.c,v 1.11 2000/04/29 21:01:44 robs Exp $
+ * $Id: fcgi_util.c,v 1.12 2000/05/12 13:52:29 robs Exp $
  */
 
 #include "fcgi.h"
@@ -165,8 +165,10 @@ fcgi_util_check_access(pool *tp,
         return "read not allowed";
     if (mode & _S_IWRITE && !(statBuf->st_mode & _S_IWRITE))
         return "write not allowed";
-    if (mode & _S_IEXEC && !(statBuf->st_mode & _S_IEXEC))
-        return "execute not allowed";
+    
+    // I don't think this works on FAT, but since I don't know how to check..
+    // if (mode & _S_IEXEC && !(statBuf->st_mode & _S_IEXEC))
+    //     return "execute not allowed";
 #endif
 
 #if  !defined(__EMX__) && !defined(WIN32)
