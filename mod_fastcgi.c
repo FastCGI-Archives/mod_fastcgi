@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.142 2002/10/12 01:52:22 robs Exp $
+ *  $Id: mod_fastcgi.c,v 1.143 2002/10/18 02:20:09 robs Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -247,7 +247,9 @@ static apcb_t init_module(apr_pool_t * p, apr_pool_t * plog,
 static apcb_t init_module(server_rec *s, pool *p)
 #endif
 {
+#ifndef WIN32
     const char *err;
+#endif
 
     /* Register to reset to default values when the config pool is cleaned */
     ap_block_alarms();
@@ -266,7 +268,11 @@ static apcb_t init_module(server_rec *s, pool *p)
     fcgi_config_pool = p;
     fcgi_apache_main_server = s;
 
-#ifndef WIN32
+#ifdef WIN32
+    if (fcgi_socket_dir == NULL)
+        fcgi_socket_dir = DEFAULT_SOCK_DIR;
+    fcgi_dynamic_dir = ap_pstrcat(p, fcgi_socket_dir, "dynamic", NULL);
+#else
 
     if (fcgi_socket_dir == NULL)
         fcgi_socket_dir = ap_server_root_relative(p, DEFAULT_SOCK_DIR);
@@ -274,13 +280,11 @@ static apcb_t init_module(server_rec *s, pool *p)
     /* Create Unix/Domain socket directory */
     if ((err = fcgi_config_make_dir(p, fcgi_socket_dir)))
         ap_log_error(FCGI_LOG_ERR, s, "FastCGI: %s", err);
-#endif
 
     /* Create Dynamic directory */
     if ((err = fcgi_config_make_dynamic_dir(p, 1)))
         ap_log_error(FCGI_LOG_ERR, s, "FastCGI: %s", err);
 
-#ifndef WIN32
     /* Spawn the PM only once.  Under Unix, Apache calls init() routines
      * twice, once before detach() and once after.  Win32 doesn't detach.
      * Under DSO, DSO modules are unloaded between the two init() calls.

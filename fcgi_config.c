@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_config.c,v 1.40 2002/10/04 04:33:20 robs Exp $
+ * $Id: fcgi_config.c,v 1.41 2002/10/18 02:20:09 robs Exp $
  */
 
 #define CORE_PRIVATE
@@ -373,9 +373,9 @@ const char *fcgi_config_make_dir(pool *tp, char *path)
  * Create a "dynamic" subdirectory.  If the directory
  * already exists we don't mess with it unless 'wax' is set.
  */
+#ifndef WIN32
 const char *fcgi_config_make_dynamic_dir(pool *p, const int wax)
 {
-#ifndef WIN32
     const char *err;
     pool *tp;
 
@@ -439,12 +439,9 @@ const char *fcgi_config_make_dynamic_dir(pool *p, const int wax)
 
     ap_destroy_pool(tp);
 
-#else
-    fcgi_dynamic_dir = ap_pstrcat(p, fcgi_socket_dir, "dynamic", NULL);
-#endif
     return NULL;
 }
-
+#endif
 
 /*******************************************************************************
  * Change the directory used for the Unix/Domain sockets from the default.
@@ -494,7 +491,9 @@ const char *fcgi_config_set_socket_dir(cmd_parms *cmd, void *dummy, const char *
 
     fcgi_socket_dir = arg_nc;
 
-#ifndef WIN32
+#ifdef WIN32
+    fcgi_dynamic_dir = ap_pstrcat(cmd->pool, fcgi_socket_dir, "dynamic", NULL);
+#else
     err = fcgi_config_make_dir(tp, fcgi_socket_dir);
     if (err != NULL)
         return ap_psprintf(tp, "%s %s: %s", name, arg_nc, err);
@@ -789,6 +788,10 @@ const char *fcgi_config_new_static_server(cmd_parms *cmd, void *dummy, const cha
     } else {
         if (s->socket_path == NULL)
              s->socket_path = fcgi_util_socket_hash_filename(tp, fs_path, s->user, s->group);
+
+        if (fcgi_socket_dir == NULL)
+            fcgi_socket_dir = DEFAULT_SOCK_DIR;
+
         s->socket_path = fcgi_util_socket_make_path_absolute(p, s->socket_path, 0);
 #ifndef WIN32
         err = fcgi_util_socket_make_domain_addr(p, (struct sockaddr_un **)&s->socket_addr,
@@ -955,6 +958,10 @@ const char *fcgi_config_new_external_server(cmd_parms *cmd, void *dummy, const c
         if (err != NULL)
             return ap_psprintf(tp, "%s %s: %s", name, fs_path, err);
     } else {
+
+        if (fcgi_socket_dir == NULL)
+            fcgi_socket_dir = DEFAULT_SOCK_DIR;
+
         s->socket_path = fcgi_util_socket_make_path_absolute(p, s->socket_path, 0);
 #ifndef WIN32
         err = fcgi_util_socket_make_domain_addr(p, (struct sockaddr_un **)&s->socket_addr,
