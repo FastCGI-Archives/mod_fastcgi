@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_util.c,v 1.20 2001/11/20 01:55:05 robs Exp $
+ * $Id: fcgi_util.c,v 1.21 2002/02/13 02:50:24 robs Exp $
  */
 
 #include "fcgi.h"
@@ -180,7 +180,7 @@ fcgi_util_check_access(pool *tp,
         static struct stat staticStatBuf;
         
         if (stat(path, &staticStatBuf) < 0)
-            return ap_psprintf(tp, "stat() failed: %s", strerror(errno));
+            return ap_psprintf(tp, "stat(%s) failed: %s", path, strerror(errno));
         statBuf = &staticStatBuf;
     }
     
@@ -322,7 +322,7 @@ fcgi_util_fs_is_path_ok(pool * const p, const char * const fs_path, struct stat 
     if (finfo == NULL) {
         finfo = (struct stat *)ap_palloc(p, sizeof(struct stat));	        
         if (stat(fs_path, finfo) < 0)
-            return ap_psprintf(p, "stat() failed: %s", strerror(errno));
+            return ap_psprintf(p, "stat(%s) failed: %s", fs_path, strerror(errno));
     }
 
     /* No Parse Header scripts aren't allowed.
