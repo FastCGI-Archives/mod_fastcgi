@@ -1,4 +1,4 @@
-2.2.13
+2.4.0
 
  *) [*nix Security] - When FastCgiWrapper (FastCgiSuexec) was in use 
     and a vhost configured to use the same uid/gid as the main
