@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.96 2000/07/31 00:33:42 robs Exp $
+ *  $Id: mod_fastcgi.c,v 1.97 2000/08/16 02:07:30 robs Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -620,7 +620,7 @@ DuplicateNotAllowed:
 static int read_from_client_n_queue(fcgi_request *fr)
 {
     char *end;
-    unsigned int count;
+    size_t count;
     long int countRead;
 
     while (BufferFree(fr->clientInputBuffer) > 0 || BufferFree(fr->serverOutputBuffer) > 0) {
@@ -648,7 +648,7 @@ static int read_from_client_n_queue(fcgi_request *fr)
 static int write_to_client(fcgi_request *fr)
 {
     char *begin;
-    unsigned int count;
+    size_t count;
 
     fcgi_buf_get_block_info(fr->clientOutputBuffer, &begin, &count);
     if (count == 0)
