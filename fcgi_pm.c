@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_pm.c,v 1.47 2001/02/19 06:08:55 robs Exp $
+ * $Id: fcgi_pm.c,v 1.48 2001/02/19 06:13:03 robs Exp $
  */
 
 
@@ -1450,7 +1450,7 @@ void fcgi_pm_main(void *dummy)
 #endif
 
 #ifdef WIN32
-    // Add SystemRoot to the dyanmic environment
+    // Add SystemRoot to the dynamic environment
     char ** envp = dynamicEnvp;
     for (i = 0; *envp; ++i) {
         ++envp;
@@ -1697,7 +1697,7 @@ ChildFound:
                     s->procs[i].state = STATE_KILLED;
                 }
                 else {
-                    /* A dynamic app died or exited without provacation from the PM */
+                    /* A dynamic app died or exited without provocation from the PM */
                     s->numFailures++;
 
                     if (dynamicAutoRestart || s->numProcesses <= 0)
