@@ -1,5 +1,7 @@
 2.2.11
 
+ *) Docs cleanup.  Andrew Benham [adsb@bigfoot.com]
+
  *) Added code so if the last instance of a dynamic application died without
     provocation, then don't restart it if singleThreshold > 0 (i.e. if the
     configuration allows the last instance to be killed, then allow it to die).
