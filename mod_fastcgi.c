@@ -4784,8 +4784,7 @@ static int FastCgiHandler(WS_Request *reqPtr)
 		       * meaning we need to restart the process.
 		       */
 		      struct stat lstbuf, bstbuf;
-		      if (stat(lockFileName, &lstbuf)>=0 &&
-			  stat(reqPtr->filename, &bstbuf) >=0 &&
+		      if (stat(reqPtr->filename, &bstbuf)==0 &&
 			  lstbuf.st_mtime < bstbuf.st_mtime) {
 			/* ask the process manager to start it.
 			 * it will notice that the binary is newer,
