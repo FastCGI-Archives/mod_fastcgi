@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_pm.c,v 1.48 2001/02/19 06:13:03 robs Exp $
+ * $Id: fcgi_pm.c,v 1.49 2001/02/19 06:16:27 robs Exp $
  */
 
 
@@ -1700,7 +1700,7 @@ ChildFound:
                     /* A dynamic app died or exited without provocation from the PM */
                     s->numFailures++;
 
-                    if (dynamicAutoRestart || s->numProcesses <= 0)
+                    if (dynamicAutoRestart || (s->numProcesses <= 0 && dynamicThreshold1 == 0))
                         s->procs[i].state = STATE_NEEDS_STARTING;
                     else
                         s->procs[i].state = STATE_READY;
