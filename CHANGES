@@ -1,5 +1,8 @@
 2.4.1
 
+ *) [WIN] Fix handle leaks in the process manager.  
+    Sascha Schumann [sascha@schumann.cx]
+
  *) [WIN] Use a permanent pool for allocating the SystemRoot 
     environment variable.  Sakamoto [ringring@zb4.so-net.ne.jp]
 

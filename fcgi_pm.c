@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_pm.c,v 1.87 2003/06/19 02:18:00 robs Exp $
+ * $Id: fcgi_pm.c,v 1.88 2003/10/28 02:26:12 robs Exp $
  */
 
 
@@ -564,8 +564,12 @@ FailedSystemCallExit:
 
     process->handle = proc.hproc;
 
-    
 CLEANUP:
+    
+    if (fs->socket_path && listen_handle != INVALID_HANDLE_VALUE) 
+    {
+        CloseHandle(listen_handle);
+    }
     
     if (i)
     {
@@ -597,7 +601,7 @@ CLEANUP:
 
     pool * tp = ap_make_sub_pool(fcgi_config_pool);
 
-    HANDLE listen_handle;
+    HANDLE listen_handle = INVALID_HANDLE_VALUE;
     char * termination_env_string = NULL;
 
     process->terminationEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
@@ -733,12 +737,12 @@ CLEANUP:
         CloseHandle(pi.hThread);
     }
 
-    if (fs->socket_path) 
+CLEANUP:
+
+    if (fs->socket_path && listen_handle != INVALID_HANDLE_VALUE) 
     {
         CloseHandle(listen_handle);
     }
-
-CLEANUP:
 
     ap_destroy_pool(tp);
 
@@ -1565,7 +1569,9 @@ void child_wait_thread_main(void *dummy) {
                             s->fs_path, (long) s->procs[i].pid, exitStatus);
 
                         CloseHandle(s->procs[i].handle);
+                        CloseHandle(s->procs[i].terminationEvent);
                         s->procs[i].handle = INVALID_HANDLE_VALUE;
+                        s->procs[i].terminationEvent = INVALID_HANDLE_VALUE;
                         s->procs[i].pid = -1;
 
                         /* wake up the main thread */
