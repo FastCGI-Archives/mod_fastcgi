@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.137 2002/09/04 03:23:33 robs Exp $
+ *  $Id: mod_fastcgi.c,v 1.138 2002/09/21 03:25:56 robs Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -2305,40 +2305,51 @@ static int do_work(request_rec * const r, fcgi_request * const fr)
     return rv;
 }
 
-static fcgi_request *create_fcgi_request(request_rec * const r, const char *fs_path)
+static fcgi_request *create_fcgi_request(request_rec * const r, const char *path)
 {
-    struct stat *my_finfo;
+    const char *fs_path;
     pool * const p = r->pool;
     fcgi_server *fs;
     fcgi_request * const fr = (fcgi_request *)ap_pcalloc(p, sizeof(fcgi_request));
 
-#ifndef APACHE2
-    if (fs_path) 
-    {
-#endif
-        my_finfo = (struct stat *)ap_palloc(p, sizeof(struct stat));
-        if (stat(fs_path, my_finfo) < 0) {
-            ap_log_rerror(FCGI_LOG_ERR_ERRNO, r, 
-                "FastCGI: stat() of \"%s\" failed", fs_path);
-            return NULL;
-        }
-#ifndef APACHE2
-    }
-    else {
-        my_finfo = &r->finfo;
-        fs_path = r->filename;
-    }
-#endif
+    fs_path = path ? path : r->filename;
 
     fs = fcgi_util_fs_get_by_id(fs_path, fcgi_util_get_server_uid(r->server), 
                                 fcgi_util_get_server_gid(r->server));
-    if (fs == NULL) {
-        /* Its a request for a dynamic FastCGI application */
-        const char * const err =
-            fcgi_util_fs_is_path_ok(p, fs_path, my_finfo);
+    if (fs == NULL) 
+    {
+        const char * err;
+        struct stat *my_finfo;
 
-        if (err) {
-            ap_log_rerror(FCGI_LOG_ERR_NOERRNO, r, "FastCGI: invalid (dynamic) server \"%s\": %s", fs_path, err);
+        /* dynamic? */
+        
+#ifndef APACHE2
+        if (path == NULL) 
+        {
+            /* AP2: its bogus that we don't make use of r->finfo, but 
+             * its an apr_finfo_t and there is no apr_os_finfo_get() */
+
+            my_finfo = &r->finfo;
+        }
+        else
+#endif
+        {
+            my_finfo = (struct stat *) ap_palloc(p, sizeof(struct stat));
+            
+            if (stat(fs_path, my_finfo) < 0) 
+            {
+                ap_log_rerror(FCGI_LOG_ERR_ERRNO, r, 
+                    "FastCGI: stat() of \"%s\" failed", fs_path);
+                return NULL;
+            }
+        }
+
+        err = fcgi_util_fs_is_path_ok(p, fs_path, my_finfo);
+
+        if (err) 
+        {
+            ap_log_rerror(FCGI_LOG_ERR_NOERRNO, r, 
+                "FastCGI: invalid (dynamic) server \"%s\": %s", fs_path, err);
             return NULL;
         }
     }
@@ -2448,21 +2459,13 @@ static int content_handler(request_rec *r)
     int ret;
 
 #ifdef APACHE2
-
     if (strcmp(r->handler, "fastcgi-script"))
         return DECLINED;
-
-    /* Setup a new FastCGI request */
-    if ((fr = create_fcgi_request(r, r->filename)) == NULL)
-        return HTTP_INTERNAL_SERVER_ERROR;
-
-#else
+#endif
 
     /* Setup a new FastCGI request */
     if ((fr = create_fcgi_request(r, NULL)) == NULL)
         return HTTP_INTERNAL_SERVER_ERROR;
-
-#endif
 
     /* If its a dynamic invocation, make sure scripts are OK here */
     if (fr->dynamic && !(ap_allow_options(r) & OPT_EXECCGI) && !apache_is_scriptaliased(r)) {
@@ -2622,7 +2625,7 @@ static int check_user_authorization(request_rec *r)
     fr->role = FCGI_AUTHORIZER;
 
     /* Do we need compatibility mode? */
-    fr->auth_compat = (dir_config->authenticator_options & FCGI_COMPAT);
+    fr->auth_compat = (dir_config->authorizer_options & FCGI_COMPAT);
 
     if ((res = do_work(r, fr)) != OK)
         goto AuthorizationFailed;
@@ -2680,7 +2683,7 @@ static int check_access(request_rec *r)
     fr->role = FCGI_AUTHORIZER;
 
     /* Do we need compatibility mode? */
-    fr->auth_compat = (dir_config->authenticator_options & FCGI_COMPAT);
+    fr->auth_compat = (dir_config->access_checker_options & FCGI_COMPAT);
 
     if ((res = do_work(r, fr)) != OK)
         goto AccessFailed;

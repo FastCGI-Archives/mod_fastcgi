@@ -1,5 +1,9 @@
 2.2.13
 
+ *) Eliminate need for dummy files for external servers under Apache2
+
+ *) Fix auth compatibility mode handling for access checker and authorizer
+
  *) Fix HEAD request handling.  Based on a patch by 
     Chris Lightfoot [chris@ex-parrot.com]
 
