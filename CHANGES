@@ -1,5 +1,14 @@
 2.2.11
 
+ *) Fix the loadFactor calculation used to determine when dyanmic
+    applications could be killed off due to low demand [adsb@bigfoot.com].
+
+ *) Fix a deadlock condition that could occur with Win32 named 
+    pipes (dynamic).
+
+ *) Fix a potential deadlock condition when FastCGI application
+    sent responses while still reading the client request (POST data).
+
 2.2.10
 
  *) Allow absolute pathnames in the -socket argument.  Suggested by 
