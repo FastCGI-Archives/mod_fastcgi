@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.30 1998/05/05 20:30:47 roberts Exp $
+ *  $Id: mod_fastcgi.c,v 1.31 1998/05/05 22:20:05 roberts Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -269,10 +269,10 @@ int OS_CreateLocalIpcFd(
         uid_t uid, 
         gid_t gid, 
         MakeSocketNameProc makeSocketName,
-    char *execPath,
+        char *execPath,
         char *bindPath,
         int extension,
-    int dynamic)
+        int dynamic)
 {
     OS_IpcAddr *ipcAddrPtr = (OS_IpcAddr *)ipcAddress;
     struct sockaddr_un *addrPtr = NULL;
@@ -404,8 +404,8 @@ int OS_CreateRemoteIpcFd(
      * Bind the listening socket and set it to listen
      */
     if(OS_Bind(resultSock, ipcAddrPtr->serverAddr, ipcAddrPtr->addrLen) < 0
-        || OS_Listen(resultSock, listenQueueDepth) < 0) {
-         goto GET_IPC_ERROR_EXIT;
+            || OS_Listen(resultSock, listenQueueDepth) < 0) {
+        goto GET_IPC_ERROR_EXIT;
     }
 
     return resultSock;
@@ -491,10 +491,10 @@ int ResolveHostname(char *hostname, struct in_addr *addr)
 int OS_CreateLocalIpcAddr(
         OS_IpcAddress ipcAddress,
         MakeSocketNameProc makeSocketName,
-    char *execPath,
+        char *execPath,
         char *bindPath,
         int extension,
-    int dynamic)
+        int dynamic)
 {
     OS_IpcAddr *ipcAddrPtr = (OS_IpcAddr *) ipcAddress;
     struct sockaddr_un* addrPtr = NULL;
@@ -506,8 +506,7 @@ int OS_CreateLocalIpcAddr(
     addrPtr = (struct sockaddr_un *) Malloc(sizeof(struct sockaddr_un));
     ipcAddrPtr->serverAddr = (struct sockaddr *) addrPtr;
     if(OS_BuildSockAddrUn(makeSocketName(execPath, bindPath, 
-                      extension, &ipcAddrPtr->bindPath,
-                                  dynamic),
+            extension, &ipcAddrPtr->bindPath, dynamic),
             addrPtr, &ipcAddrPtr->addrLen)) {
         goto GET_IPC_ADDR_ERROR;
     }
@@ -760,7 +759,7 @@ int WS_Access(const char *path, struct stat *statBuf,
     if(statBuf==NULL) {
         statBuf = (struct stat *)Malloc(sizeof(struct stat));
         if(stat(path, statBuf) < 0) {
-        return -1;
+            return -1;
         }
     }
     /*
@@ -1166,7 +1165,7 @@ DoMbox:
     }
     while((dirp=readdir(dp))!=NULL) {
         if((strcmp(dirp->d_name, ".") == 0) ||
-            (strcmp(dirp->d_name, "..") == 0)) {
+                (strcmp(dirp->d_name, "..") == 0)) {
             continue;
         }
         memset(dpentry+strlen(ipcDynamicDir)+1, 0, 254);
@@ -2203,8 +2202,7 @@ const char *ExternalAppClassCmd(cmd_parms *cmd, void *dummy, char *arg)
     } else {
         DStringAppend(&serverInfoPtr->bindName, localPath, -1);
         configResult = ConfigureLocalServer(
-        className, localPath, FALSE,
-                1, serverInfoPtr);
+                className, localPath, FALSE, 1, serverInfoPtr);
     }
 
     if(configResult == 0) {
@@ -2682,18 +2680,18 @@ NothingToDo:
             /* create a socket file for the app */
             ipcAddrPtr = (OS_IpcAddr *) OS_InitIpcAddr();
             listenFd = OS_CreateLocalIpcFd((OS_IpcAddress *)ipcAddrPtr,
-                FCGI_DEFAULT_LISTEN_Q,
-                (user_id == (uid_t) -1)  ? geteuid() : user_id,
+                    FCGI_DEFAULT_LISTEN_Q,
+                    (user_id == (uid_t) -1)  ? geteuid() : user_id,
 #ifndef __EMX__
-                (group_id == (gid_t) -1) ? getegid() : group_id,
+                    (group_id == (gid_t) -1) ? getegid() : group_id,
 #else
-                (gid_t)-1,
+                    (gid_t)-1,
 #endif
-                MakeSocketName, execName,
-                NULL, -1, 1);
+                    MakeSocketName, execName,
+                    NULL, -1, 1);
             if(listenFd<0) {
                 fprintf(errorLogFile, "Unable to create a socket for %s\n",
-                    execName);
+                        execName);
             } else {
                 s->listenFd = listenFd;
                 for(i=0;i<maxClassProcs;i++) {
@@ -2718,7 +2716,7 @@ NothingToDo:
                     struct stat stbuf;
                     int i, numChildren;
                     if ((stat(execName, &stbuf)==0) &&
-                        (stbuf.st_mtime > s->restartTime)) {
+                            (stbuf.st_mtime > s->restartTime)) {
                         /* kill old server(s) */
                         if (s->directive == APP_CLASS_DYNAMIC) {
                             numChildren = maxClassProcs;
@@ -2729,8 +2727,8 @@ NothingToDo:
                             kill(s->procInfo[i].pid, SIGTERM);
                         }
                         fprintf(errorLogFile,
-                            "mod_fastcgi: binary %s modified, restarting FCGI app server\n",
-                            execName);
+                                "mod_fastcgi: binary %s modified, restarting FCGI app server\n",
+                                execName);
                     }
                     if (restartDynamic) {
                         /* don't worry about restarting the processes after
@@ -2776,8 +2774,8 @@ NothingToDo:
                 if((s->numProcesses+1)>maxClassProcs) {
                     /* Can't do anything here, log error */
                     fprintf(errorLogFile,
-                        "[%s] mod_fastcgi: Exceeded maxClassProcs\n",
-                        get_time());
+                            "[%s] mod_fastcgi: Exceeded maxClassProcs\n",
+                            get_time());
                     continue;
                 }
                 if((globalNumInstances+1)>maxProcs) {
@@ -2787,16 +2785,16 @@ NothingToDo:
                      * to increase ProcessSlack parameter
                      */
                     fprintf(errorLogFile,
-                        "[%s] mod_fastcgi: Exceeded maxProcs\n",
-                        get_time());
+                            "[%s] mod_fastcgi: Exceeded maxProcs\n",
+                            get_time());
                     continue;
                 }
                 /* find next free slot */
                 for(i=0;i<maxClassProcs;i++) {
                     if((s->procInfo[i].pid == -1) &&
-                        ((s->procInfo[i].state == STATE_READY) ||
-                        (s->procInfo[i].state == STATE_NEEDS_STARTING) ||
-                        (s->procInfo[i].state == STATE_KILLED)))
+                            ((s->procInfo[i].state == STATE_READY) ||
+                            (s->procInfo[i].state == STATE_NEEDS_STARTING) ||
+                            (s->procInfo[i].state == STATE_KILLED)))
                         break;
                 }
                 ASSERT(i<maxClassProcs);
@@ -2923,7 +2921,7 @@ void KillDynamicProcs()
         loadFactor = connTime/totalTime*100.0;
         if(((s->numProcesses>1) &&
                 (((s->numProcesses/(s->numProcesses-1))*loadFactor)
-                <threshholdN)) ||
+                < threshholdN)) ||
                 ((s->numProcesses==1) &&
                 (loadFactor<threshhold1))) {
             for(i=0;i<maxClassProcs;i++) {
@@ -3203,7 +3201,7 @@ void FastCgiProcMgr(void *data)
                                 s->processPriority,
                                 DStringValue(&s->execPath),
                                 s->envp,
-                        FastCgiProcMgrGetErrLog);
+                                FastCgiProcMgrGetErrLog);
                         if(status != 0) {
                             fprintf(errorLogFile,
                                     "[%s] mod_fastcgi: AppClass %s"
@@ -3216,7 +3214,7 @@ void FastCgiProcMgr(void *data)
                             if(s->directive != APP_CLASS_DYNAMIC) {
                                 sleepSeconds = min(sleepSeconds,
                                         max(s->restartDelay,
-                                            FCGI_MIN_EXEC_RETRY_DELAY));
+                                        FCGI_MIN_EXEC_RETRY_DELAY));
                             } else {
                                 s->procInfo[i].state = STATE_READY;
                             }
@@ -3913,9 +3911,9 @@ static int CgiToClientBuffer(FastCgiInfo *infoPtr)
                 if(!infoPtr->readingEndRequestBody) {
                     if(infoPtr->dataLen != sizeof(FCGI_EndRequestBody)) {
                         sprintf(infoPtr->errorMsg,
-                            "mod_fastcgi: FastCGI protocol error -"
-                            " FCGI_END_REQUEST record body size %d !="
-                            " sizeof(FCGI_EndRequestBody)", infoPtr->dataLen);
+                                "mod_fastcgi: FastCGI protocol error -"
+                                " FCGI_END_REQUEST record body size %d !="
+                                " sizeof(FCGI_EndRequestBody)", infoPtr->dataLen);
                         return SERVER_ERROR;
                     }
                     infoPtr->readingEndRequestBody = TRUE;
@@ -3989,8 +3987,7 @@ static int CgiToClientBuffer(FastCgiInfo *infoPtr)
  *      first non-space character and store a terminating zero.  Return
  *      the next character past the end of the newline.
  *
- *      If the end of the string is reached, return a pointer to the
- *      end of the string.
+ *      If the end of the string is reached, ASSERT!
  *
  *      If the FIRST character(s) in the line are '\n' or "\r\n", the 
  *      first character is replaced with a NULL and next character
@@ -4030,10 +4027,9 @@ char *ScanLine(char *start, int continuation)
         }
     }
 
+    ASSERT(*p != '\0');
     end = p;
-    if(*end != '\0') {
-        end++;
-    }
+    end++;
 
     /*
      * Trim any trailing whitespace.
@@ -4101,6 +4097,12 @@ void ScanCGIHeader(WS_Request *reqPtr, FastCgiInfo *infoPtr)
                 break;
             case '\n':
                 flag++;
+                break;
+            case '\0':
+            case '\v':
+            case '\f':
+                name = "Invalid Character";
+                goto BadHeader;
                 break;
             default:
                 flag = 0;
@@ -4225,17 +4227,11 @@ void ScanCGIHeader(WS_Request *reqPtr, FastCgiInfo *infoPtr)
     len = next - DStringValue(infoPtr->header);
     len = DStringLength(infoPtr->header) - len;
     ASSERT(len >= 0);
+    ASSERT(BufferLength(infoPtr->reqOutbufPtr) == 0);
     if(BufferFree(infoPtr->reqOutbufPtr) < len) {
-        /*
-         * XXX: Since headers don't pass through reqOutbuf anymore,
-         * the following code appears unnecessary.  But does Open Market
-         * server have a lurking problem here?
-         */
-         int bufLen = BufferLength(infoPtr->reqOutbufPtr);
-         Buffer *newBuf = BufferCreate(len + bufLen);
-         BufferMove(newBuf, infoPtr->reqOutbufPtr, bufLen);
-         BufferDelete(infoPtr->reqOutbufPtr);
-         infoPtr->reqOutbufPtr = newBuf;
+        Buffer *newBuf = BufferCreate(len);
+        BufferDelete(infoPtr->reqOutbufPtr);
+        infoPtr->reqOutbufPtr = newBuf;
     }
     ASSERT(BufferFree(infoPtr->reqOutbufPtr) >= len);
     if(len > 0) {
@@ -4722,14 +4718,14 @@ static int FastCgiHandler(WS_Request *reqPtr)
                      * and do a restart instead.
                      */
                     SignalProcessManager(PLEASE_START,
-                      reqPtr->filename, 0, 0, 0);
+                        reqPtr->filename, 0, 0, 0);
                     sleep(1);
                 }
                 lockFd = open(lockFileName,O_APPEND);
                 result = (lockFd<0)?(0):(1);
             } else {
                 SignalProcessManager(PLEASE_START,
-                  reqPtr->filename, 0, 0, 0);
+                    reqPtr->filename, 0, 0, 0);
                 sleep(1);
             }
         } while (result!=1);
