@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_pm.c,v 1.82 2002/10/22 02:37:32 robs Exp $
+ * $Id: fcgi_pm.c,v 1.83 2002/10/24 00:58:57 robs Exp $
  */
 
 
@@ -8,9 +8,12 @@
 #if defined(APACHE2) && !defined(WIN32)
 #include <pwd.h>
 #include <unistd.h>
-#include <utime.h>
 #include "unixd.h"
 #include "apr_signal.h"
+#endif
+
+#ifndef WIN32
+#include <utime.h>
 #endif
 
 #ifdef _HPUX_SOURCE
