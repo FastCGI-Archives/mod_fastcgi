@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.54 1998/10/31 13:56:46 roberts Exp $
+ *  $Id: mod_fastcgi.c,v 1.55 1998/11/23 03:48:13 roberts Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -18,11 +18,6 @@
  *  Patches for Linux provided by
  *  Scott Langley
  *  <langles@vote-smart.org>
- *
- *  Patches for suexec handling by
- *  Brian Grossman <brian@SoftHome.net> and
- *  Rob Saccoccio <robs@InfiniteTechnology.com>
- *
  */
 
 /*
@@ -879,8 +874,6 @@ typedef struct _FastCgiServerInfo {
     int fcgiFd;                     /* fcgi IPC file descriptor for
                                      * persistent connections.  Not used
                                      * by Apache. */
-    char *user;                     /* used with suexec to exec apps */
-    char *group;                    /* used with suexec to exec apps */
     /* Dynamic FastCGI apps configuration parameters */
     unsigned long totalConnTime;    /* microseconds spent by the web server
                                      * waiting while fastcgi app performs
@@ -1317,8 +1310,6 @@ static FastCgiServerInfo *CreateFcgiServerInfo(int numInstances, char *ePath)
      */
     serverInfoPtr = (FastCgiServerInfo *) fcgi_Malloc(sizeof(FastCgiServerInfo));
     DStringInit(&serverInfoPtr->execPath);
-    serverInfoPtr->user = "-";
-    serverInfoPtr->group = "-";
     serverInfoPtr->envp = NULL;
     serverInfoPtr->listenQueueDepth = FCGI_DEFAULT_LISTEN_Q;
     serverInfoPtr->appConnectTimeout = FCGI_DEFAULT_APP_CONN_TIMEOUT;
@@ -1949,31 +1940,6 @@ const char *AppClassCmd(cmd_parms *cmd, void *dummy, char *arg)
     }
     serverInfoPtr = CreateFcgiServerInfo(numProcesses, execPath);
     ASSERT(serverInfoPtr != NULL);
-
-    if (suexec_enabled) {
-        struct passwd *pw;
-        struct group  *gr;
-        
-        pw = getpwuid(cmd->server->server_uid);
-        if (pw == NULL) {
-            sprintf(errMsg, "[%s] mod_fastcgi: "
-                    "getpwuid() couldn't determine user name from uid '%ld', "
-                    "you probably need to modify the User directive: %s\n",
-                    get_time(), (long)cmd->server->server_uid, strerror(errno));
-            goto ErrorReturn;
-        }
-        serverInfoPtr->user = strdup(pw->pw_name);
-
-        gr = getgrgid(cmd->server->server_gid);
-        if (gr == NULL) {
-            sprintf(errMsg, "[%s] mod_fastcgi: "
-                    "getgrgid() couldn't determine group name from gid '%ld', "
-                    "you probably need to modify the Group directive: %s\n",
-                    get_time(), (long)cmd->server->server_gid, strerror(errno));
-            goto ErrorReturn;
-        }
-        serverInfoPtr->group = strdup(gr->gr_name);
-    }
     DStringAppend(&serverInfoPtr->execPath, execPath, -1);
     serverInfoPtr->restartOnExit = TRUE;
     serverInfoPtr->initStartDelay = initStartDelay;
@@ -2550,7 +2516,7 @@ int LockRegion(int fd, int cmd, int type, off_t offset, int whence, off_t len)
 #define TMP_BUFSIZ (512)
 #endif
 
-int AddNewRecord(char id, char* execPath, char *user, char *group,
+int AddNewRecord(char id, char* execPath,
         unsigned long qsecs, unsigned long ctime, unsigned long now)
 {
     int fd, size, status;
@@ -2559,12 +2525,12 @@ int AddNewRecord(char id, char* execPath, char *user, char *group,
     memset(buf, 0, TMP_BUFSIZ);
     switch(id) {
         case PLEASE_START:
-                sprintf(buf, "%c %s %s %s\n",
-                id, execPath, user, group);
+                sprintf(buf, "%c %s\n",
+                id, execPath);
                 break;
         case CONN_TIMEOUT:
-                sprintf(buf, "%c %s %s %s %lu\n",
-                id, execPath, user, group, qsecs);
+                sprintf(buf, "%c %s %lu\n",
+                id, execPath, qsecs);
                 break;
         case REQ_COMPLETE:
                 sprintf(buf, "%c %s %lu %lu %lu\n",
@@ -2620,14 +2586,10 @@ int RemoveRecords(void)
     char *lockFileName=NULL;
     char *ptr1=NULL, *ptr2=NULL;
     char execName[TMP_BUFSIZ];
-    char user[33];
-    char group[33];
     unsigned long qsec = 0, ctime = 0; /* microseconds spent waiting for the
                                         * application, and spent using it */
     time_t now = time(NULL);
     int listenFd;
-
-    user[32] = group[32] = '\0';
 
     /* Obtain the data from the mbox file */
     if((fd = open(mbox, O_RDWR))<0) {
@@ -2701,10 +2663,10 @@ NothingToDo:
         opcode = *ptr1;
         switch (opcode) {
             case PLEASE_START:
-                sscanf(ptr1, "%c %s %32s %32s\n", &opcode, execName, user, group);
+                sscanf(ptr1, "%c %s\n", &opcode, execName);
                 break;
             case CONN_TIMEOUT:
-                sscanf(ptr1, "%c %s %32s %32s %lu\n", &opcode, execName, user, group, &qsec);
+                sscanf(ptr1, "%c %s %lu\n", &opcode, execName, &qsec);
                 break;
             case REQ_COMPLETE:
                 sscanf(ptr1, "%c %s %lu %lu %lu\n", &opcode, execName,
@@ -2718,8 +2680,6 @@ NothingToDo:
         if(s==NULL && opcode != REQ_COMPLETE) {
             s = CreateFcgiServerInfo(maxClassProcs, execName);
             DStringAppend(&s->execPath, execName, -1);
-            s->user = strdup(user);
-            s->group = strdup(group);
             s->numProcesses = 0;
             s->restartTime = 0;
             s->restartDelay = dynamicRestartDelay;
@@ -3175,22 +3135,22 @@ static int CaughtSigTerm(void)
  *----------------------------------------------------------------------
  */
 
-static char * SuexecCheck(char *file, char *user, char *group);
-
-
 static int OS_ExecFcgiProgram(
         pid_t *childPid,
         int listenFd,
         int priority,
         char *programName,
-        char **envPtr,
-        char *user,
-        char *group)
+        char **envPtr)
 {
     int i;
     DString dirName;
     char *dnEnd, *failedSysCall;
+    char *dispatchProgram = programName;
     int save_errno;
+
+#ifdef RBOX_PATH
+    dispatchProgram = RBOX_PATH;
+#endif
 
     /*
      * Fork the fcgi process.
@@ -3220,7 +3180,7 @@ static int OS_ExecFcgiProgram(
     }
     if(chdir(DStringValue(&dirName)) < 0) {
         failedSysCall = "chdir";
-        goto FailedSystemCallExit;
+        goto ErrorExit;
     }
     DStringFree(&dirName);
 
@@ -3229,7 +3189,7 @@ static int OS_ExecFcgiProgram(
     if(priority != 0) {
         if(nice(priority) == -1) {
             failedSysCall = "nice";
-            goto FailedSystemCallExit;
+            goto ErrorExit;
         }
     }
 #endif
@@ -3243,40 +3203,17 @@ static int OS_ExecFcgiProgram(
             OS_Close(i);
         }
     }
-
-    if (suexec_enabled) {
-        /* Although the stock suexec will preclude a program from being started
-         * with a uid/gid different than that of the file, we have to prevent
-         * it here in case the stock suexec is modified or replaced by another 
-         * program.  We have to impose a rule that clearly and uniquely
-         * identifies the user/group that a program can be run as so
-         * its clear when VirtualHost is used.
-         */
-        char *shortName = strrchr(programName, '/') + 1;
-
-        /* It would be better to check this in AppClass for static apps and in 
-         * RemoveRecords() for dynamic - before commiting the FcgiServerInfo.
-         */
-        char *result = SuexecCheck(shortName, user, group);
-        if (result) {
-            fprintf(FastCgiProcMgrGetErrLog(),
-                    "[%s] mod_fastcgi: can't suexec '%s': %s\n",
-                    get_time(), programName, result);
-            exit (-1);
+    do {
+        if(envPtr != NULL) {
+            execle(dispatchProgram, programName, NULL, envPtr);
+            failedSysCall = "execle";
+        } else {
+            execl(dispatchProgram, programName, NULL);
+            failedSysCall = "execl";
         }
-        do {
-            execle(SUEXEC_BIN, SUEXEC_BIN, user, group, shortName, NULL, envPtr);
-        } while (errno == EINTR);
-    } else {
-        do {
-            execle(programName, programName, NULL, envPtr);
-        } while (errno == EINTR);
-    }
+    } while(errno == EINTR);
 
-    failedSysCall = "execle";
-
-
-FailedSystemCallExit:
+ErrorExit:
     save_errno = errno;
     /*
      * We had to close all files but the FCGI listener socket in order to
@@ -3290,7 +3227,7 @@ FailedSystemCallExit:
             get_time(), programName, (long) getpid(), failedSysCall,
             strerror(save_errno));
     exit(save_errno);
-    return(save_errno);  /* avoid an irrelevant compiler warning */
+    return(0);          /* avoid an irrelevant compiler warning */
 }
 
 void FastCgiProcMgr(void *data)
@@ -3333,13 +3270,6 @@ void FastCgiProcMgr(void *data)
                 get_time(), strerror(errno));
         fflush(errorLog);
         exit(1);
-    }
-
-    if (suexec_enabled) {
-        fprintf(errorLog,
-            "[%s] mod_fastcgi: suEXEC mechanism enabled (wrapper: %s)\n", 
-            get_time(), SUEXEC_BIN);
-        fflush(errorLog);
     }
 
     /* Initialize AppClass */
@@ -3416,7 +3346,7 @@ void FastCgiProcMgr(void *data)
                                 s->procInfo[i].listenFd,
                                 s->processPriority,
                                 DStringValue(&s->execPath),
-                                s->envp, s->user, s->group);
+                                s->envp);
                         if(status != 0) {
                             fprintf(errorLog,
                                     "[%s] mod_fastcgi: %s"
@@ -3856,10 +3786,10 @@ void ModFastCgiInit(server_rec *s, pool *p)
  *----------------------------------------------------------------------
  */
 
-void SignalProcessManager(char id, char *execPath, char *user, char *group,
+void SignalProcessManager(char id, char *execPath,
         unsigned long qsecs, unsigned long ctime, unsigned long now)
 {
-    AddNewRecord(id, execPath, user, group, qsecs, ctime, now);
+    AddNewRecord(id, execPath, qsecs, ctime, now);
     if(id!=REQ_COMPLETE) {
         kill(procMgr, SIGUSR2);
     }
@@ -4703,159 +4633,6 @@ static void DrainReqOutbuf(WS_Request *reqPtr, FastCgiInfo *infoPtr)
     }
     BufferToss(infoPtr->reqOutbufPtr, count);
 }
-
-
-/*
- *----------------------------------------------------------------------
- *
- * GetUidGid --
- *
- *      Determine the user and group suexec should be called with.
- *      Based on code in Apache's create_argv_cmd() (util_script.c).
- *
- * Results:
- *      0   success
- *      <0  failure
- *
- * Side effects:
- *      none
- *
- *----------------------------------------------------------------------
- */
-
-static int GetUserGroup(FastCgiInfo *infoPtr, char **user, char **group)
-{
-    struct passwd *pw;
-    struct group *gr;
-    WS_Request *r = infoPtr->reqPtr; 
-  
-    if (!suexec_enabled) {
-        *user = "-";
-        *group = "-";
-        return 0;
-    }
-
-    if (!strncmp("/~", r->uri, 2)) {
-        char *username = pstrdup(r->pool, r->uri + 2);
-        char *pos = strchr(username, '/');
-            
-        if (pos) 
-            *pos = '\0';
-
-        pw = getpwnam(username);
-        if (pw == NULL) {
-            sprintf(infoPtr->errorMsg,
-                "mod_fastcgi: getpwnam(%s) failed: ", username);
-            return -1;
-        }
-
-        *user = pstrcat(r->pool, "~", pw->pw_name, NULL);
-
-        gr = getgrgid(pw->pw_gid);
-        if (gr == NULL) {
-            *group = palloc(r->pool, 16);
-            if (*group == NULL) {
-                sprintf(infoPtr->errorMsg,
-                    "mod_fastcgi: getgrgid(%ld) failed and palloc(16) failed!",
-                    (long) pw->pw_gid);
-                return -2;
-            } else {
-                snprintf(*group, 16, "%ld", (long) pw->pw_gid);
-            }
-        }
-        else {
-            *group = pstrdup(r->pool, gr->gr_name);
-        }
-        return 0;
-    } else {
-        pw = getpwuid(r->server->server_uid);
-        if (pw == NULL) {
-            sprintf(infoPtr->errorMsg,
-                "mod_fastcgi: getpwuid(%ld) failed: ", 
-                (long) r->server->server_uid);
-            return -3;
-        }
-        *user = pstrdup(r->pool, pw->pw_name);
-
-        gr = getgrgid(r->server->server_gid);
-        if (gr == NULL) {
-            sprintf(infoPtr->errorMsg,
-                "mod_fastcgi: getgrgid(%ld) failed: ", 
-                    (long) r->server->server_gid);
-            return -4;
-        }
-        *group = pstrdup(r->pool, gr->gr_name);
-        return 0;
-    }
-}
-
-#ifndef PATH_MAX
-#if defined(MAXPATHLEN)
-#define PATH_MAX MAXPATHLEN
-#else
-#define PATH_MAX 1024
-#endif
-#endif
-
-static char *
-SuexecCheck(char *file, char *user, char *group)
-{
-    static char   resultBuf[PATH_MAX + 50];
-
-    struct stat   statBuf;
-    struct passwd *pw;
-    struct group  *gr;
-    gid_t         gid;
-    char          *userName = user;    
-
-    /* ### Should probably make sure the dir isn't writable by group or other,
-     * the file isn't writable by group or other, the file is executable by 
-     * user.  See suexec.c.
-     */
-
-    if (lstat(file, &statBuf) != 0) {
-        sprintf(resultBuf, "mod_fastcgi: lstat(%.*s) failed", PATH_MAX, file);
-        return (resultBuf);
-    }
-
-    if (user[0] == '~')
-        userName = user + 1;
-
-    pw = getpwnam(userName);
-    if (pw == NULL) {
-        sprintf(resultBuf, "mod_fastcgi: getpwnam(%s) failed", userName);
-        return (resultBuf);
-    }
-    if (pw->pw_uid != statBuf.st_uid) {
-        sprintf(resultBuf,
-            "mod_fastcgi: the fastcgi-script's uid (%ld) is not the same as exec'ing user (%ld)",
-            (long) statBuf.st_uid, (long) pw->pw_uid);
-        return (resultBuf);
-    }
-
-    gr = getgrnam(group);
-    if (gr == NULL) {
-        if (strspn(group, "1234567890") == strlen(group)) {
-            gid = atoi(group);
-        } else {
-            sprintf(resultBuf,
-                "mod_fastcgi: getgrnam(%s) failed and '%s' is not numeric",
-                group, group);
-            return (resultBuf);
-        }
-    } else {
-        gid = gr->gr_gid;
-    }  
-          
-    if (gid != statBuf.st_gid) {
-        sprintf(resultBuf,
-            "mod_fastcgi: the fastcgi-script's gid (%ld) is not the same as exec'ing group (%ld)",
-            (long) statBuf.st_gid, (long) gid);
-        return (resultBuf);
-    }
-    return (NULL);
-}
-
 
 /*
  *----------------------------------------------------------------------
@@ -4879,29 +4656,6 @@ static int ConnectToFcgiApp(WS_Request *reqPtr, FastCgiInfo *infoPtr)
     struct timeval  tval;
     fd_set          write_fds, read_fds;
     int             status;
-    char            *user = NULL;
-    char            *group = NULL;
-
-    
-    if (GetUserGroup(infoPtr, &user, &group) != 0) {
-        goto SystemError;
-    }
-
-    if (suexec_enabled) {
-        /* This is a pretty big hit to take for every request,
-         * but we have to be sure the connect isn't being made to a 
-         * app this running as a different uid/gid than is 
-         * appropriate for this request.  A better way of handling this
-         * is to check the FcgiServerInfo table to get uid/gid info
-         * for static apps and to use the uid/gid in the generation
-         * of the socket file for dynamic apps.
-         */
-        char *result = SuexecCheck(reqPtr->filename, user, group);
-        if (result) {
-            sprintf(infoPtr->errorMsg, "%s", result);
-            goto Error;
-        }
-    }
 
     /* Dynamic app's lockfile handling */
     if(infoPtr->dynamic) {
@@ -4919,16 +4673,15 @@ static int ConnectToFcgiApp(WS_Request *reqPtr, FastCgiInfo *infoPtr)
                      * it will notice that the binary is newer,
                      * and do a restart instead.
                      */
-                    
                     SignalProcessManager(PLEASE_START,
-                        reqPtr->filename, user, group, 0, 0, 0);
+                        reqPtr->filename, 0, 0, 0);
                     sleep(1);
                 }
                 infoPtr->lockFd = open(lockFileName,O_APPEND);
                 result = (infoPtr->lockFd < 0) ? (0) : (1);
             } else {
                 SignalProcessManager(PLEASE_START,
-                    reqPtr->filename, user, group, 0, 0, 0);
+                    reqPtr->filename, 0, 0, 0);
                 sleep(1);
             }
         } while (result != 1);
@@ -5035,7 +4788,7 @@ static int ConnectToFcgiApp(WS_Request *reqPtr, FastCgiInfo *infoPtr)
             if(status == 0) {
                 /* select() timed out */
                 SignalProcessManager(CONN_TIMEOUT,
-                        reqPtr->filename, user, group,
+                        reqPtr->filename,
                         (unsigned long)startProcessDelay*1000000,
                         0, 0);
             } else {
@@ -5172,7 +4925,6 @@ static void CloseConnectionToFcgiApp(FastCgiInfo *infoPtr)
                 fflush (infoPtr->reqPtr->server->error_log);
             } else {
                 SignalProcessManager(REQ_COMPLETE, infoPtr->reqPtr->filename,
-                    "-", "-",
                     (unsigned long)((infoPtr->queueTime.tv_sec
                         - infoPtr->startTime.tv_sec)*1000000
                         + infoPtr->queueTime.tv_usec
