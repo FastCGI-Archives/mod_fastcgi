@@ -16,7 +16,7 @@ Notes
   NetBSD (see http://www.netbsd.org/packages/www/ap-fastcgi/), FreeBSD,
   Digital Unix, AIX, IRIX, FreeBSD, Windows (NT4 and NT2K), and QNX (Inet
   sockets only).  If you're successful in using this module on other
-  platforms, please email fastcgi-developers@fastcgi.com.
+  platforms, please email fastcgi-developers @ fastcgi.com.
 
   This module is maintained at http://www.fastcgi.com.  
   
