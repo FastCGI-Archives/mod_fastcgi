@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_pm.c,v 1.70 2002/02/28 22:52:50 robs Exp $
+ * $Id: fcgi_pm.c,v 1.71 2002/03/13 23:31:08 robs Exp $
  */
 
 
@@ -826,6 +826,8 @@ static void dynamic_read_msgs(int read_ready)
             scan_failed = 1;
             break;
         }
+
+	FCGIDBG7("read_job: %c %s %s %s %lu %lu", opcode, execName, user, group, q_usec, req_usec);
 
         if (scan_failed) {
             ap_log_error(FCGI_LOG_ERR_NOERRNO, fcgi_apache_main_server,
