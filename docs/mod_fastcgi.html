@@ -1,6 +1,6 @@
 <!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">
 <html>
-<!-- $Id: mod_fastcgi.html,v 1.11 1999/06/07 05:24:52 roberts Exp $ -->
+<!-- $Id: mod_fastcgi.html,v 1.12 1999/06/18 02:47:33 roberts Exp $ -->
 
 <head>
 <title>Apache module mod_fastcgi</title>
@@ -51,7 +51,11 @@ document that came with the distribution.</p>
 <p>FastCGI applications under <code>mod_fastcgi</code> are defined as one of three types:
 static, dynamic, or external.&nbsp; They're configured using the <a href="#fastcgiserver">FastCgiServer</a>,
 <a href="#FastCgiConfig">FastCgiConfig</a>, and <a href="#FastCgiExternalServer">FastCgiExternalServer</a>
-<a href="#directives">directives</a> respectively.</p>
+<a href="#directives">directives</a> respectively.&nbsp; Any URI that Apache identifies as
+a FastCGI application and which hasn't been explicitly configured using a <a
+href="#fastcgiserver">FastCgiServer</a> or <a href="#FastCgiExternalServer">FastCgiExternalServer</a>
+directive is handled as a dynamic application (see the <a href="#FastCgiConfig">FastCgiConfig</a>
+directive for more information).</p>
 
 <p>FastCGI static and dynamic applications are spawned and managed by the FastCGI Process
 Manager, fcgi-pm.&nbsp; The process manager is spawned by Apache at server initialization.
@@ -84,11 +88,13 @@ the specified extension(s) as FastCGI applications:</p>
   application's directory.&nbsp; <code>ExecCGI</code> can be enabled using either the <a
   href="http://www.apache.org/docs/mod/core.html#options"><code>Options</code></a> or <a
   href="http://www.apache.org/docs/mod/mod_alias.html#scriptalias"><code>ScriptAlias</code></a>
-  directives.</p>
+  directives.&nbsp; </p>
   <h2>Notes</h2>
   <p><code>mod_fastcgi</code> logs FastCGI application error (stderr) output to the server
   log associated with the request.&nbsp; Errors reported by the FastCGI process manager,
-  fcgi-pm, are reported to the main server log (typically, logs/error_log).</p>
+  fcgi-pm, are reported to the main server log (typically, logs/error_log).&nbsp; If
+  Apache's <a href="http://www.apache.org/docs/mod/core.html#loglevel"><code>LogLevel</code></a>
+  is set to <code>info</code> additional informational messages are printed to the log.</p>
   <p>To pass per-request environment variables to FastCGI applications, have a look at: <a
   href="http://www.apache.org/docs/mod/mod_env.html"><code>mod_env</code></a> (<code>SetEnv</code>,
   <code>PassEnv</code>, <code>UnSetEnv</code>), <a
@@ -115,10 +121,13 @@ the specified extension(s) as FastCGI applications:</p>
   Apache until the output of one handler can be piped into another (Apache 2.0 is expected
   to support this).&nbsp; The Log Role has some value, but I just haven't implemented it (if
   you have interest in it speak up).&nbsp; </p>
-  <p>Multiplexed requests are not supported. &nbsp; The FastCGI application library which
-  provides the FastCGI protocol support within FastCGI applications does not currently
-  support it (and thus doesn't have to be supported here).&nbsp; This may become a higher
-  priority when <code>mod_fastcgi</code> is ported to NT (Apache is threaded on NT).&nbsp; </p>
+  <p>Multiplexed requests are not supported. &nbsp; This means that each request requires
+  its own independent connect()/accept().&nbsp; The protocol supports the concept of a
+  connection simultaneously shared by multiple requests.&nbsp; The FastCGI application
+  library which provides the FastCGI protocol support within FastCGI applications does not
+  currently support it (and thus doesn't have to be supported here).&nbsp; This may become a
+  higher priority when <code>mod_fastcgi</code> is ported to NT (Apache is threaded on
+  NT).&nbsp; </p>
   <p>I don't believe any other existing FastCGI server implementation supports these
   features.</p>
   <p>The Authorizer Role has three variations corresponding to each three related Apache
@@ -132,7 +141,7 @@ the specified extension(s) as FastCGI applications:</p>
   are passed to subprocesses (CGI/FastCGI invocations) as environment variables rather than
   just those prefixed by &quot;<code>Variable-</code>&quot; as the FastCGI specification
   calls for; I didn't see the point in leaving them out either.&nbsp; FastCGI specification
-  compliant authorizer behaviour can be obtained by using the &quot;<code>-compat</code>&quot;
+  compliant authorizer behavior can be obtained by using the &quot;<code>-compat</code>&quot;
   option to the Auth server directives.</p>
   <p>Custom failure responses from FastCGI authorizer applications are not (yet?)
   supported.&nbsp; See the <a href="http://www.apache.org/docs/mod/core.html#errordocument">ErrorDocument</a>
@@ -186,9 +195,9 @@ the specified extension(s) as FastCGI applications:</p>
     the listen-queue is obtained (the three-way handshake completes), but before the
     connection is <code>accept()</code>ed by the application.&nbsp; Unix sockets appear to
     need the connection to be <code>accept()</code>ed before becoming writeable.&nbsp; If set
-    to 0, a blocking <code>connect()</code> is used and the timeout is OS dependent.
-    &nbsp; Non-blocking <code>connect()</code>s can be troublesome and will likely become
-    optional rather than the default in the next release.</dd>
+    to 0, a blocking <code>connect()</code> is used and the timeout is OS dependent. &nbsp;
+    Non-blocking <code>connect()</code>s can be troublesome and will likely become optional
+    rather than the default in the next release.</dd>
   <dt><code><b>-initial-env <em>name[=value</b><strong>]</strong> none</em></code></dt>
   <dd>A name-value pair to be passed in the initial environment when instances of the
     application are spawned.&nbsp; To pass a variable from the Apache environment, don't
@@ -220,7 +229,7 @@ the specified extension(s) as FastCGI applications:</p>
   <dd>The minimum number of seconds between the respawning of failed instances of this
     application.&nbsp; This delay prevents a broken application from soaking up too much of
     the system.</dd>
-  <dt><code><b>-socket<em> filename</em>&nbsp;</b><em>gen'd</em></code></dt>
+  <dt><code><b>-socket<em> filename</em>&nbsp;</b><em>(gen'd)</em></code></dt>
   <dd>The filename of the Unix domain socket that the application will use for communication
     with the web server.&nbsp; The module creates the socket within the directory specified by
     <code>FastCgiIpcDir</code>.&nbsp; This option makes the application accessible to other
@@ -265,9 +274,9 @@ the specified extension(s) as FastCGI applications:</p>
     slot in the listen-queue is obtained (the three-way handshake completes), but before the
     connection is <code>accept()</code>ed by the application.&nbsp; Unix sockets appear to
     need the connection to be <code>accept()</code>ed before becoming writeable.&nbsp; If set
-    to 0, a blocking <code>connect()</code> is used and the timeout is OS dependent.
-    &nbsp; Non-blocking <code>connect()</code>s can be troublesome and will likely become
-    optional rather than the default in the next release.</dd>
+    to 0, a blocking <code>connect()</code> is used and the timeout is OS dependent. &nbsp;
+    Non-blocking <code>connect()</code>s can be troublesome and will likely become optional
+    rather than the default in the next release.</dd>
   <dt><code><strong>-autoUpdate</strong> <em>none</em></code></dt>
   <dd>This option causes mod_fastcgi to check the age of the application on disk before
     processing each request.&nbsp; If the application is more recent, the process manager is
@@ -509,12 +518,16 @@ typically available to CGI/FastCGI request handlers.&nbsp; All headers returned 
 FastCGI authentication application in a successful response (Status: 200) are passed to
 subprocesses (CGI/FastCGI invocations) as environment variables.&nbsp; All headers
 returned in an unsuccessful response are passed on to the client.&nbsp; FastCGI
-specification compliant behaviour can be obtained by using the &quot;<code>-compat</code>&quot;
+specification compliant behavior can be obtained by using the &quot;<code>-compat</code>&quot;
 option.</p>
 
 <p><code>mod_fastcgi</code> sets the environment variable &quot;FCGI_APACHE_ROLE&quot; to
 &quot;AUTHENTICATOR&quot; to indicate which (Apache specific) authorizer phase is being
 performed.</p>
+
+<p>Custom failure responses from FastCGI authorizer applications are not (yet?)
+supported.&nbsp; See the <a href="http://www.apache.org/docs/mod/core.html#errordocument">ErrorDocument</a>
+directive for a workaround (a FastCGI application can serve the document).</p>
 
 <hr>
 
@@ -601,12 +614,16 @@ typically available to CGI/FastCGI request handlers.&nbsp; All headers returned 
 FastCGI authorizer application in a successful response (Status: 200) are passed to
 subprocesses (CGI/FastCGI invocations) as environment variables.&nbsp; All headers
 returned in an unsuccessful response are passed on to the client.&nbsp; FastCGI
-specification compliant behaviour can be obtained by using the &quot;<code>-compat</code>&quot;
+specification compliant behavior can be obtained by using the &quot;<code>-compat</code>&quot;
 option.</p>
 
 <p><code>mod_fastcgi</code> sets the environment variable &quot;FCGI_APACHE_ROLE&quot; to
 &quot;AUTHORIZER&quot; to indicate which (Apache specific) authorizer phase is being
 performed.</p>
+
+<p>Custom failure responses from FastCGI authorizer applications are not (yet?)
+supported.&nbsp; See the <a href="http://www.apache.org/docs/mod/core.html#errordocument">ErrorDocument</a>
+directive for a workaround (a FastCGI application can serve the document).</p>
 
 <hr>
 
@@ -680,12 +697,16 @@ typically available to CGI/FastCGI request handlers.&nbsp; All headers returned 
 FastCGI access-checker application in a successful response (Status: 200) are passed to
 subprocesses (CGI/FastCGI invocations) as environment variables.&nbsp; All headers
 returned in an unsuccessful response are passed on to the client.&nbsp; FastCGI
-specification compliant behaviour can be obtained by using the &quot;<code>-compat</code>&quot;
+specification compliant behavior can be obtained by using the &quot;<code>-compat</code>&quot;
 option.</p>
 
 <p><code>mod_fastcgi</code> sets the environment variable &quot;FCGI_APACHE_ROLE&quot; to
 &quot;ACCESS_CHECKER&quot; to indicate which (Apache specific) authorizer phase is being
 performed.</p>
+
+<p>Custom failure responses from FastCGI authorizer applications are not (yet?)
+supported.&nbsp; See the <a href="http://www.apache.org/docs/mod/core.html#errordocument">ErrorDocument</a>
+directive for a workaround (a FastCGI application can serve the document).</p>
 
 <hr>
 

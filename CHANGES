@@ -1,5 +1,8 @@
 Changes with mod_fastcgi 2.2.3
 
+ *) Miscellaneous doc improvements based on notes I've collected up over the
+    last few months.
+
  *) Fix a bug in the stderr handling introduced in 2.2.2.  There were conditions
     that resulted in not or improperly terminated strings.
 
