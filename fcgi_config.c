@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_config.c,v 1.44 2002/10/22 01:02:18 robs Exp $
+ * $Id: fcgi_config.c,v 1.45 2002/10/22 02:36:13 robs Exp $
  */
 
 #define CORE_PRIVATE
@@ -709,7 +709,7 @@ const char *fcgi_config_new_static_server(cmd_parms *cmd, void *dummy, const cha
             return ap_psprintf(tp, 
                 "%s %s: the -user option isn't supported on WIN", name, fs_path);
 #else
-            s->username = ap_getword_conf(tp, &arg);
+            s->user = ap_getword_conf(tp, &arg);
             if (*s->user == '\0')
                 return invalid_value(tp, name, fs_path, option, "\"\"");
 #endif
@@ -893,7 +893,7 @@ const char *fcgi_config_new_external_server(cmd_parms *cmd, void *dummy, const c
             return ap_psprintf(tp, 
                 "%s %s: the -user option isn't supported on WIN", name, fs_path);
 #else
-            s->username = ap_getword_conf(tp, &arg);
+            s->user = ap_getword_conf(tp, &arg);
             if (*s->user == '\0')
                 return invalid_value(tp, name, fs_path, option, "\"\"");
 #endif
