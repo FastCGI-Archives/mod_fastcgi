@@ -3453,48 +3453,30 @@ int FCGIProcMgrBoot(void *data)
 
 int DoesAnyFileExist(char *fileName, int fileType)
 {
-    DIR *dp=NULL;
-    char *target  = &fileName[rind(fileName, '/')+1];
-    struct dirent *dirp=NULL;
     struct stat statBuf;
     int result = 0;
 
-    if((dp=opendir(ipcDynamicDir))==NULL) {
-        return (-1);
+    if (stat(fileName, &statBuf)<0) {
+      return(0);
     }
-
-    while((dirp=readdir(dp))!=NULL) {
-        if(result==-1) break;
-        if((strcmp(target, dirp->d_name))==0) {
-	    if(stat(fileName, &statBuf)<0) {
-	        result = (-1);
-	        break;
-	    }
-	    switch (fileType) {
-                case FILETYPE_SOCKET:
-		    if(S_ISFIFO(statBuf.st_mode)) {
-		        result = 1;
-		    } else {
-		        result = 0;
-		    }
-	            continue;
-	        case FILETYPE_REGULAR:
-  		    if(S_ISREG(statBuf.st_mode)) {
-		        result = 1;
-		    } else {
-		        result = 0;
-		    }
-	            continue;
-	        default: 
-		    result = (-1);
-		    break;
-	    }
-        } else {
-	    continue;
-        }
-    }
-    if(dp!=NULL) {
-        closedir(dp);
+    switch (fileType) {
+    case FILETYPE_SOCKET:
+      if(S_ISFIFO(statBuf.st_mode)) {
+	result = 1;
+      } else {
+	result = 0;
+      }
+      break;
+    case FILETYPE_REGULAR:
+      if(S_ISREG(statBuf.st_mode)) {
+	result = 1;
+      } else {
+	result = 0;
+      }
+      break;
+    default: 
+      result = (-1);
+      break;
     }
     return (result);
 }
