@@ -1,9 +1,14 @@
 /*
- * $Id: fcgi_pm.c,v 1.33 2000/07/19 18:08:12 robs Exp $
+ * $Id: fcgi_pm.c,v 1.34 2000/07/20 19:41:13 robs Exp $
  */
 
 
 #include "fcgi.h"
+
+#ifdef _HPUX_SOURCE
+#include <unistd.h>
+#define seteuid(arg) setresuid(-1, (arg), -1)
+#endif
 
 int fcgi_dynamic_total_proc_count = 0;    /* number of running apps */
 time_t fcgi_dynamic_epoch = 0;            /* last time kill_procs was
