@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.28 1998/03/09 21:22:47 mar Exp $
+ *  $Id: mod_fastcgi.c,v 1.29 1998/03/09 22:10:58 mar Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -3388,7 +3388,8 @@ void FastCgiProcMgr(void *data)
 	    if(s->directive == APP_CLASS_DYNAMIC && s->numProcesses == 0) {
 	        numChildren = 0;
 		for (i = 0; i < maxClassProcs; i++) {
-		  if (s->procInfo[i].state == STATE_NEEDS_STARTING)
+		  if (s->procInfo[i].state == STATE_NEEDS_STARTING ||
+		      s->procInfo[i].pid > 0)
 		    numChildren++;
 		}
 	        if(numChildren == 0) {
@@ -4719,25 +4720,25 @@ static int FastCgiHandler(WS_Request *reqPtr)
         char *lockFileName = MakeLockFileName(reqPtr->filename);
         struct stat lstbuf, bstbuf;
         result = 0;
-		do {
+	do {
             if( stat(lockFileName,&lstbuf)==0 && S_ISREG(lstbuf.st_mode) ) {
-				if (autoUpdate && stat(reqPtr->filename, &bstbuf)==0 &&
-				  lstbuf.st_mtime < bstbuf.st_mtime) {
-					/* Its already running, but there's a newer one,
-					 * ask the process manager to start it.
-					 * it will notice that the binary is newer,
-					 * and do a restart instead.
-					 */
-					SignalProcessManager(PLEASE_START, 
-					  reqPtr->filename, 0, 0, 0);
-					sleep(1);
-				}
-				lockFd = open(lockFileName,O_APPEND);
-				result = (lockFd<0)?(0):(1);
-			} else {
-				SignalProcessManager(PLEASE_START,
-				  reqPtr->filename, 0, 0, 0);
-				sleep(1);
+		if (autoUpdate && stat(reqPtr->filename, &bstbuf)==0 &&
+		  lstbuf.st_mtime < bstbuf.st_mtime) {
+			/* Its already running, but there's a newer one,
+			 * ask the process manager to start it.
+			 * it will notice that the binary is newer,
+			 * and do a restart instead.
+			 */
+			SignalProcessManager(PLEASE_START, 
+			  reqPtr->filename, 0, 0, 0);
+			sleep(1);
+		}
+		lockFd = open(lockFileName,O_APPEND);
+		result = (lockFd<0)?(0):(1);
+	    } else {
+		SignalProcessManager(PLEASE_START,
+		  reqPtr->filename, 0, 0, 0);
+		sleep(1);
             }
 	} while (result!=1);
 	if(ReadwLock(lockFd)<0) {
@@ -4851,7 +4852,7 @@ static int FastCgiHandler(WS_Request *reqPtr)
     status = FastCgiDoWork(reqPtr, infoPtr);
     kill_timeout(reqPtr);
 
-    if(dynamic==TRUE) {
+    if(dynamic==TRUE && status == OK) {
         if(gettimeofday(&ctime, NULL)<0) {
 	    sprintf(infoPtr->errorMsg,
                     "mod_fastcgi: Unable to get the time of day");
