@@ -1,87 +1,21 @@
-/*
- * Notes on the future enhancements
- */
 
-+	Break the module into multiple files.  The general idea is to 
-separate the functionality, as well as server dependant vs. independant
-parts.  At least the following should be in separate file: buffer, 
-dynamic strings, networking code, protocol implementation (server 
-independant), process manager code and Apache-related goo.  
-			** in progress **
+ *) External (not created by web server) process manager.  This would
+	allow for alternate implementation of the killing policy, other mechanics,
+	OS specific stuff, etc.
 
-+ 	External (not created by web server) process manager.  This would
-allow for alternate implementation of the killing policy, other mechanics,
-OS specific stuff, etc.  Separating the code into a separate file (see 
-above) would aid in this.
+ *) Port the module to WindowsNT.
 
-+	Should we use the Apache's pool model to do all the memory/file
-related operations, so that it is freed automatically when the server dies.
+ *) Implement a separate timeout for the communication with the FastCGI
+	application.  At present mod_fastcgi's timeout is for the
+	communication with the client.  A much shorter timeout would often be
+	appropriate for the communication with the FastCGI application.  One
+	difficulty is that mod_fastcgi often interleaves client and
+	application communication.
 
-+ 	Provide loggind/debugging facility which can be modeled after the
-mod_cgi module example.  This should aid in the debugging of the code.  
-
-+	Provide ability to have per vhost FastCGI processes.  Right now we
-do not do any special processing for vhost requests.  Some investigation is
-needed to analyze exactly what is needed.  At least the following info is
-needed on per vhost basis: process manager (external/internal), FastCGI 
-applications (local and external), name of lockfiles, etc.
-			** in progress **
-
-+	Separate any output that the user may see (in the logs, on the 
-standard errror, etc) into a separate file and/or catalog.  I got some 
-prototype code that is working..., so 
-			** in progress **
-
-+	Port the module to the WindowsNT.  This is a tough one, since we
-do a lot of file locking and synchronization and I have no clue as to their
-implementation on NT.  Anybody want to tackle this one ?
-
-+	Rethink the locking mechanism and dynamic application implementation.
-Right now we are doing a lot of file synchronization, which is slow.  Other
-alternatives are feasible, consider shared memory, TCP/UDP packet 
-synchronization, etc.
-
-+	Use more of the Apache code.  For example, ParseApacheRawArgs should
-use getword_conf to get the arguments.  This way module is less error prone,
-since Apache functions are used much more than mod_fastcgi provided ones.
-
-+ 	Provided hooks for the suexec and other possible enhancements.  They
-can be defined as NOPs, only to be enabled when the SUEXEC is enabled.  This
-way we avoid for suexec to patch the module directly.  Possibly same can be
-applied for the authorizer implementation ???
-
-+	Add support for keepalive scripts to keep connections open across
-HTTP requests to the FastCGI application.
-
-+ 	Implement authorizer/filter role.  Need to investigate this.
-
-+	Create a module as a shared library, not archive.  This would be 
-beneficial in high-volume servers, which use multi-programming approach,
-like apache does now.
-
-+ 	Get rid of the -initial-env option in the [External]AppClass.  
-Instead, use mod_env module to set the environment variables.  Provide
-additional example configuration scripts.
-
-+	Remove old Unix Domain sockets from the IPC dir during startup.
-
-+	Implement a separate timeout for the communication with the FastCGI
-application.  At present mod_fastcgi's timeout is for the
-communication with the client.  A much shorter timeout would often be
-appropriate for the communication with the FastCGI application.  One
-difficulty is that mod_fastcgi often interleaves client and
-application communication.
-
-+ 	Implement a more aggressive buffering policy in mod_fastcgi.
-Support an option that buffers all of the client's input before
-connecting to the application and buffers all of the application's
-output before responding to the client.  Such an option means that an
-application is never tied up by a slow client.
-
-+ 	Implement session affinity.  The issue here is where to get
-session information from.  Apache doesn't handle this in a
-standard way and there's no way to customize short of writing
-C code to link into the server.  (Authorizer role would
-allow the session-identifying code to run outside the server.)
-Is it possible to use mod_unique_id to set/get identifiers to be used
-in implementing session affinity ???.
+ *) Implement session affinity.  The issue here is where to get
+	session information from.  Apache doesn't handle this in a
+	standard way and there's no way to customize short of writing
+	C code to link into the server.  (Authorizer role would
+	allow the session-identifying code to run outside the server.)
+	Is it possible to use mod_unique_id to set/get identifiers to be used
+	in implementing session affinity ???.  
