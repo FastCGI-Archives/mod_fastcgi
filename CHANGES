@@ -1,5 +1,8 @@
 2.2.11
 
+ *) Fix a bug in fcgi_config_set_authoritative_slot(). Tetsuya Furukawa
+    [tetsuya@secom-sis.co.jp]
+
  *) Eliminate the use of locks to assist in the clean shutdown of
     applications.  Instead, it is assumed that applications handle
     termination signals properly (this is now embedded in the C

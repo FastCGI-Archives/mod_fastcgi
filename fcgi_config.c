@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_config.c,v 1.26 2001/03/26 15:35:39 robs Exp $
+ * $Id: fcgi_config.c,v 1.27 2001/03/29 19:11:07 robs Exp $
  */
 
 #include "fcgi.h"
@@ -960,9 +960,9 @@ const char *fcgi_config_set_authoritative_slot(const cmd_parms * const cmd,
     int offset = (int)(long)cmd->info;
 
     if (arg)
-        *(int *)(dir_config + offset) |= FCGI_AUTHORITATIVE;
+        *((u_char *)dir_config + offset) |= FCGI_AUTHORITATIVE;
     else
-        *(int *)(dir_config + offset) &= ~FCGI_AUTHORITATIVE;
+        *((u_char *)dir_config + offset) &= ~FCGI_AUTHORITATIVE;
 
     return NULL;
 }
