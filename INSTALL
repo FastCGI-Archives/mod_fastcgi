@@ -14,7 +14,7 @@ Notes
   mod_fastcgi has not been tested on all of the Apache supported
   platforms.  These are known to work: SunOS, Solaris, SCO, Linux,
   NetBSD (see http://www.netbsd.org/packages/www/ap-fastcgi/), FreeBSD,
-  Digital Unix, IRIX, FreeBSD, Windows (NT4 and NT2K), and QNX (Inet
+  Digital Unix, AIX, IRIX, FreeBSD, Windows (NT4 and NT2K), and QNX (Inet
   sockets only).  If you're successful in using this module on other
   platforms, please email fastcgi-developers@fastcgi.com.
 
