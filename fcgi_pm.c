@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_pm.c,v 1.74 2002/07/26 03:10:54 robs Exp $
+ * $Id: fcgi_pm.c,v 1.75 2002/07/29 00:07:28 robs Exp $
  */
 
 
@@ -71,6 +71,7 @@ static void fcgi_kill(ServerProcess *process, int sig)
     process->state = FCGI_VICTIM_STATE;                
 
 #ifdef WIN32
+
     if (sig == SIGTERM)
     {
         SetEvent(process->terminationEvent);
@@ -83,19 +84,26 @@ static void fcgi_kill(ServerProcess *process, int sig)
     {
         ap_assert(0);
     }
-#else
+
+#else /* !WIN32 */
+
+#ifndef APACHE2
     if (fcgi_wrapper) 
     {
         seteuid_root();
     }
+#endif
 
     kill(process->pid, sig);
 
+#ifndef APACHE2
     if (fcgi_wrapper) 
     {
         seteuid_user();
     }
 #endif
+
+#endif /* !WIN32 */
 }
 
 /*******************************************************************************
@@ -1569,10 +1577,13 @@ void fcgi_pm_main(void *dummy)
     fcgi_config_set_env_var(fcgi_config_pool, dynamicEnvp, &i, "SystemRoot");
 
 #else
+
+#ifndef APACHE2
     reduce_privileges();
+    change_process_name("fcgi-pm");
+#endif
 
     close(fcgi_pm_pipe[1]);
-    change_process_name("fcgi-pm");
     setup_signals();
 
     if (fcgi_wrapper) {
@@ -1887,7 +1898,7 @@ ChildFound:
                 ap_log_error(FCGI_LOG_WARN_NOERRNO, fcgi_apache_main_server,
                     "FastCGI:%s server \"%s\" (pid %ld) terminated due to uncaught signal '%d' (%s)%s",
                     (s->directive == APP_CLASS_DYNAMIC) ? " (dynamic)" : "",
-                    s->fs_path, (long) childPid, WTERMSIG(waitStatus), SYS_SIGLIST[WTERMSIG(waitStatus)],
+                    s->fs_path, (long) childPid, WTERMSIG(waitStatus), get_signal_text(waitStatus),
 #ifdef WCOREDUMP
                     WCOREDUMP(waitStatus) ? ", a core file may have been generated" : "");
 #else
@@ -1898,7 +1909,7 @@ ChildFound:
                 ap_log_error(FCGI_LOG_WARN_NOERRNO, fcgi_apache_main_server,
                     "FastCGI:%s server \"%s\" (pid %ld) stopped due to uncaught signal '%d' (%s)",
                     (s->directive == APP_CLASS_DYNAMIC) ? " (dynamic)" : "",
-                    s->fs_path, (long) childPid, WTERMSIG(waitStatus), SYS_SIGLIST[WTERMSIG(waitStatus)]);
+                    s->fs_path, (long) childPid, WTERMSIG(waitStatus), get_signal_text(waitStatus));
             }
         } /* for (;;), waitpid() */
 

@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.135 2002/07/26 03:10:54 robs Exp $
+ *  $Id: mod_fastcgi.c,v 1.136 2002/07/29 00:07:28 robs Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -301,20 +301,16 @@ static apcb_t init_module(server_rec *s, pool *p)
         apr_status_t rv;
 
         rv = apr_proc_fork(proc, tp);
-        if (rv)
-            return rv;
 
-        if (proc->pid == 0)
+        if (rv == APR_INCHILD)
         {
             /* child */
-
-            close(fcgi_pm_pipe[1]);
-	    dup2(fcgi_pm_pipe[0], 0);
-	    close(fcgi_pm_pipe[0]);
-
             fcgi_pm_main(NULL);
-
             exit(1);
+        }
+        else if (rv != APR_INPARENT)
+        {
+            return rv;
         }
 
         /* parent */
@@ -949,7 +945,7 @@ static void close_connection_to_fs(fcgi_request *fr)
         set_nonblocking(fr, FALSE);
         /* abort the connection entirely */
         setsockopt(fr->fd, SOL_SOCKET, SO_LINGER, &linger, sizeof(linger)); 
-        closesocket(fr->fd);
+        close(fr->fd);
         fr->fd = -1;
 
 #endif /* ! WIN32 */
