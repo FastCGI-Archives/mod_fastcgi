@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_util.c,v 1.23 2002/07/23 00:54:18 robs Exp $
+ * $Id: fcgi_util.c,v 1.24 2002/07/24 02:30:58 robs Exp $
  */
 
 #include "fcgi.h"
@@ -202,12 +202,12 @@ fcgi_util_check_access(pool *tp,
         const char * const path, const struct stat *statBuf, 
         const int mode, const uid_t uid, const gid_t gid)
 {
-    if (statBuf == NULL) {
-        static struct stat staticStatBuf;
-        
-        if (stat(path, &staticStatBuf) < 0)
+    struct stat myStatBuf;
+
+    if (statBuf == NULL) {    
+        if (stat(path, &myStatBuf) < 0)
             return ap_psprintf(tp, "stat(%s) failed: %s", path, strerror(errno));
-        statBuf = &staticStatBuf;
+        statBuf = &myStatBuf;
     }
     
 #ifndef WIN32    
