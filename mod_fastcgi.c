@@ -3556,8 +3556,14 @@ void ModFastCgiInit(server_rec *s, pool *p)
         log_printf(s, "mod_fastcgi: %s\n", ptr);
     }
 
+#if APACHE_RELEASE < 1030000
     spawn_child(p, (void *)FCGIProcMgrBoot, NULL, 
             kill_always, NULL, &fp);
+#else
+    spawn_child(p, FCGIProcMgrBoot, NULL, 
+            kill_always, NULL, &fp);
+#endif
+
     /* 
      * synchronization step, only needs to be performed once
      * since we employ the hack above to only get thus far on 
