@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi.h,v 1.34 2002/01/30 20:40:14 robs Exp $
+ * $Id: fcgi.h,v 1.35 2002/02/28 22:52:50 robs Exp $
  */
 
 #ifndef FCGI_H
@@ -116,8 +116,8 @@ typedef struct _FastCgiServerInfo {
     u_int restartDelay;             /* number of seconds to wait between
                                      * restarts after failure.  Can be zero. */
     int restartOnExit;              /* = TRUE = restart. else terminate/free */
-    u_int numRestarts;              /* Total number of restarts */
     u_int numFailures;              /* num restarts due to exit failure */
+    int bad;                        /* is [not] having start problems */
     struct sockaddr *socket_addr;   /* Socket Address of FCGI app server class */
 #ifdef WIN32
     struct sockaddr *dest_addr;     /* for local apps on NT need socket address */

@@ -1,5 +1,5 @@
 /*
- * $Id: mod_fastcgi.h,v 1.40 2002/02/28 15:58:11 robs Exp $
+ * $Id: mod_fastcgi.h,v 1.41 2002/02/28 22:52:50 robs Exp $
  */
 
 #ifndef MOD_FASTCGI_H
@@ -32,6 +32,24 @@
  * brutal way of taking down an application.
  */
 #define WIN32_SHUTDOWN_GRACEFUL_WAIT  1000
+
+/*
+ * The number of failed starts that can occur before the application is
+ * considered broken and start attempts fall back to FAILED_STARTS_DELAY.
+ */
+#define MAX_FAILED_STARTS 3
+
+/*
+ * The number of seconds an application has to have run without exiting
+ * for the application to be considered no longer broken.
+ */
+#define RUNTIME_SUCCESS_INTERVAL 30
+
+/*
+ * The number of seconds between attempts to start an application that 
+ * has been declared broken (see MAX_FAILED_STARTS).
+ */
+#define FAILED_STARTS_DELAY 600
 
 #define FCGI_DEFAULT_LISTEN_Q 100          /* listen queue (backlog) depth */
 #define FCGI_DEFAULT_RESTART_DELAY 5       /* delay between restarts */

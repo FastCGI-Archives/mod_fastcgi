@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_pm.c,v 1.69 2002/02/28 15:58:11 robs Exp $
+ * $Id: fcgi_pm.c,v 1.70 2002/02/28 22:52:50 robs Exp $
  */
 
 
@@ -1534,10 +1534,67 @@ void fcgi_pm_main(void *dummy)
                     int restart = (s->procs[i].pid < 0);
                     time_t restartTime = s->restartTime;
                     
-                    restartTime += (restart) ? s->restartDelay : s->initStartDelay;
+                    if (s->bad)
+                    {
+                        /* we've gone to using the badDelay, the only thing that
+                           resets bad is when badDelay has expired.  but numFailures
+                           is only just set below its threshold.  the proc's 
+                           start_times are all reset when the bad is.  the numFailures
+                           is reset when we see an app run for a period */
+
+                        s->procs[i].start_time = 0;
+                    }
+                    
+                    if (s->numFailures > MAX_FAILED_STARTS)
+                    {
+                        time_t last_start_time = s->procs[i].start_time;
+
+                        if (last_start_time && now - last_start_time > RUNTIME_SUCCESS_INTERVAL)
+                        {
+                            s->bad = 0;
+                            s->numFailures = 0;
+                        }
+                        else
+                        {
+                            unsigned int j;
+
+                            for (j = 0; j < numChildren; ++j)
+                            {
+                                if (s->procs[j].pid <= 0) continue;
+                                if (s->procs[j].state != FCGI_RUNNING_STATE) continue;
+                                if (s->procs[j].start_time == 0) continue;
+                                if (now - s->procs[j].start_time > RUNTIME_SUCCESS_INTERVAL) break;
+                            }
+
+                            if (j >= numChildren)
+                            {
+                                s->bad = 1;
+                            }
+                            else
+                            {
+                                s->bad = 0;
+                                s->numFailures = 0;
+                            }
+                        }
+                    }
+                    
+                    if (s->bad)
+                    {
+                        restartTime += FAILED_STARTS_DELAY;
+                    }
+                    else
+                    {                   
+                        restartTime += (restart) ? s->restartDelay : s->initStartDelay;
+                    }
 
                     if (restartTime <= now) 
                     {
+                        if (s->bad) 
+                        {
+                            s->bad = 0;
+                            s->numFailures = MAX_FAILED_STARTS;
+                        }
+
                         if (s->listenFd < 0 && init_listen_sock(s)) 
                         {
                             if (sleepSeconds > s->initStartDelay)
@@ -1573,9 +1630,6 @@ void fcgi_pm_main(void *dummy)
                         }
 
                         s->procs[i].state = FCGI_RUNNING_STATE;
-
-                        if (restart)
-                            s->numRestarts++;
 
                         if (fcgi_wrapper) {
                             ap_log_error(FCGI_LOG_WARN_NOERRNO, fcgi_apache_main_server,

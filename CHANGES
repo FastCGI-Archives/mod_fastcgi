@@ -1,5 +1,9 @@
 2.2.13
 
+ *) Add support for backing off attempts to start applications that continuously
+    fail to start.  Three new macros defined in mod_fastcgi.h control this 
+    behaviour: MAX_FAILED_STARTS, RUNTIME_SUCCESS_INTERVAL, FAILED_STARTS_DELAY
+
  *) [WIN32] Add (back) support for use of TerminateProcess() to accomodate
     applications that do not (properly) support the shutdown event (this
     feature was introduced in fcgi2 2.2.2 and improved in 2.2.4).  The 
