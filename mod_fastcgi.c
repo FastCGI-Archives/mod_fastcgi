@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.111 2001/05/03 21:57:35 robs Exp $
+ *  $Id: mod_fastcgi.c,v 1.113 2001/05/03 22:06:29 robs Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -741,7 +741,7 @@ static void close_connection_to_fs(fcgi_request *fr)
     if (fr->dynamic) 
     {
         if (fr->keepReadingFromFcgiApp == FALSE) {
-            /* XXX REQ_COMPLETE is only sent for requests which complete
+            /* XXX FCGI_REQUEST_COMPLETE_JOB is only sent for requests which complete
              * normally WRT the fcgi app.  There is no data sent for
              * connect() timeouts or requests which complete abnormally.
              * KillDynamicProcs() and RemoveRecords() need to be looked at
@@ -1076,7 +1076,7 @@ static int open_connection_to_fs(fcgi_request *fr)
      * With dynamic I can at least make sure the PM knows this is occuring */
     if (fr->dynamic && errno == ECONNREFUSED) {
         /* @@@ This might be better as some other "kind" of message */
-        send_to_pm(rp, CONN_TIMEOUT, fr->fs_path, fr->user, fr->group, 0, 0);
+        send_to_pm(rp, FCGI_REQUEST_TIMEOUT_JOB, fr->fs_path, fr->user, fr->group, 0, 0);
 
         errno = ECONNREFUSED;
     }

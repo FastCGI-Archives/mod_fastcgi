@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_pm.c,v 1.53 2001/05/03 21:57:35 robs Exp $
+ * $Id: fcgi_pm.c,v 1.54 2001/05/03 22:03:53 robs Exp $
  */
 
 
@@ -744,30 +744,38 @@ static void dynamic_read_msgs(int read_ready)
         
         opcode = *ptr1;
 
-        switch (opcode) {
+        switch (opcode) 
+        {
         case FCGI_SERVER_START_JOB:
 		case FCGI_SERVER_RESTART_JOB:
+
             if (sscanf(ptr1, "%c %s %16s %15s",
                 &opcode, execName, user, group) != 4)
             {
                 scan_failed = 1;
             }
             break;
-        case CONN_TIMEOUT:
+
+        case FCGI_REQUEST_TIMEOUT_JOB:
+
             if (sscanf(ptr1, "%c %s %16s %15s",
                 &opcode, execName, user, group) != 4)
             {
                 scan_failed = 1;
             }
             break;
+
         case REQ_COMPLETE:
+
             if (sscanf(ptr1, "%c %s %16s %15s %lu %lu",
                 &opcode, execName, user, group, &q_usec, &req_usec) != 6)
             {
                 scan_failed = 1;
             }
             break;
+
         default:
+
             scan_failed = 1;
             break;
         }
@@ -1587,24 +1595,24 @@ ChildFound:
 
             if (s->directive == APP_CLASS_STANDARD) {
                 /* Always restart static apps */
-                s->procs[i].state = STATE_NEEDS_STARTING;
+                s->procs[i].state = FCGI_START_STATE;
                 s->numFailures++;
             }
             else {
                 s->numProcesses--;
                 fcgi_dynamic_total_proc_count--;
 
-                if (s->procs[i].state == STATE_VICTIM) {
-                    s->procs[i].state = STATE_KILLED;
+                if (s->procs[i].state == FCGI_VICTIM_STATE) {
+                    s->procs[i].state = FCGI_KILLED_STATE;
                 }
                 else {
                     /* A dynamic app died or exited without provocation from the PM */
                     s->numFailures++;
 
                     if (dynamicAutoRestart || (s->numProcesses <= 0 && dynamicThreshold1 == 0))
-                        s->procs[i].state = STATE_NEEDS_STARTING;
+                        s->procs[i].state = FCGI_START_STATE;
                     else
-                        s->procs[i].state = STATE_READY;
+                        s->procs[i].state = FCGI_READY_STATE;
                 }
             }
 

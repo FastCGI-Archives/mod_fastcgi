@@ -1,5 +1,5 @@
 /*
- * $Id: mod_fastcgi.h,v 1.33 2001/02/19 06:00:10 robs Exp $
+ * $Id: mod_fastcgi.h,v 1.35 2001/05/03 22:06:29 robs Exp $
  */
 
 #ifndef MOD_FASTCGI_H
@@ -68,7 +68,7 @@
 #define FCGI_DEFAULT_START_PROCESS_DELAY 3 /* specifies the maximum number of
                                             * seconds a server should wait in
                                             * attempt to connect to fcgi app
-                                            * before sending CONN_TIMEOUT */
+                                            * before sending FCGI_REQUEST_TIMEOUT_JOB */
 
 /*
  * # of sec to wait in a non-blocking connect() to the FastCGI application 
@@ -102,7 +102,7 @@
 #define FCGI_MAXPATH  512
 #endif
 
-/* REQ_COMPLETE is the longest: id, path, user, gid, qtime, start */
+/* FCGI_REQUEST_COMPLETE_JOB is the longest: id, path, user, gid, qtime, start */
 #define FCGI_MSG_CRAP  1 + 2 + MAX_USER_NAME_LEN + 1 + MAX_GID_CHAR_LEN + (2 * 11) + 3
  
 #if defined(PIPE_BUF) && PIPE_BUF < FCGI_MAXPATH + FCGI_MSG_CRAP
