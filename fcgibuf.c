@@ -3,7 +3,7 @@
  * 
  * Ring buffer library.
  *
- * $Id: fcgibuf.c,v 1.3 1998/05/22 15:55:41 roberts Exp $
+ * $Id: fcgibuf.c,v 1.4 1998/07/24 15:31:48 roberts Exp $
  */
 
 #include "conf.h"                       /* apache code */
@@ -127,12 +127,11 @@ void BufferDelete(Buffer *bufPtr)
  * BufferRead --
  *
  *      Read bytes from an open file descriptor into a buffer.
- *      Assumes the file descriptor is NON_BLOCKING.
  *
  * Results:
  *      <0 error, errno is set
  *      =0 EOF reached
- *      >0 successful read, note it it is NOT the number of bytes read.
+ *      >0 successful read or no room in buffer (NOT # of bytes read)
  *
  * Side effects:
  *      Data stored in buffer.
@@ -151,6 +150,7 @@ int BufferRead(Buffer *bufPtr, int fd)
         return 1;
     }
     if (bufPtr->length == 0) {
+        /* the buffer is empty so defrag */
         bufPtr->begin = bufPtr->end = bufPtr->data;
     }
 
@@ -158,19 +158,11 @@ int BufferRead(Buffer *bufPtr, int fd)
             bufPtr->data + bufPtr->size - bufPtr->end);
 #ifndef NO_WRITEV
     /* assume there is a readv() if there is a writev() */
-    if (len <= bufPtr->size - bufPtr->length) {
+    if (len == bufPtr->size - bufPtr->length) {
         /* its not wrapped, use read() instead of readv() */
 #endif
     len = OS_Read(fd, bufPtr->end, len);
-    if (len == 0) {
-        return 0;
-    }
-    if (len < 0) {
-        if (errno == EWOULDBLOCK) {
-            /* this shouldn't happen if BufferRead is called only after
-               select(), but return "success" (zero implies EOF) */
-            return 1;
-        }
+    if (len <= 0) {
         return len;
     }
     bufPtr->end += len;
@@ -190,17 +182,12 @@ int BufferRead(Buffer *bufPtr, int fd)
         vec[1].iov_base = bufPtr->data;
         vec[1].iov_len = bufPtr->size - bufPtr->length - len;
 
-	    /* I don't see a reason, at this point, to defining OS_Readv() */
-	    do {
-	        len = readv(fd, vec, 2);
-	    } while ((len < 0) && (errno == EINTR));
-    	if (len == 0) {
-            return 0;
-    	}
-        if (len < 0) {
-            if (errno == EWOULDBLOCK) {
-                return 1;           /* return "success" */
-            }
+	    /* I don't see a reason to define OS_Readv(), and don't know
+	     * understand why we should ignore EINTR (as OS_Read() does)
+	     */
+	    len = readv(fd, vec, 2);
+
+    	if (len <= 0) {
             return len;
         }
         bufPtr->end += len;
@@ -212,23 +199,42 @@ int BufferRead(Buffer *bufPtr, int fd)
 #else
         if (bufPtr->length < bufPtr->size) {
             /* There's still more buffer space to read into. */
-            len = OS_Read(fd, bufPtr->end, bufPtr->size - bufPtr->length);
-            if (len == 0) {
-                return 0;   /* were done (EOF) */
+
+            fd_set  read_set;
+            int     status;
+            int     numFDs = fd + 1;
+            struct timeval timeOut;
+
+            FD_ZERO(&read_set);
+            FD_SET(fd, &read_set);
+
+            timeOut.tv_sec = 0;
+            timeOut.tv_usec = 0;
+
+          
+#ifdef SELECT_NEEDS_CAST
+            status = select(numFDs, (int*)&read_set, NULL, NULL, &timeOut);
+#else
+            status = select(numFDs, &read_set, NULL, NULL, &timeOut);
+#endif
+            
+            if (status < 0) {
+                return status;  /* error, errno is set */
             }
-            if (len < 0) {
-                if (errno == EWOULDBLOCK) {
-                    /* return the count from the first read() */
-                    return 1;
+            
+            if (status > 0 && FD_ISSET(fd, &read_set)) {
+            
+                len = OS_Read(fd, bufPtr->end, bufPtr->size - bufPtr->length);
+                if (len <= 0) {
+                    return len;
                 }
-                return len;
+                bufPtr->end += len;
+                bufPtr->length += len;
             }
-            bufPtr->end += len;
-            bufPtr->length += len;
         }
     }
 #endif
-    return 1;
+    return len;     /* this may not contain the number of bytes read */
 }
 
 /*
@@ -242,7 +248,7 @@ int BufferRead(Buffer *bufPtr, int fd)
  * Results:
  *      <0 if an error occured (bytes may or may not have been written)
  *      =0 if no bytes were written
- *      >0 number of bytes written
+ *      >0 successful write
  *
  * Side effects:
  *      Data "removed" from buffer.
@@ -272,24 +278,19 @@ int BufferWrite(Buffer *bufPtr, int fd)
     len = min(bufPtr->length, bufPtr->data + bufPtr->size - bufPtr->begin);
 
 #ifndef NO_WRITEV
-    if (len <= bufPtr->length) {
+    if (len == bufPtr->length) {
         /* the buffer is not wrapped, we don't need to use writev() */
 #endif
+
     len = OS_Write(fd, bufPtr->begin, len);
-    if (len == 0) {
+    if (len <= 0) {
         goto Return;
     }
-    if (len < 0) {
-        if (errno == EWOULDBLOCK) {
-            /* pretend we wrote 0 bytes */
-            len = 0;
-        }
-        goto Return;
-    }
+
     bufPtr->begin += len;
     bufPtr->length -= len;
 
-    if (bufPtr->begin == (bufPtr->data + bufPtr->size)) {
+    if (bufPtr->begin == bufPtr->data + bufPtr->size) {
         /* the buffer needs to be wrapped */
         bufPtr->begin = bufPtr->data;
 
@@ -304,51 +305,70 @@ int BufferWrite(Buffer *bufPtr, int fd)
         vec[1].iov_base = bufPtr->data;
         vec[1].iov_len = bufPtr->length - len;
 
-	    /* I don't see a reason, at this point, to defining OS_Writev() */
-	    do {
-	        len = writev(fd, vec, 2);
-	    } while ((len < 0) && (errno == EINTR));
-    	if (len == 0) {
+	    /* I don't see a reason to define OS_Writev(), and don't
+	     * understand why OS_Write() ignores EINTR */
+	    len = writev(fd, vec, 2);
+    	if (len <= 0) {
             goto Return;
     	}
-        if (len < 0) {
-            if (errno == EWOULDBLOCK) {
-                /* give the impression we wrote 0 bytes */
-                len = 0;
-            }
-            goto Return;
-        }
+
         bufPtr->begin += len;
-        if (bufPtr->begin >= (bufPtr->data + bufPtr->size)) {
+        bufPtr->length -= len;
+
+        if (bufPtr->begin >= bufPtr->data + bufPtr->size) {
             bufPtr->begin -= bufPtr->size;
 	    }
-        bufPtr->length -= len;
     }
 #else
         if (bufPtr->length > 0) {
-            /* there's more data to write */
-            int len2 = OS_Write(fd, bufPtr->begin, bufPtr->length);
-            if (len2 == 0) {
+            /* there's still more data to write */
+
+            fd_set  write_set;
+            int     status;
+            int     numFDs = fd + 1;
+            struct timeval timeOut;
+
+            FD_ZERO(&write_set);
+            FD_SET(fd, &write_set);
+
+            timeOut.tv_sec = 0;
+            timeOut.tv_usec = 0;
+
+          
+#ifdef SELECT_NEEDS_CAST
+            status = select(numFDs, NULL, (int*)&write_set, NULL, &timeOut);
+#else
+            status = select(numFDs, NULL, &write_set, NULL, &timeOut);
+#endif
+            
+            if (status < 0) {
+                len = status;  /* error, errno is set */
                 goto Return;
             }
-            if (len2 < 0) {
-                if (errno != EWOULDBLOCK) {
-                    /* return the error, otherwise return len from above */
+            
+            if (status > 0 && FD_ISSET(fd, &write_set)) {
+
+                int len2 = OS_Write(fd, bufPtr->begin, bufPtr->length);
+                if (len2 < 0) {
                     len = len2;
+                    goto Return;
                 }
-                goto Return;
+
+                if (len2 > 0) {
+                    bufPtr->begin += len2;
+                    bufPtr->length -= len2;
+                    len += len2;
+                }
             }
-            bufPtr->begin += len2;
-            bufPtr->length -= len2;
-            len += len2;
         }
     }
 #endif
+
+Return:
     if (bufPtr->length == 0) {
         bufPtr->begin = bufPtr->end = bufPtr->data;
     }
 
-Return:
     OS_Signal(SIGPIPE, origSigPipeHandler);
     return len;
 }

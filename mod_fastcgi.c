@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.38 1998/07/24 13:33:13 roberts Exp $
+ *  $Id: mod_fastcgi.c,v 1.39 1998/07/24 15:31:49 roberts Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -931,7 +931,7 @@ typedef struct {
     struct timeval queueTime;       /* dynamic app's connect() complete time */
     struct timeval completeTime;    /* dynamic app's connection close() time */
     int lockFd;                     /* dynamic app's lockfile file descriptor */
-    int requestStatus;              /* request status, set by FastCgiDoWork() */
+    int keepReadingFromFcgiApp;     /* still more to read from fcgi app? */
 } FastCgiInfo;
 
 /*
@@ -3512,7 +3512,11 @@ int FCGIProcMgrBoot(void *data, child_info *child_info)
                 "and Group '%u', exiting\n", get_time(), name, (unsigned)group_id);
             exit(1);
         }
-#else
+
+/* Based on Apache 1.3.0 main/util.c... */
+#elif !defined(QNX) && !defined(MPE) && !defined(BEOS) && !defined(_OSD_POSIX)
+/* QNX, MPE and BeOS do not appear to support supplementary groups. */
+
         if (setgroups(1, &group_id) == -1) {
             fprintf(errorLog,"[%s] mod_fastcgi: "
                 "setgroups() failed to set groups to Group[] '%u', exiting\n",
@@ -4533,7 +4537,7 @@ static int ConnectToFcgiApp(WS_Request *reqPtr, FastCgiInfo *infoPtr)
     OS_IpcAddr*     ipcAddrPtr = NULL;
     int             flags = 0;
     struct timeval  tval;
-    fd_set          write_fds;
+    fd_set          write_fds, read_fds;
     int             status;
 
     /* Dynamic app's lockfile handling */
@@ -4607,45 +4611,53 @@ static int ConnectToFcgiApp(WS_Request *reqPtr, FastCgiInfo *infoPtr)
         goto SystemError;
     }
 
+    if(infoPtr->fd >= FD_SETSIZE) {
+        sprintf(infoPtr->errorMsg,
+                "mod_fastcgi: socket file descriptor (%u) is larger than "
+                "FD_SETSIZE (%u), you probably need to rebuild Apache with a "
+                "larger FD_SETSIZE", infoPtr->fd, FD_SETSIZE);
+        goto Error;
+    }
+
     /* Connect */
-    if((flags = fcntl(infoPtr->fd, F_GETFL, 0)) < 0) {
+    if ((flags = fcntl(infoPtr->fd, F_GETFL, 0)) < 0) {
         sprintf(infoPtr->errorMsg,
                 "mod_fastcgi: fcntl(F_GETFL) failed: ");
         goto SystemError;
     }
-    if((fcntl(infoPtr->fd, F_SETFL, (flags|O_NONBLOCK))) < 0) {
+    if (fcntl(infoPtr->fd, F_SETFL, flags | O_NONBLOCK) < 0) {
         sprintf(infoPtr->errorMsg,
                 "mod_fastcgi: fcntl(F_SETFL) failed: ");
         goto SystemError;
     }
-    if ((infoPtr->dynamic) && (gettimeofday(&(infoPtr->startTime),NULL) < 0)) {
+    if (infoPtr->dynamic && (gettimeofday(&(infoPtr->startTime),NULL) < 0)) {
         sprintf(infoPtr->errorMsg,
              "mod_fastcgi: gettimeofday() failed: ");
         goto SystemError;
     }
-    if(connect(infoPtr->fd,
+    if (connect(infoPtr->fd,
             (struct sockaddr *)ipcAddrPtr->serverAddr,
-            ipcAddrPtr->addrLen) < 0) {
-        if (errno != EINPROGRESS) {
-            sprintf(infoPtr->errorMsg, "mod_fastcgi: connect() failed: ");
-            goto SystemError;
-        }
-    } else {
+            ipcAddrPtr->addrLen) >= 0) {
         goto ConnectionComplete;
+    }
+    if (errno != EINPROGRESS) {
+        sprintf(infoPtr->errorMsg, "mod_fastcgi: connect() failed: ");
+        goto SystemError;
     }
 
     if (infoPtr->dynamic) {
         do {
             FD_ZERO(&write_fds);
             FD_SET(infoPtr->fd, &write_fds);
+            read_fds = write_fds;
             tval.tv_sec = startProcessDelay;
             tval.tv_usec = 0;
 
 #ifdef SELECT_NEEDS_CAST
-            status = select((infoPtr->fd+1), NULL, (int*)&write_fds,
+            status = select((infoPtr->fd+1), (int*)&read_fds, (int*)&write_fds,
                     NULL, &tval);
 #else
-            status = select((infoPtr->fd+1), NULL, &write_fds,
+            status = select((infoPtr->fd+1), &read_fds, &write_fds,
                     NULL, &tval);
 #endif
             if(status < 0) {
@@ -4674,28 +4686,52 @@ static int ConnectToFcgiApp(WS_Request *reqPtr, FastCgiInfo *infoPtr)
         tval.tv_usec = 0;
         FD_ZERO(&write_fds);
         FD_SET(infoPtr->fd, &write_fds);
+        read_fds = write_fds;
 
 #ifdef SELECT_NEEDS_CAST
-        status = select((infoPtr->fd+1), NULL, (int*)&write_fds,
+        status = select((infoPtr->fd+1), (int*)&read_fds, (int*)&write_fds,
                 NULL, &tval);
 #else
-        status = select((infoPtr->fd+1), NULL, &write_fds,
+        status = select((infoPtr->fd+1), &read_fds, &write_fds,
                 NULL, &tval);
 #endif
-    }  /* if (dynamic){} else{} */
+    }  /* if (dynamic) else */
 
-    if(status < 0) {
-        sprintf(infoPtr->errorMsg, "mod_fastcgi: select() failed: ");
-        goto SystemError;
-    }
-    if(status == 0) {
+    if (status == 0) {
         sprintf(infoPtr->errorMsg,
             "mod_fastcgi: connect() timed out (appConnTimeout=%dsec)",
             appConnTimeout);
         goto Error;
+    } else if (status < 0) {
+        sprintf(infoPtr->errorMsg, "mod_fastcgi: select() failed: ");
+        goto SystemError;
+    }
+
+    if (FD_ISSET(infoPtr->fd, &write_fds) || FD_ISSET(infoPtr->fd, &read_fds)) {
+        int error = 0;
+        int len = sizeof(error);
+        if (getsockopt(infoPtr->fd, SOL_SOCKET, SO_ERROR, &error, &len) < 0) {
+            /* Solaris pending error */
+            sprintf(infoPtr->errorMsg, "mod_fastcgi: select() failed (Solaris pending error): ");
+            goto SystemError;
+        }
+        if (error != 0) {
+            /* Berkeley-derived pending error */
+            sprintf(infoPtr->errorMsg, "mod_fastcgi: select() failed (pending error): ");
+            errno = error;
+            goto SystemError;
+        }
+    } else {
+        sprintf(infoPtr->errorMsg, "mod_fastcgi: select() error - THIS SHOULDN'T HAPPEN!");
+        goto Error;
     }
 
 ConnectionComplete:
+    if ((fcntl(infoPtr->fd, F_SETFL, flags)) < 0) {
+        sprintf(infoPtr->errorMsg,
+                "mod_fastcgi: fcntl(F_SETFL) failed: ");
+        goto SystemError;
+    }
     if (infoPtr->dynamic) {
         if (gettimeofday(&(infoPtr->queueTime),NULL) < 0) {
             sprintf(infoPtr->errorMsg,
@@ -4749,7 +4785,14 @@ static void CloseConnectionToFcgiApp(FastCgiInfo *infoPtr)
         Unlock(infoPtr->lockFd);
         close(infoPtr->lockFd);
 
-        if(infoPtr->requestStatus == OK) {
+        if(infoPtr->keepReadingFromFcgiApp == FALSE) {
+            /* XXX REQ_COMPLETE is only sent for requests which complete
+             * normally WRT the fcgi app.  There is no data sent for
+             * connect() timeouts or requests which complete abnormally.
+             * KillDynamicProcs() and RemoveRecords() need to be looked at
+             * to be sure they can reasonably handle these cases before
+             * sending these sort of stats - theres some funk in there.
+             */
             if(gettimeofday(&(infoPtr->completeTime), NULL) < 0) {
                 /* there's no point to aborting the request, just log it */
                 fprintf (infoPtr->reqPtr->server->error_log,
@@ -4808,7 +4851,6 @@ static int FastCgiDoWork(WS_Request *reqPtr, FastCgiInfo *infoPtr)
     fd_set  read_set, write_set;
     int     status;
     int     numFDs;
-    int     keepReadingFromFcgiApp = TRUE;
     int     doClientWrite;
     int     envSent = FALSE;    /* has the complete ENV been buffered? */
     char    **envp = NULL;      /* pointer used by SendEnvironment() */
@@ -4835,7 +4877,7 @@ static int FastCgiDoWork(WS_Request *reqPtr, FastCgiInfo *infoPtr)
     }
     numFDs = infoPtr->fd + 1;
 
-    while(keepReadingFromFcgiApp
+    while(infoPtr->keepReadingFromFcgiApp
             || BufferLength(infoPtr->inbufPtr) > 0
             || BufferLength(infoPtr->reqOutbufPtr) > 0) {
 
@@ -4854,7 +4896,7 @@ static int FastCgiDoWork(WS_Request *reqPtr, FastCgiInfo *infoPtr)
          * FastCGI application.
          */
         doClientWrite = FALSE;
-        if (keepReadingFromFcgiApp && BufferFree(infoPtr->inbufPtr) > 0) {
+        if (infoPtr->keepReadingFromFcgiApp && BufferFree(infoPtr->inbufPtr) > 0) {
 
             FD_SET(infoPtr->fd, &read_set);
 
@@ -4904,7 +4946,7 @@ static int FastCgiDoWork(WS_Request *reqPtr, FastCgiInfo *infoPtr)
                             "mod_fastcgi: read() failed while communicating with application: ");
                     goto SystemError;
                 } else if(status == 0) {
-                    keepReadingFromFcgiApp = FALSE;
+                    infoPtr->keepReadingFromFcgiApp = FALSE;
                     CloseConnectionToFcgiApp(infoPtr);
                 }
             }
@@ -4929,9 +4971,9 @@ static int FastCgiDoWork(WS_Request *reqPtr, FastCgiInfo *infoPtr)
             /* infoPtr->errorMsg is setup by CgiToClientBuffer() */
            goto Error;
         }
-        if(keepReadingFromFcgiApp && infoPtr->exitStatusSet) {
+        if(infoPtr->keepReadingFromFcgiApp && infoPtr->exitStatusSet) {
             /* we're done talking to the fcgi app */
-            keepReadingFromFcgiApp = FALSE;
+            infoPtr->keepReadingFromFcgiApp = FALSE;
             CloseConnectionToFcgiApp(infoPtr);
         }
         if(infoPtr->parseHeader == SCAN_CGI_READING_HEADERS) {
@@ -4967,8 +5009,7 @@ static int FastCgiDoWork(WS_Request *reqPtr, FastCgiInfo *infoPtr)
             ASSERT(FALSE);
     }
     kill_timeout(reqPtr);
-    infoPtr->requestStatus = OK;
-    return(infoPtr->requestStatus);
+    return(OK);
 
 SystemError:
 {   char *msg = strerror(errno);
@@ -4983,8 +5024,7 @@ Error:
     CloseConnectionToFcgiApp(infoPtr);
 
 ConnectError:
-    infoPtr->requestStatus = SERVER_ERROR;
-    return(infoPtr->requestStatus);
+    return(SERVER_ERROR);
 }
 
 /*
@@ -5166,7 +5206,7 @@ static int FastCgiHandler(WS_Request *reqPtr)
     infoPtr->eofSent = FALSE;
     infoPtr->fd = -1;
     infoPtr->expectingClientContent = (should_client_block(reqPtr) != 0);
-    infoPtr->requestStatus = DECLINED;
+    infoPtr->keepReadingFromFcgiApp = TRUE;
 
     if (serverInfoPtr == NULL)
         infoPtr->dynamic = TRUE;
