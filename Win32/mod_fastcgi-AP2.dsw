@@ -7,6 +7,10 @@ Project: "mod_fastcgi"=".\mod_fastcgi-AP2.dsp" - Package Owner=<4>
 
 Package=<5>
 {{{
+    begin source code control
+    mod_fastcgi
+    ..
+    end source code control
 }}}
 
 Package=<4>
