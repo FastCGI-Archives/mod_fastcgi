@@ -112,6 +112,10 @@ Introduction
 
 3) Installing mod_fastcgi as a DSO
 ==================================
+
+  NOTE: If you use FastCgiSuexec, mod_fastcgi cannot reliably 
+  determine the suexec path when built as a DSO.  To workaround
+  this, provide the full path in the FastCgiSuexec directive.
   
   1. From the mod_fastcgi directory, compile the module.
   
