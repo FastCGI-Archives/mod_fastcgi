@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_buf.c,v 1.9 2001/02/19 03:18:56 robs Exp $
+ * $Id: fcgi_buf.c,v 1.10 2001/03/06 12:57:33 robs Exp $
  */
 
 #include "fcgi.h"
@@ -59,6 +59,11 @@ static int fd_read(SOCKET fd, char *buf, int len)
             bytes_read = 0;
         }
         else if (rv == ERROR_INVALID_PARAMETER) {
+
+            SetLastError(ERROR_SUCCESS);
+
+            // Then it must be a real socket
+
             bytes_read = recv(fd, buf, len, 0);
             if (bytes_read == SOCKET_ERROR) {
                 errno = WSAGetLastError();
@@ -235,6 +240,8 @@ static int fd_write(SOCKET fd, char * buf, int len)
         int rv = GetLastError();
 
         if (rv == ERROR_INVALID_PARAMETER) {
+
+            SetLastError(ERROR_SUCCESS);
 
             // Then it must be a real socket..
             bytes_sent = send(fd, buf, len, 0);
