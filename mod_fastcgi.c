@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.59 1999/02/11 04:04:22 roberts Exp $
+ *  $Id: mod_fastcgi.c,v 1.60 1999/02/13 20:29:26 roberts Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -596,7 +596,7 @@ static int write_to_client(fcgi_request *fr)
      * can tie up the FastCGI server longer than is necessary so its an option now */
     if (fr->fs && fr->fs->flush) {
         if (ap_bflush(fr->r->connection->client)) {
-            ap_log_rerror(FCGI_LOG_ERR, fr->r, "FastCGI: bflush() failed");
+            ap_log_rerror(FCGI_LOG_INFO, fr->r, "FastCGI: bflush() failed (client problem)");
             return -1;
         }
     }
@@ -691,7 +691,6 @@ static const char *open_connection_to_fs(fcgi_request *fr)
     struct sockaddr *socket_addr = NULL;
     int socket_addr_len;
     const char *err = NULL;
-    const struct linger ling = { 1, 0 };
 
     /* Create the connection point */
     if (fr->dynamic) {
@@ -758,9 +757,6 @@ static const char *open_connection_to_fs(fcgi_request *fr)
         return "fcntl(F_GETFL) failed";
     if (fcntl(fr->fd, F_SETFL, fd_flags | O_NONBLOCK) < 0)
         return "fcntl(F_SETFL) failed";
-
-    /* Expidite socket close() - purge pending data */
-    setsockopt(fr->fd, SOL_SOCKET, SO_LINGER, (char *)&ling, sizeof(ling));
 
     if (fr->dynamic && gettimeofday(&fr->startTime, NULL) < 0)
         return "gettimeofday() failed";
@@ -835,12 +831,14 @@ static const char *open_connection_to_fs(fcgi_request *fr)
         return "select() error - THIS CAN'T HAPPEN!";
 
 ConnectionComplete:
+    /* Return to blocking mode */
     if ((fcntl(fr->fd, F_SETFL, fd_flags)) < 0)
         return "fcntl(F_SETFL) failed";
         
 #ifdef TCP_NODELAY
     if (socket_addr.sa_family == AF_INET) {
-        /* The app may read everything before sending anything, so disable Nagle */
+        /* We shouldn't be sending small packets and there's no application
+         * level ack of the data we send, so disable Nagle */
         int set = 1;
         setsockopt(socket, IPPROTO_TCP, TCP_NODELAY, (char *)&set, sizeof(set));
     }       
@@ -857,6 +855,7 @@ ConnectionComplete:
 static int server_error(fcgi_request *fr) 
 {
 #ifdef SIGPIPE
+    /* Make sure we leave with Apache's sigpipe_handler in place */
     if (fr->apache_sigpipe_handler != NULL)
         signal(SIGPIPE, fr->apache_sigpipe_handler);
 #endif    
@@ -870,7 +869,7 @@ static void log_fcgi_server_stderr(void *data)
     const fcgi_request * const fr = (fcgi_request *)data;
 
     if (fr == NULL)
-        return;
+        return ;
 
     if (fr->fs_stderr) {
         ap_log_rerror(FCGI_LOG_ERR_NOERRNO, fr->r, 
@@ -928,8 +927,8 @@ static int do_work(request_rec *r, fcgi_request *fr)
     numFDs = fr->fd + 1;
 
     /* @@@ We never reset the timer in this loop, most folks don't mess w/ 
-     * Timeout directive which means the 5 min default which is waaay to
-     * long to tie up a fs.  We need a better/configurable solution that
+     * Timeout directive which means we've got the 5 min default which is way
+     * to long to tie up a fs.  We need a better/configurable solution that
      * uses the select */
     ap_hard_timeout("FastCGI request processing", r);
     
