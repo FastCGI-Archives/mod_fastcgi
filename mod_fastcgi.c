@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.100 2000/10/17 01:58:16 robs Exp $
+ *  $Id: mod_fastcgi.c,v 1.101 2000/12/07 02:50:17 robs Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -1436,11 +1436,11 @@ static int do_work(request_rec *r, fcgi_request *fr)
 
         if (fr->role == FCGI_RESPONDER && doClientWrite) {
             if (write_to_client(fr) != OK) {
-                #if defined(SIGPIPE) && MODULE_MAGIC_NUMBER < 19990320
+#if defined(SIGPIPE) && MODULE_MAGIC_NUMBER < 19990320
                     /* Make sure we leave with Apache's sigpipe_handler in place */
                     if (fr->apache_sigpipe_handler != NULL)
                         signal(SIGPIPE, fr->apache_sigpipe_handler);
-                #endif
+#endif
                     close_connection_to_fs(fr);
                     ap_kill_timeout(fr->r);
                     return OK;
