@@ -2,6 +2,8 @@
  * fcgibuf.h
  *
  * This file provides interface for the buffer library.
+ *
+ * $Id: fcgibuf.h,v 1.4 1998/02/24 17:11:40 roy Exp $
  */
 
 #ifndef _FCGIBUF_H_

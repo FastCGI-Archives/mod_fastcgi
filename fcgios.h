@@ -2,6 +2,8 @@
  * fcgios.h
  *
  * Header file for OS abstraction layer.
+ *
+ * $Id: fcgios.h,v 1.2 1998/02/24 17:11:43 roy Exp $
  */
 
 #ifndef _FCGIOS_H_

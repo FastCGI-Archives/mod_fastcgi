@@ -2,6 +2,8 @@
  * fcgios.c
  *
  * OS abstraction layer - well, not really
+ *
+ * $Id: fcgios.c,v 1.2 1998/02/24 17:11:41 roy Exp $
  */
 
 #include "conf.h"                       /* apache code */

@@ -1,6 +1,7 @@
 # 
 # Makefile for the mod_fastcgi module 
 # 
+# $Id: Makefile.sample,v 1.2 1998/02/24 17:11:38 roy Exp $
 
 INCDIR = ../..
 FCGI   = libfcgi.a

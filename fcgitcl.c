@@ -2,6 +2,8 @@
  * fcgitcl.c
  *
  * Tcl dynamic string library definition.
+ *
+ * $Id: fcgitcl.c,v 1.2 1998/02/24 17:11:44 roy Exp $
  */
 
 #include "conf.h"                       /* apache code */

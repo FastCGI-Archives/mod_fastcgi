@@ -2,6 +2,8 @@
  * fcgibuf.c
  * 
  * Ring buffer library.
+ *
+ * $Id: fcgibuf.c,v 1.2 1998/02/24 17:11:40 roy Exp $
  */
 
 #include "conf.h"                       /* apache code */

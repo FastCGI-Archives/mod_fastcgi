@@ -3,6 +3,8 @@
  *
  * This is a header file that is used to track down the version 
  * -- history of the fastcgi module.
+ *
+ * $Id: fcgivers.h,v 1.2 1998/02/24 17:11:48 roy Exp $
  */
 
 /* 

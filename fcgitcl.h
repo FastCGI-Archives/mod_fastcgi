@@ -2,6 +2,8 @@
  * fcgitcl.h
  * 
  * This file provides interfaces for the Tcl Dynamic String library
+ *
+ * $Id: fcgitcl.h,v 1.2 1998/02/24 17:11:47 roy Exp $
  */
 
 #ifndef _FCGITCL_H_

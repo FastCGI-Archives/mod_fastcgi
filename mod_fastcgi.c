@@ -3,6 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
+ *  $Id: mod_fastcgi.c,v 1.25 1998/02/24 17:11:49 roy Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *

@@ -2,6 +2,8 @@
  * fastcgi.h
  *
  * This is a header file that defines FastCGI protocol.
+ *
+ * $Id: fastcgi.h,v 1.2 1998/02/24 17:11:39 roy Exp $
  */
 
 #ifndef _FASTCGI_H_

@@ -4,6 +4,8 @@
  * This is a header file which defines certain features needed
  * -- by the mod_fastcgi module.  It should include information 
  * -- pertinent only to the mod_fastcgi.c
+ *
+ * $Id: mod_fastcgi.h,v 1.5 1998/02/24 17:11:50 roy Exp $
  */
 
 #ifndef _MOD_FASTCGI_H_
