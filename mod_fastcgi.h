@@ -1,9 +1,11 @@
 /*
- * $Id: mod_fastcgi.h,v 1.8 1999/02/15 02:41:38 roberts Exp $
+ * $Id: mod_fastcgi.h,v 1.9 1999/02/17 04:28:34 roy Exp $
  */
 
 #ifndef MOD_FASTCGI_H
 #define MOD_FASTCGI_H
+
+#define MOD_FASTCGI_VERSION "2.2.0"
 
 #define FCGI_DEFAULT_LISTEN_Q 5            /* listen queue size */
 #define FCGI_DEFAULT_RESTART_DELAY 5       /* delay between restarts */

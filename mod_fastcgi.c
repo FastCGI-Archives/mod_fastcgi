@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.61 1999/02/15 02:41:39 roberts Exp $
+ *  $Id: mod_fastcgi.c,v 1.62 1999/02/17 04:28:32 roy Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -194,6 +194,8 @@ static void init_module(server_rec *s, pool *p)
     ap_block_alarms();
     ap_register_cleanup(p, NULL, fcgi_config_reset_globals, ap_null_cleanup);
     ap_unblock_alarms();
+
+    ap_add_version_component("mod_fastcgi/" MOD_FASTCGI_VERSION);
 
     fcgi_config_set_fcgi_uid_n_gid(1);
 
