@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_pm.c,v 1.56 2001/05/29 15:22:13 robs Exp $
+ * $Id: fcgi_pm.c,v 1.57 2001/05/31 13:16:38 robs Exp $
  */
 
 
@@ -113,16 +113,16 @@ static void shutdown_all()
         
         /* Remove the socket file */
         if (s->socket_path != NULL && s->directive != APP_CLASS_EXTERNAL) {
-    #ifndef WIN32
-            if (unlink(s->socket_path) != 0) {
+#ifndef WIN32
+            if (unlink(s->socket_path) != 0 && errno != ENOENT) {
                 ap_log_error(FCGI_LOG_ERR, fcgi_apache_main_server,
                     "FastCGI: unlink() failed to remove socket file \"%s\" for%s server \"%s\"",
                     s->socket_path,
                     (s->directive == APP_CLASS_DYNAMIC) ? " (dynamic)" : "", s->fs_path);
             }
-    #else
+#else
            CloseHandle((HANDLE)s->listenFd);
-    #endif
+#endif
         }
 
         /* Send TERM to all processes */
@@ -134,7 +134,7 @@ static void shutdown_all()
             }
         }
         
-    fcgi_servers = s->next;
+        s = s->next;
     }
 }
 
@@ -747,7 +747,7 @@ static void dynamic_read_msgs(int read_ready)
         switch (opcode) 
         {
         case FCGI_SERVER_START_JOB:
-		case FCGI_SERVER_RESTART_JOB:
+        case FCGI_SERVER_RESTART_JOB:
 
             if (sscanf(ptr1, "%c %s %16s %15s",
                 &opcode, execName, user, group) != 4)
@@ -825,7 +825,7 @@ static void dynamic_read_msgs(int read_ready)
             s->listenQueueDepth = dynamicListenQueueDepth;
             s->initStartDelay = dynamicInitStartDelay;
             s->envp = dynamicEnvp;
-			s->flush = dynamicFlush;
+            s->flush = dynamicFlush;
             
 #ifdef WIN32
             s->mutex_env_string = ap_psprintf(sp, "_FCGI_MUTEX_=%ld", mutex);
@@ -975,40 +975,40 @@ static void dynamic_read_msgs(int read_ready)
         {
             int i, start;
 
-			case FCGI_SERVER_RESTART_JOB:
+            case FCGI_SERVER_RESTART_JOB:
 
-				start = FALSE;
-				
-				/* We just waxed 'em all.  Try to find an idle slot. */
+                start = FALSE;
+                
+                /* We just waxed 'em all.  Try to find an idle slot. */
 
-				for (i = 0; i < dynamicMaxClassProcs; ++i)
-				{
-					if (s->procs[i].state == FCGI_START_STATE
-						|| s->procs[i].state == FCGI_RUNNING_STATE)
-					{
-						break;
-					}
-					else if (s->procs[i].state == FCGI_KILLED_STATE 
-						|| s->procs[i].state == FCGI_READY_STATE)
-					{
-						start = TRUE;
-						break;
-					}
-				}
+                for (i = 0; i < dynamicMaxClassProcs; ++i)
+                {
+                    if (s->procs[i].state == FCGI_START_STATE
+                        || s->procs[i].state == FCGI_RUNNING_STATE)
+                    {
+                        break;
+                    }
+                    else if (s->procs[i].state == FCGI_KILLED_STATE 
+                        || s->procs[i].state == FCGI_READY_STATE)
+                    {
+                        start = TRUE;
+                        break;
+                    }
+                }
 
-				/* Nope, just use the first slot */
-				if (i == dynamicMaxClassProcs)
-				{
-					start = TRUE;
-					i = 0;
-				}
-				
-				if (start)
-				{
-					schedule_start(s, i);
-				}
-						
-				break;
+                /* Nope, just use the first slot */
+                if (i == dynamicMaxClassProcs)
+                {
+                    start = TRUE;
+                    i = 0;
+                }
+                
+                if (start)
+                {
+                    schedule_start(s, i);
+                }
+                        
+                break;
 
             case FCGI_SERVER_START_JOB:
             case FCGI_REQUEST_TIMEOUT_JOB:
