@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_config.c,v 1.2 1999/02/10 03:10:43 roberts Exp $
+ * $Id: fcgi_config.c,v 1.3 1999/02/19 02:21:43 roberts Exp $
  */
 
 #include "fcgi.h"
@@ -626,6 +626,10 @@ const char *fcgi_config_new_external_server(cmd_parms *cmd, void *dummy, const c
             err = get_u_int(tp, &arg, &s->appConnectTimeout, 0);
             if (err != NULL)
                 return invalid_value(tp, name, fs_path, option, err);
+            continue;
+        }
+        else if (strcasecmp(option, "-flush") == 0) {
+            s->flush = 1;
             continue;
         }
         else {
