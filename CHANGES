@@ -50,8 +50,9 @@ Changes with mod_fastcgi 2.2
  *) I renamed some of the directives for consistency (the old names
     still work).  
         
-        AppClass -> FastCgiServer,  FCGIConfig -> FastCgiConfig,
-        ExternalAppClass -> FastCgiUnmanagedServer
+        AppClass -> FastCgiServer,  
+        FCGIConfig -> FastCgiConfig,
+        ExternalAppClass -> FastCgiExternalServer
 
  *) Directive arguments are no longer case sensitive.
 

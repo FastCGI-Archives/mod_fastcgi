@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_config.c,v 1.1 1999/02/09 03:07:59 roberts Exp $
+ * $Id: fcgi_config.c,v 1.2 1999/02/10 03:10:43 roberts Exp $
  */
 
 #include "fcgi.h"
@@ -565,7 +565,7 @@ const char *fcgi_config_new_static_server(cmd_parms *cmd, void *dummy, const cha
 /*******************************************************************************
  * Configure a static FastCGI server that is started/managed elsewhere.
  */
-const char *fcgi_config_new_unmanaged_server(cmd_parms *cmd, void *dummy, const char *arg)
+const char *fcgi_config_new_external_server(cmd_parms *cmd, void *dummy, const char *arg)
 {
     fcgi_server *s;
     pool * const p = cmd->pool, *tp = cmd->temp_pool;

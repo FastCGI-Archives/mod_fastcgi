@@ -1,5 +1,5 @@
 /* 
- * $Id: fcgi.h,v 1.1 1999/02/09 03:07:58 roberts Exp $
+ * $Id: fcgi.h,v 1.2 1999/02/10 03:10:42 roberts Exp $
  */
 
 #ifndef FCGI_H
@@ -235,7 +235,7 @@ void *fcgi_config_create_dir_config(pool *p, char *dummy);
 const char *fcgi_config_make_dir(pool *tp, char *path);
 const char *fcgi_config_make_dynamic_dir_n_mbox(pool *p);
 const char *fcgi_config_new_static_server(cmd_parms *cmd, void *dummy, const char *arg);
-const char *fcgi_config_new_unmanaged_server(cmd_parms *cmd, void *dummy, const char *arg);
+const char *fcgi_config_new_external_server(cmd_parms *cmd, void *dummy, const char *arg);
 const char *fcgi_config_set_config(cmd_parms *cmd, void *dummy, const char *arg);
 const char *fcgi_config_set_fcgi_uid_n_gid(int set);
 const char *fcgi_config_set_fs_path_slot(cmd_parms *cmd, char *mconfig, char *f);

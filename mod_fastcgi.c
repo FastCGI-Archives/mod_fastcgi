@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.57 1999/02/09 03:08:06 roberts Exp $
+ *  $Id: mod_fastcgi.c,v 1.58 1999/02/10 03:10:45 roberts Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -1427,8 +1427,8 @@ command_rec fastcgi_cmds[] = {
     { "AppClass",      fcgi_config_new_static_server, NULL, RSRC_CONF, RAW_ARGS, NULL },
     { "FastCgiServer", fcgi_config_new_static_server, NULL, RSRC_CONF, RAW_ARGS, NULL },
     
-    { "ExternalAppClass",       fcgi_config_new_unmanaged_server, NULL, RSRC_CONF, RAW_ARGS, NULL },
-    { "FastCgiUnmanagedServer", fcgi_config_new_unmanaged_server, NULL, RSRC_CONF, RAW_ARGS, NULL },
+    { "ExternalAppClass",      fcgi_config_new_external_server, NULL, RSRC_CONF, RAW_ARGS, NULL },
+    { "FastCgiExternalServer", fcgi_config_new_external_server, NULL, RSRC_CONF, RAW_ARGS, NULL },
 
     { "FastCgiIpcDir", fcgi_config_set_socket_dir, NULL, RSRC_CONF, TAKE1, NULL },
     
