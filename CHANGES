@@ -1,4 +1,8 @@
-Changes with mod_fastcgi 2.2.3
+Changes with mod_fastcgi 2.2.5
+
+ *) Fix Win32 named pipe handling (problems with large responses).
+
+Changes with mod_fastcgi 2.2.4
 
  *) Beta WinNT support.  David Allen [djallen@raleigh.ibm.com] and 
     Rob Saccoccio [robs@chelsea.net]

@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.91 2000/04/29 21:01:44 robs Exp $
+ *  $Id: mod_fastcgi.c,v 1.92 2000/05/10 05:15:48 robs Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -1279,14 +1279,14 @@ static int do_work(request_rec *r, fcgi_request *fr)
                 if (!(BufferLength(fr->serverOutputBuffer) > 0)) {
                     status = 0;
 
-                    while ((timeOut.tv_sec == 0) || (time(NULL) <= stopTime)) {
+                    while ((timeOut.tv_sec != 0) && (time(NULL) <= stopTime)) {
                         if (PeekNamedPipe((HANDLE) fr->fd,NULL, 0, NULL, &bytesavail, NULL) &&
                             bytesavail > 0) 
                         {
                             status =1;
                             break;
                         }
-                        Sleep(0);
+                        Sleep(100);
                     }
                 }
                 else {

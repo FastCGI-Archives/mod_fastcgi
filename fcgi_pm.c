@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_pm.c,v 1.28 2000/04/29 21:01:44 robs Exp $
+ * $Id: fcgi_pm.c,v 1.29 2000/05/10 05:15:48 robs Exp $
  */
 
 
@@ -803,7 +803,7 @@ static void dynamic_read_msgs(int read_ready)
             sa.bInheritHandle = TRUE;
 
             s->listenFd = (int)CreateNamedPipe(s->socket_path,
-                                          PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED,
+                                          PIPE_ACCESS_DUPLEX,
                                           PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT,
                                           PIPE_UNLIMITED_INSTANCES, 4096,4096,0, &sa);
 
@@ -1368,7 +1368,7 @@ void fcgi_pm_main(void *dummy)
             sa.lpSecurityDescriptor = NULL;
             sa.bInheritHandle = TRUE;
 
-            s->listenFd = (int)CreateNamedPipe(s->socket_path, PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED,
+            s->listenFd = (int)CreateNamedPipe(s->socket_path, PIPE_ACCESS_DUPLEX,
                                           PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT,
                                           PIPE_UNLIMITED_INSTANCES, 4096,4096,0, &sa);
             if ((HANDLE)s->listenFd == INVALID_HANDLE_VALUE) {

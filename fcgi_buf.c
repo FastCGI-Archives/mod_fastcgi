@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_buf.c,v 1.7 2000/04/29 21:01:43 robs Exp $
+ * $Id: fcgi_buf.c,v 1.8 2000/05/10 05:15:47 robs Exp $
  */
 
 #include "fcgi.h"
@@ -52,9 +52,21 @@ static int fd_read(SOCKET fd, char *buf, int len)
     
     // HACK - we don't know if its a pipe or socket..
     if (!ReadFile((HANDLE) fd, buf, len, (unsigned long *) &bytes_read, NULL)) {
-        bytes_read = recv(fd, buf, len, 0);
-        if (bytes_read == SOCKET_ERROR) {
-            errno = WSAGetLastError();
+        
+        int rv = GetLastError();
+
+        if (rv == ERROR_PIPE_NOT_CONNECTED) {
+            bytes_read = 0;
+        }
+        else if (rv == ERROR_INVALID_PARAMETER) {
+            bytes_read = recv(fd, buf, len, 0);
+            if (bytes_read == SOCKET_ERROR) {
+                errno = WSAGetLastError();
+                bytes_read = -1;
+            }
+        }
+        else {
+            errno = rv;
             bytes_read = -1;
         }
     }
@@ -151,6 +163,7 @@ int fcgi_buf_add_fd(Buffer *buf, int fd)
 
         buf->length += len;
     }
+
 #else
         if (buf->length < buf->size) {
             /* There's still more buffer space to read into. */
@@ -168,8 +181,30 @@ int fcgi_buf_add_fd(Buffer *buf, int fd)
 
             status = ap_select(numFDs, &read_set, NULL, NULL, &timeOut);
 
-            if (status < 0)
+            if (status < 0) {
+#ifdef WIN32
+                // More hackery
+                if (WSAGetLastError() == WSAENOTSOCK)
+                {
+                    DWORD bytesavail=0;
+                    if (PeekNamedPipe((HANDLE) fd, NULL, 0, NULL, &bytesavail, NULL)) 
+                    {
+                        if (bytesavail > 0)
+                        {
+                            len = fd_read(fd, buf->end, buf->size - buf->length);
+
+                            if (len <= 0)
+                                return len;
+
+                            buf->end += len;
+                            buf->length += len;
+                        }
+                        return len;
+                    } 
+                }
+#endif
                 return status;  /* error, errno is set */
+            }
 
             if (status > 0 && FD_ISSET(fd, &read_set)) {
 
@@ -184,6 +219,7 @@ int fcgi_buf_add_fd(Buffer *buf, int fd)
         }
     }
 #endif
+
     return len;     /* this may not contain the number of bytes read */
 }
 
@@ -195,9 +231,18 @@ static int fd_write(SOCKET fd, char * buf, int len)
     
     // HACK - We don't know if its a pipe or socket..
     if (!WriteFile((HANDLE) fd, (LPVOID) buf, len, (unsigned long *) &bytes_sent, NULL)) {
-        bytes_sent = send(fd, buf, len, 0);
-        if (bytes_sent == SOCKET_ERROR) {
-            errno = WSAGetLastError();
+        
+        int rv = GetLastError();
+
+        if (rv == ERROR_INVALID_PARAMETER) {
+            bytes_sent = send(fd, buf, len, 0);
+            if (bytes_sent == SOCKET_ERROR) {
+                errno = WSAGetLastError();
+                bytes_sent = -1;
+            }
+        }
+        else {
+            errno = rv;
             bytes_sent = -1;
         }
     }
