@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.126 2002/03/04 22:31:01 robs Exp $
+ *  $Id: mod_fastcgi.c,v 1.127 2002/03/05 18:18:47 robs Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -848,6 +848,9 @@ static void close_connection_to_fs(fcgi_request *fr)
         }
         else
         {
+            /* abort the connection entirely */
+            struct linger linger = {0, 0};
+            setsockopt(fr->fd, SOL_SOCKET, SO_LINGER, (void *) &linger, sizeof(linger)); 
             closesocket(fr->fd);
         }
 
@@ -858,7 +861,10 @@ static void close_connection_to_fs(fcgi_request *fr)
 
     if (fr->fd >= 0) 
     {
+        struct linger linger = {0, 0};
         set_nonblocking(fr, FALSE);
+        /* abort the connection entirely */
+        setsockopt(fr->fd, SOL_SOCKET, SO_LINGER, &linger, sizeof(linger)); 
         closesocket(fr->fd);
         fr->fd = -1;
     }
