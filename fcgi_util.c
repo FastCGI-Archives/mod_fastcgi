@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_util.c,v 1.17 2001/03/26 15:35:40 robs Exp $
+ * $Id: fcgi_util.c,v 1.18 2001/05/03 21:57:35 robs Exp $
  */
 
 #include "fcgi.h"
@@ -410,7 +410,7 @@ fcgi_util_fs_create_procs(pool *p, int num)
         proc[i].terminationEvent = INVALID_HANDLE_VALUE;
 #endif
         proc[i].pid = 0;
-        proc[i].state = FCGI_READY;
+        proc[i].state = FCGI_READY_STATE;
     }
     return proc;
 }

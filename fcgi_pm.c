@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_pm.c,v 1.52 2001/03/26 15:35:39 robs Exp $
+ * $Id: fcgi_pm.c,v 1.53 2001/05/03 21:57:35 robs Exp $
  */
 
 
@@ -64,7 +64,7 @@ static void fcgi_kill(ServerProcess *process, int sig)
 {
     FCGIDBG3("fcgi_kill(%ld, %d)", process->pid, sig);
 
-    process->state = FCGI_VICTIM;                
+    process->state = FCGI_VICTIM_STATE;                
 
 #ifdef WIN32
     if (sig == SIGTERM)
@@ -128,7 +128,7 @@ static void shutdown_all()
         /* Send TERM to all processes */
         for (i = 0; i < numChildren; i++, proc++) 
         {
-            if (proc->state == FCGI_RUNNING) 
+            if (proc->state == FCGI_RUNNING_STATE) 
             {
                 fcgi_kill(proc, SIGTERM);
             }
@@ -622,7 +622,7 @@ static void schedule_start(fcgi_server *s, int proc)
     }
 
     FCGIDBG3("scheduling_start: %s (%d)", s->fs_path, proc);
-    s->procs[proc].state = FCGI_START;
+    s->procs[proc].state = FCGI_START_STATE;
     if (proc == (int)dynamicMaxClassProcs - 1) {
         ap_log_error(FCGI_LOG_WARN_NOERRNO, fcgi_apache_main_server,
             "FastCGI: scheduled the %sstart of the last (dynamic) server "
@@ -745,7 +745,8 @@ static void dynamic_read_msgs(int read_ready)
         opcode = *ptr1;
 
         switch (opcode) {
-        case PLEASE_START:
+        case FCGI_SERVER_START_JOB:
+		case FCGI_SERVER_RESTART_JOB:
             if (sscanf(ptr1, "%c %s %16s %15s",
                 &opcode, execName, user, group) != 4)
             {
@@ -790,9 +791,9 @@ static void dynamic_read_msgs(int read_ready)
 #endif
 
 #ifndef WIN32
-        if (s==NULL && opcode != FCGI_COMPLETE)
+        if (s==NULL && opcode != FCGI_REQUEST_COMPLETE_JOB)
 #else
-        if (s==NULL && cjob->id != FCGI_COMPLETE)
+        if (s==NULL && cjob->id != FCGI_REQUEST_COMPLETE_JOB)
 #endif
         {
 #ifdef WIN32
@@ -894,75 +895,114 @@ static void dynamic_read_msgs(int read_ready)
         }
         else {
 #ifndef WIN32
-            if (opcode == FCGI_START) {
+            if (opcode == FCGI_SERVER_RESTART_JOB) {
 #else
-            if (cjob->id==FCGI_START) {
+            if (cjob->id==FCGI_SERVER_RESTART_JOB) {
 #endif
-                if (dynamicAutoUpdate) {
-                    /* Check to see if the binary has changed.  If so,
-                    * kill the FCGI application processes, and
-                    * restart them.
-                    */
-                    struct stat stbuf;
-                    int i;
+                /* Check to see if the binary has changed.  If so,
+                * kill the FCGI application processes, and
+                * restart them.
+                */
+                struct stat stbuf;
+                int i;
 
 #ifndef WIN32
-                    if ((stat(execName, &stbuf)==0) &&
+                if ((stat(execName, &stbuf)==0) &&
 #else
-                    if ((stat(cjob->fs_path, &stbuf)==0) &&
+                if ((stat(cjob->fs_path, &stbuf)==0) &&
 #endif
-                            (stbuf.st_mtime > s->restartTime)) {
-                        /* kill old server(s) */
-                        for (i = 0; i < dynamicMaxClassProcs; i++) {
-                            if (s->procs[i].pid > 0) {
-                                fcgi_kill(&s->procs[i], SIGTERM);
-                            }
-                        }
-
-                        ap_log_error(FCGI_LOG_WARN_NOERRNO, fcgi_apache_main_server,
-                                     "FastCGI: restarting server \"%s\" processes, newer version found",
-#ifndef WIN32
-                                     execName);
-#else
-                                     cjob->fs_path);
-#endif
-                    }
-
-                    /* If dynamicAutoRestart, don't mark any new processes
-                     * for  starting because we probably got the
-                     * PLEASE_START due to dynamicAutoUpdate and the ProcMgr
-                     * will be restarting all of those we just killed.
-                     */
-                    if (dynamicAutoRestart)
-                        goto NextJob;
-                } else {
-                    /* we've been asked to start a process--only start
-                    * it if we're not already running at least one
-                    * instance.
-                    */
-                    int i;
-
+                        (stbuf.st_mtime > s->restartTime)) {
+                    /* kill old server(s) */
                     for (i = 0; i < dynamicMaxClassProcs; i++) {
-                       if (s->procs[i].state == FCGI_RUNNING)
-                          break;
+                        if (s->procs[i].pid > 0) {
+                            fcgi_kill(&s->procs[i], SIGTERM);
+                        }
                     }
-                    /* if already running, don't start another one */
-                    if (i < dynamicMaxClassProcs) {
-                        goto NextJob;
-                    }
+
+                    ap_log_error(FCGI_LOG_WARN_NOERRNO, fcgi_apache_main_server,
+                                 "FastCGI: restarting server \"%s\" processes, newer version found",
+#ifndef WIN32
+                                 execName);
+#else
+                                 cjob->fs_path);
+#endif
+                }
+
+                /* If dynamicAutoRestart, don't mark any new processes
+                 * for  starting because we probably got the
+                 * FCGI_SERVER_START_JOB due to dynamicAutoUpdate and the ProcMgr
+                 * will be restarting all of those we just killed.
+                 */
+                if (dynamicAutoRestart)
+                    goto NextJob;
+            } 
+#ifndef WIN32
+            else if (opcode == FCGI_SERVER_START_JOB) {
+#else
+            else if (cjob->id==FCGI_SERVER_START_JOB) {
+#endif
+                /* we've been asked to start a process--only start
+                * it if we're not already running at least one
+                * instance.
+                */
+                int i;
+
+                for (i = 0; i < dynamicMaxClassProcs; i++) {
+                   if (s->procs[i].state == FCGI_RUNNING_STATE)
+                      break;
+                }
+                /* if already running, don't start another one */
+                if (i < dynamicMaxClassProcs) {
+                    goto NextJob;
                 }
             }
         }
+
 #ifndef WIN32
         switch (opcode)
 #else
         switch (cjob->id)
 #endif
         {
-            int i;
+            int i, start;
 
-            case FCGI_START:
-            case FCGI_TIMEOUT:
+			case FCGI_SERVER_RESTART_JOB:
+
+				start = FALSE;
+				
+				/* We just waxed 'em all.  Try to find an idle slot. */
+
+				for (i = 0; i < dynamicMaxClassProcs; ++i)
+				{
+					if (s->procs[i].state == FCGI_START_STATE
+						|| s->procs[i].state == FCGI_RUNNING_STATE)
+					{
+						break;
+					}
+					else if (s->procs[i].state == FCGI_KILLED_STATE 
+						|| s->procs[i].state == FCGI_READY_STATE)
+					{
+						start = TRUE;
+						break;
+					}
+				}
+
+				/* Nope, just use the first slot */
+				if (i == dynamicMaxClassProcs)
+				{
+					start = TRUE;
+					i = 0;
+				}
+				
+				if (start)
+				{
+					schedule_start(s, i);
+				}
+						
+				break;
+
+            case FCGI_SERVER_START_JOB:
+            case FCGI_REQUEST_TIMEOUT_JOB:
 
                 if ((fcgi_dynamic_total_proc_count + 1) > (int) dynamicMaxProcs) {
                     /*
@@ -979,12 +1019,12 @@ static void dynamic_read_msgs(int read_ready)
                 /* find next free slot */
                 for (i = 0; i < dynamicMaxClassProcs; i++) 
                 {
-                    if (s->procs[i].state == FCGI_START) 
+                    if (s->procs[i].state == FCGI_START_STATE) 
                     {
                         FCGIDBG2("ignore_job: slot (%d) is already scheduled for starting", i);
                         break;
                     }
-                    else if (s->procs[i].state == FCGI_RUNNING)
+                    else if (s->procs[i].state == FCGI_RUNNING_STATE)
                     {
                         continue;
                     }
@@ -999,7 +1039,7 @@ static void dynamic_read_msgs(int read_ready)
                 }
 #endif
                 break;
-            case FCGI_COMPLETE:
+            case FCGI_REQUEST_COMPLETE_JOB:
                 /* only record stats if we have a structure */
                 if (s) {
 #ifndef WIN32
@@ -1122,12 +1162,12 @@ static void dynamic_kill_idle_fs_procs(void)
          */
         for (i = 0; i < dynamicMaxClassProcs; ++i) 
         {
-            if (s->procs[i].state == FCGI_START) 
+            if (s->procs[i].state == FCGI_START_STATE) 
             {
-                s->procs[i].state = FCGI_READY;
+                s->procs[i].state = FCGI_READY_STATE;
                 break;
             }
-            else if (s->procs[i].state == FCGI_VICTIM) 
+            else if (s->procs[i].state == FCGI_VICTIM_STATE) 
             {
                 break;
             }
@@ -1140,7 +1180,7 @@ static void dynamic_kill_idle_fs_procs(void)
 
         for (i = 0; i < dynamicMaxClassProcs; ++i) 
         {
-            if (s->procs[i].state != FCGI_RUNNING) 
+            if (s->procs[i].state != FCGI_RUNNING_STATE) 
             {
                 continue;
             }
@@ -1211,7 +1251,7 @@ void child_wait_thread(void *dummy) {
 
                         if (s->directive == APP_CLASS_STANDARD) {
                             /* restart static app */
-                            s->procs[i].state = FCGI_START;
+                            s->procs[i].state = FCGI_START_STATE;
                             s->numFailures++;
                         }
                         else {
@@ -1219,18 +1259,18 @@ void child_wait_thread(void *dummy) {
                             fcgi_dynamic_total_proc_count--;
                             FCGIDBG2("-- fcgi_dynamic_total_proc_count=%d", fcgi_dynamic_total_proc_count);
 
-                            if (s->procs[i].state == FCGI_VICTIM) {
-                                s->procs[i].state = FCGI_KILLED;
+                            if (s->procs[i].state == FCGI_VICTIM_STATE) {
+                                s->procs[i].state = FCGI_KILLED_STATE;
                             }
                             else {
                                 /* dynamic app shouldn't have died or dynamicAutoUpdate killed it*/
                                 s->numFailures++;
 
                                 if (dynamicAutoRestart || (s->numProcesses <= 0 && dynamicThreshold1 == 0)) {
-                                    s->procs[i].state = FCGI_START;
+                                    s->procs[i].state = FCGI_START_STATE;
                                 }
                                 else {
-                                    s->procs[i].state = FCGI_READY;
+                                    s->procs[i].state = FCGI_READY_STATE;
                                 }
                             }
                         }
@@ -1352,7 +1392,7 @@ void fcgi_pm_main(void *dummy)
 #endif
 
         for (i = 0; i < s->numProcesses; ++i) 
-            s->procs[i].state = FCGI_START;
+            s->procs[i].state = FCGI_START_STATE;
     }
 
 #ifdef WIN32
@@ -1403,7 +1443,7 @@ void fcgi_pm_main(void *dummy)
 
             for (i = 0; i < numChildren; ++i) 
             {
-                if (s->procs[i].pid <= 0 && s->procs[i].state == FCGI_START)
+                if (s->procs[i].pid <= 0 && s->procs[i].state == FCGI_START_STATE)
                 {
                     int restart = (s->procs[i].pid < 0);
                     time_t restartTime = s->restartTime;
@@ -1445,7 +1485,7 @@ void fcgi_pm_main(void *dummy)
                             FCGIDBG2("++ fcgi_dynamic_total_proc_count=%d", fcgi_dynamic_total_proc_count);
                         }
 
-                        s->procs[i].state = FCGI_RUNNING;
+                        s->procs[i].state = FCGI_RUNNING_STATE;
 
                         if (restart)
                             s->numRestarts++;

@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi.h,v 1.30 2001/03/26 15:35:38 robs Exp $
+ * $Id: fcgi.h,v 1.31 2001/05/03 21:57:35 robs Exp $
  */
 
 #ifndef FCGI_H
@@ -69,13 +69,13 @@ typedef struct _fcgi_pm_job {
 } fcgi_pm_job;
 #endif
 
-enum { 
-    FCGI_RUNNING,             /* currently running */
-    FCGI_START,               /* needs to be started by PM */
-    FCGI_VICTIM,              /* SIGTERM was sent by PM */
-    FCGI_KILLED,              /* a wait() collected VICTIM */
-    FCGI_READY                /* empty cell, init state */
-} process_state;
+enum process_state { 
+    FCGI_RUNNING_STATE,             /* currently running */
+    FCGI_START_STATE,               /* needs to be started by PM */
+    FCGI_VICTIM_STATE,              /* SIGTERM was sent by PM */
+    FCGI_KILLED_STATE,              /* a wait() collected VICTIM */
+    FCGI_READY_STATE                /* empty cell, init state */
+};
 
 /*
  * ServerProcess holds data for each process associated with
@@ -224,10 +224,10 @@ typedef struct {
 #define SCAN_CGI_SRV_REDIRECT   -3
 
 /* Opcodes for Server->ProcMgr communication */
-#define FCGI_START    83        /* 'S' - start */
-#define FCGI_RESTART  82        /* 'R' - restart */
-#define FCGI_TIMEOUT  84        /* 'T' - timeout */
-#define FCGI_COMPLETE 67        /* 'C' - complete */
+#define FCGI_SERVER_START_JOB     83        /* 'S' - start */
+#define FCGI_SERVER_RESTART_JOB   82        /* 'R' - restart */
+#define FCGI_REQUEST_TIMEOUT_JOB  84        /* 'T' - timeout */
+#define FCGI_REQUEST_COMPLETE_JOB 67        /* 'C' - complete */
 
 /* Authorizer types, for auth directives handling */
 #define FCGI_AUTH_TYPE_AUTHENTICATOR  0

@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.110 2001/05/03 20:51:24 robs Exp $
+ *  $Id: mod_fastcgi.c,v 1.111 2001/05/03 21:57:35 robs Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -162,7 +162,7 @@ static void send_to_pm(const char id, const char * const fs_path,
 
     switch(id) {
 
-    case FCGI_START:
+    case FCGI_SERVER_START_JOB:
 #ifdef WIN32
         job->id = id;
         job->fs_path = strdup(fs_path);
@@ -175,7 +175,7 @@ static void send_to_pm(const char id, const char * const fs_path,
 #endif
         break;
 
-    case FCGI_TIMEOUT:
+    case FCGI_REQUEST_TIMEOUT_JOB:
 #ifdef WIN32
         job->id = id;
         job->fs_path = strdup(fs_path);
@@ -188,7 +188,7 @@ static void send_to_pm(const char id, const char * const fs_path,
 #endif
         break;
 
-    case FCGI_COMPLETE:
+    case FCGI_REQUEST_COMPLETE_JOB:
 #ifdef WIN32
         job->id = id;
         job->fs_path = strdup(fs_path);
@@ -758,7 +758,7 @@ static void close_connection_to_fs(fcgi_request *fr)
                 timersub(&fr->queueTime, &fr->startTime, &qtime);
                 timersub(&fr->completeTime, &fr->queueTime, &rtime);
                 
-                send_to_pm(FCGI_COMPLETE, fr->fs_path,
+                send_to_pm(FCGI_REQUEST_COMPLETE_JOB, fr->fs_path,
                     fr->user, fr->group,
                     qtime.tv_sec * 1000000 + qtime.tv_usec,
                     rtime.tv_sec * 1000000 + rtime.tv_usec);
@@ -884,7 +884,7 @@ static int open_connection_to_fs(fcgi_request *fr)
                         /* 
                          * There's a newer one, request a restart.
                          */
-                        send_to_pm(FCGI_RESTART, fr->fs_path, fr->user, fr->group, 0, 0);
+                        send_to_pm(FCGI_SERVER_RESTART_JOB, fr->fs_path, fr->user, fr->group, 0, 0);
 
 #ifdef WIN32
                         Sleep(1000);
@@ -898,7 +898,7 @@ static int open_connection_to_fs(fcgi_request *fr)
         }
         else
         {
-            send_to_pm(FCGI_START, fr->fs_path, fr->user, fr->group, 0, 0);
+            send_to_pm(FCGI_SERVER_START_JOB, fr->fs_path, fr->user, fr->group, 0, 0);
         
             /* Wait until it looks like its running */
 
@@ -987,7 +987,7 @@ static int open_connection_to_fs(fcgi_request *fr)
             ready = WaitNamedPipe(socket_path, interval);
 
             if (fr->dynamic && !ready) {
-                send_to_pm(FCGI_TIMEOUT, fr->fs_path, fr->user, fr->group, 0, 0);
+                send_to_pm(FCGI_REQUEST_TIMEOUT_JOB, fr->fs_path, fr->user, fr->group, 0, 0);
             }
 
             if (fcgi_util_gettimeofday(&fr->queueTime) < 0) {
@@ -1117,7 +1117,7 @@ static int open_connection_to_fs(fcgi_request *fr)
                 break;
 
             /* select() timed out */
-            send_to_pm(FCGI_TIMEOUT, fr->fs_path, fr->user, fr->group, 0, 0);
+            send_to_pm(FCGI_REQUEST_TIMEOUT_JOB, fr->fs_path, fr->user, fr->group, 0, 0);
         } while ((fr->queueTime.tv_sec - fr->startTime.tv_sec) < (int)dynamicAppConnectTimeout);
 
         /* XXX These can be moved down when dynamic vars live is a struct */
@@ -1403,7 +1403,7 @@ static int do_work(request_rec *r, fcgi_request *fr)
                     struct timeval idle_time;
                     timersub(&fr->queueTime, &dynamic_last_activity_time, &idle_time);
                     if (idle_time.tv_sec > idle_timeout) {
-                        send_to_pm(FCGI_TIMEOUT, fr->fs_path, fr->user, fr->group, 0, 0);
+                        send_to_pm(FCGI_REQUEST_TIMEOUT_JOB, fr->fs_path, fr->user, fr->group, 0, 0);
                         ap_log_rerror(FCGI_LOG_ERR_NOERRNO, r,
                             "FastCGI: comm with (dynamic) server \"%s\" aborted: (first read) idle timeout (%d sec)",
                             fr->fs_path, idle_timeout);
@@ -1421,7 +1421,7 @@ static int do_work(request_rec *r, fcgi_request *fr)
                 }
                 else {
                     /* Killed time somewhere.. client read? */
-                    send_to_pm(FCGI_TIMEOUT, fr->fs_path, fr->user, fr->group, 0, 0);
+                    send_to_pm(FCGI_REQUEST_TIMEOUT_JOB, fr->fs_path, fr->user, fr->group, 0, 0);
                     dynamic_first_read = qwait.tv_sec / dynamicPleaseStartDelay + 1;
                     timeOut.tv_sec = dynamic_first_read * dynamicPleaseStartDelay;
                     timeOut.tv_usec = 100000;  /* fudge for select() slop */
@@ -1491,7 +1491,7 @@ static int do_work(request_rec *r, fcgi_request *fr)
 
                     timersub(&fr->queueTime, &fr->startTime, &qwait);
 
-                    send_to_pm(FCGI_TIMEOUT, fr->fs_path, fr->user, fr->group, 0, 0);
+                    send_to_pm(FCGI_REQUEST_TIMEOUT_JOB, fr->fs_path, fr->user, fr->group, 0, 0);
 
                     dynamic_first_read = qwait.tv_sec / dynamicPleaseStartDelay + 1;
                 }
