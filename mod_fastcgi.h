@@ -5,7 +5,7 @@
  * -- by the mod_fastcgi module.  It should include information 
  * -- pertinent only to the mod_fastcgi.c
  *
- * $Id: mod_fastcgi.h,v 1.5 1998/02/24 17:11:50 roy Exp $
+ * $Id: mod_fastcgi.h,v 1.6 1998/07/28 17:02:43 roberts Exp $
  */
 
 #ifndef _MOD_FASTCGI_H_
@@ -43,8 +43,8 @@
 #define DStringInit             Tcl_DStringInit
 
 /* function prototypes - needed by other files */
-void *Malloc(size_t size);
-void Free(void *ptr);
+void *fcgi_Malloc(size_t size);
+void fcgi_Free(void *ptr);
 
 #endif
 
