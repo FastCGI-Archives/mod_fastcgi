@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.150 2003/02/03 23:07:37 robs Exp $
+ *  $Id: mod_fastcgi.c,v 1.151 2003/02/04 00:29:41 robs Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -2400,7 +2400,10 @@ static int do_work(request_rec * const r, fcgi_request * const fr)
     return rv;
 }
 
-static fcgi_request *create_fcgi_request(request_rec * const r, const char *path)
+static int 
+create_fcgi_request(request_rec * const r, 
+                    const char * const path, 
+                    fcgi_request ** const frP)
 {
     const char *fs_path;
     pool * const p = r->pool;
@@ -2439,17 +2442,16 @@ static fcgi_request *create_fcgi_request(request_rec * const r, const char *path
             {
                 ap_log_rerror(FCGI_LOG_ERR_ERRNO, r, 
                     "FastCGI: stat() of \"%s\" failed", fs_path);
-                return NULL;
+                return HTTP_NOT_FOUND;
             }
         }
 
         err = fcgi_util_fs_is_path_ok(p, fs_path, my_finfo);
-
         if (err) 
         {
             ap_log_rerror(FCGI_LOG_ERR_NOERRNO, r, 
                 "FastCGI: invalid (dynamic) server \"%s\": %s", fs_path, err);
-            return NULL;
+            return HTTP_FORBIDDEN;
         }
     }
 
@@ -2485,7 +2487,9 @@ static fcgi_request *create_fcgi_request(request_rec * const r, const char *path
 
     set_uid_n_gid(r, &fr->user, &fr->group);
 
-    return fr;
+    *frP = fr;
+
+    return OK;
 }
 
 /*
@@ -2563,14 +2567,19 @@ static int content_handler(request_rec *r)
 #endif
 
     /* Setup a new FastCGI request */
-    if ((fr = create_fcgi_request(r, NULL)) == NULL)
-        return HTTP_INTERNAL_SERVER_ERROR;
+    ret = create_fcgi_request(r, NULL, &fr);
+    if (ret)
+    {
+        return ret;
+    }
 
     /* If its a dynamic invocation, make sure scripts are OK here */
-    if (fr->dynamic && !(ap_allow_options(r) & OPT_EXECCGI) && !apache_is_scriptaliased(r)) {
+    if (fr->dynamic && ! (ap_allow_options(r) & OPT_EXECCGI) 
+        && ! apache_is_scriptaliased(r)) 
+    {
         ap_log_rerror(FCGI_LOG_ERR_NOERRNO, r,
             "FastCGI: \"ExecCGI Option\" is off in this directory: %s", r->uri);
-        return HTTP_INTERNAL_SERVER_ERROR;
+        return HTTP_FORBIDDEN;
     }
 
     /* Process the fastcgi-script request */
@@ -2649,8 +2658,11 @@ static int check_user_authentication(request_rec *r)
     if ((res = ap_get_basic_auth_pw(r, &password)) != OK)
         return res;
 
-    if ((fr = create_fcgi_request(r, dir_config->authenticator)) == NULL)
-        return HTTP_INTERNAL_SERVER_ERROR;
+    res = create_fcgi_request(r, dir_config->authenticator, &fr);
+    if (res)
+    {
+        return res;
+    }
 
     /* Save the existing subprocess_env, because we're gonna muddy it up */
     fr->saved_subprocess_env = ap_copy_table(r->pool, r->subprocess_env);
@@ -2713,8 +2725,11 @@ static int check_user_authorization(request_rec *r)
      * FastCGI server and pass the rest of the directive line), but for now keep
      * it simple. */
 
-    if ((fr = create_fcgi_request(r, dir_config->authorizer)) == NULL)
-        return HTTP_INTERNAL_SERVER_ERROR;
+    res = create_fcgi_request(r, dir_config->authorizer, &fr);
+    if (res)
+    {
+        return res;
+    }
 
     /* Save the existing subprocess_env, because we're gonna muddy it up */
     fr->saved_subprocess_env = ap_copy_table(r->pool, r->subprocess_env);
@@ -2770,8 +2785,11 @@ static int check_access(request_rec *r)
     if (dir_config == NULL || dir_config->access_checker == NULL)
         return DECLINED;
 
-    if ((fr = create_fcgi_request(r, dir_config->access_checker)) == NULL)
-        return HTTP_INTERNAL_SERVER_ERROR;
+    res = create_fcgi_request(r, dir_config->access_checker, &fr);
+    if (res)
+    {
+        return res;
+    }
 
     /* Save the existing subprocess_env, because we're gonna muddy it up */
     fr->saved_subprocess_env = ap_copy_table(r->pool, r->subprocess_env);
