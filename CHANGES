@@ -1,5 +1,7 @@
 2.4.1
 
+ *) [WIN] Fix starting of scripts under AP2.
+
  *) Do the connect() to the application *after* collecting a chunk
     of client data.  This reinstates the pre-2.4.0 behaviour.
     James Jurach [muaddib@erf.net].

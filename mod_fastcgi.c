@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.152 2003/06/18 00:25:17 robs Exp $
+ *  $Id: mod_fastcgi.c,v 1.153 2003/06/19 02:18:00 robs Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -2494,7 +2494,7 @@ create_fcgi_request(request_rec * const r,
 #ifdef WIN32
     fr->fd = INVALID_SOCKET;
     fr->dynamic = ((fs == NULL) || (fs->directive == APP_CLASS_DYNAMIC)) ? TRUE : FALSE;
-    fr->using_npipe_io = FALSE;
+    fr->using_npipe_io = (! fr->dynamic && (fs->dest_addr || fs->socket_addr)) ? 0 : 1;
 #else
     fr->dynamic = (fs == NULL) ? TRUE : FALSE;
     fr->fd = -1;

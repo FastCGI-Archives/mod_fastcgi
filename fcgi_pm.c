@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_pm.c,v 1.86 2003/06/17 01:24:48 robs Exp $
+ * $Id: fcgi_pm.c,v 1.87 2003/06/19 02:18:00 robs Exp $
  */
 
 
@@ -30,6 +30,9 @@ time_t fcgi_dynamic_last_analyzed = 0;    /* last time calculation was
 static time_t now = 0;
 
 #ifdef WIN32
+#ifdef APACHE2
+#include "mod_cgi.h"
+#endif
 #pragma warning ( disable : 4100 4102 )
 static BOOL bTimeToDie = FALSE;  /* process termination flag */
 HANDLE fcgi_event_handles[3];
@@ -461,6 +464,21 @@ FailedSystemCallExit:
     apr_proc_t proc = { 0 };
     apr_file_t * file;
     int i = 0;
+    cgi_exec_info_t e_info = { 0 };
+    request_rec r = { 0 };
+    const char *command;
+    const char **argv;
+    int rv;
+    APR_OPTIONAL_FN_TYPE(ap_cgi_build_command) *cgi_build_command;
+    
+    cgi_build_command = APR_RETRIEVE_OPTIONAL_FN(ap_cgi_build_command);
+    if (cgi_build_command == NULL) 
+    {
+        ap_log_error(FCGI_LOG_CRIT, fcgi_apache_main_server,
+            "FastCGI: can't exec server \"%s\", mod_cgi isn't loaded", 
+            fs->fs_path);
+        return 0;
+    }
 
     if (apr_pool_create(&tp, fcgi_config_pool))
         return 0;
@@ -504,11 +522,31 @@ FailedSystemCallExit:
     {
         listen_handle = (HANDLE) fs->listenFd;
     }
+
+    r.per_dir_config = fcgi_apache_main_server->lookup_defaults;
+    r.server = fcgi_apache_main_server;
+    r.filename = (char *) fs->fs_path;
+    r.pool = tp;
+    r.subprocess_env = apr_table_make(tp, 0);
+
+    e_info.cmd_type = APR_PROGRAM;
+
+    rv = cgi_build_command(&command, &argv, &r, tp, &e_info);
+    if (rv != APR_SUCCESS) 
+    {
+        ap_log_error(FCGI_LOG_CRIT, fcgi_apache_main_server,
+            "FastCGI: don't know how to spawn cmd child process: %s", 
+            fs->fs_path);
+        goto CLEANUP;
+    }
     
     if (apr_procattr_create(&procattr, tp))
         goto CLEANUP;
    
     if (apr_procattr_dir_set(procattr, ap_make_dirstr_parent(tp, fs->fs_path)))
+        goto CLEANUP;
+
+    if (apr_procattr_cmdtype_set(procattr, e_info.cmd_type))
         goto CLEANUP;
 
     if (apr_procattr_detach_set(procattr, 1))
@@ -521,7 +559,7 @@ FailedSystemCallExit:
     if (apr_procattr_child_in_set(procattr, file, NULL))
         goto CLEANUP; 
 
-    if (apr_proc_create(&proc, fs->fs_path, NULL, fs->envp, procattr, tp))
+    if (apr_proc_create(&proc, command, argv, fs->envp, procattr, tp))
         goto CLEANUP;
 
     process->handle = proc.hproc;
