@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.83 1999/09/24 02:28:30 roberts Exp $
+ *  $Id: mod_fastcgi.c,v 1.84 1999/09/26 02:15:04 roberts Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -1114,7 +1114,11 @@ static int do_work(request_rec *r, fcgi_request *fr)
 
                 if (dynamic_first_read) {
                     dynamic_first_read = 0;
-                }
+                    if (gettimeofday(&fr->queueTime, NULL) < 0) {
+                        ap_log_rerror(FCGI_LOG_ERR, r, "FastCGI: gettimeofday() failed");
+                        return server_error(fr);
+		    }
+               }
 
                 if ((status = fcgi_buf_add_fd(fr->serverInputBuffer, fr->fd)) < 0) {
                     ap_log_rerror(FCGI_LOG_ERR, r,

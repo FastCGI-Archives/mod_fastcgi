@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_pm.c,v 1.18 1999/09/24 02:28:29 roberts Exp $
+ * $Id: fcgi_pm.c,v 1.19 1999/09/26 02:15:02 roberts Exp $
  */
 
 #include "fcgi.h"
@@ -9,6 +9,8 @@ time_t fcgi_dynamic_epoch = 0;            /* last time kill_procs was
                                                   * invoked by process mgr */
 time_t fcgi_dynamic_last_analyzed = 0;    /* last time calculation was
                                                   * made for the dynamic procs*/
+
+static time_t now = 0;
 
 /* Information about a process we are doing a blocking kill of.  */
 struct FuncData {
@@ -114,17 +116,9 @@ static const char *bind_n_listen(pool *p, struct sockaddr *socket_addr,
     if (bind(sock, socket_addr, socket_addr_len) != 0)
         return "bind() failed";
 
-    /* Twiddle ownership and permissions */
+    /* Twiddle permissions */
     if (socket_addr->sa_family == AF_UNIX) {
-#ifndef __EMX__
-        /* If we're root, we're gonna setuid/setgid, so we need to chown */
-        if (geteuid() == 0 &&
-                chown(((struct sockaddr_un *)socket_addr)->sun_path,
-                      ap_user_id, ap_group_id) != 0)
-            return "chown() of socket failed";
-#endif
-        if (chmod(((struct sockaddr_un *)socket_addr)->sun_path,
-                  S_IRUSR | S_IWUSR) != 0)
+        if (chmod(((struct sockaddr_un *)socket_addr)->sun_path, S_IRUSR | S_IWUSR))
             return "chmod() of socket failed";
     }
 
@@ -241,34 +235,26 @@ static void signal_handler(int signo)
  *----------------------------------------------------------------------
  */
 
-static int spawn_fs_process(
-        pid_t *childPid,
-        int listenFd,
-        int priority,
-        const char *programName,
-        char **envPtr,
-        const char *user,
-        const char *group)
+static pid_t spawn_fs_process(const fcgi_server *fs)
 {
+    pid_t child_pid;
     int i;
     char *dirName;
     char *dnEnd, *failedSysCall;
 
-    *childPid = fork();
-    if (*childPid < 0)
-        return -1;
-
-    if (*childPid != 0)
-        return 0;
+    child_pid = fork();
+    if (child_pid) {
+        return child_pid;
+    }
 
     /* We're the child.  We're gonna exec() so pools don't matter. */
 
-    dnEnd = strrchr(programName, '/');
+    dnEnd = strrchr(fs->fs_path, '/');
     if (dnEnd == NULL) {
         dirName = "./";
     } else {
-        dirName = ap_pcalloc(fcgi_config_pool, dnEnd - programName + 1);
-        dirName = memcpy(dirName, programName, dnEnd - programName);
+        dirName = ap_pcalloc(fcgi_config_pool, dnEnd - fs->fs_path + 1);
+        dirName = memcpy(dirName, fs->fs_path, dnEnd - fs->fs_path);
     }
     if (chdir(dirName) < 0) {
         failedSysCall = "chdir()";
@@ -277,8 +263,8 @@ static int spawn_fs_process(
 
 #ifndef __EMX__
      /* OS/2 dosen't support nice() */
-    if (priority != 0) {
-        if (nice(priority) == -1) {
+    if (fs->processPriority != 0) {
+        if (nice(fs->processPriority) == -1) {
             failedSysCall = "nice()";
             goto FailedSystemCallExit;
         }
@@ -286,8 +272,8 @@ static int spawn_fs_process(
 #endif
 
     /* Open the listenFd on spec'd fd */
-    if (listenFd != FCGI_LISTENSOCK_FILENO)
-        dup2(listenFd, FCGI_LISTENSOCK_FILENO);
+    if (fs->listenFd != FCGI_LISTENSOCK_FILENO)
+        dup2(fs->listenFd, FCGI_LISTENSOCK_FILENO);
 
     /* Close all other open fds, except stdout/stderr.  Leave these two open so
      * FastCGI applications don't have to find and fix ALL 3rd party libs that
@@ -307,19 +293,19 @@ static int spawn_fs_process(
     signal(SIGPIPE, SIG_IGN);
 
     if (fcgi_suexec != NULL) {
-        char *shortName = strrchr(programName, '/') + 1;
+        char *shortName = strrchr(fs->fs_path, '/') + 1;
 
         /* Relinquish our root real uid powers */
         seteuid_root();
         setuid(ap_user_id);
 
         do {
-            execle(fcgi_suexec, fcgi_suexec, user, group, shortName, NULL, envPtr);
+            execle(fcgi_suexec, fcgi_suexec, fs->username, fs->group, shortName, NULL, fs->envp);
         } while (errno == EINTR);
     }
     else {
         do {
-            execle(programName, programName, NULL, envPtr);
+            execle(fs->fs_path, fs->fs_path, NULL, fs->envp);
         } while (errno == EINTR);
     }
 
@@ -332,7 +318,7 @@ static int spawn_fs_process(
 FailedSystemCallExit:
     ap_log_error(FCGI_LOG_ERR, fcgi_apache_main_server,
         "FastCGI: can't start server \"%s\" (pid %ld), %s failed",
-        programName, (long) getpid(), failedSysCall);
+        fs->fs_path, (long) getpid(), failedSysCall);
     exit(-1);
 
     /* avoid an irrelevant compiler warning */
@@ -439,7 +425,6 @@ static void dynamic_read_msgs(int read_ready)
     char user[MAX_USER_NAME_LEN + 2];
     char group[MAX_GID_CHAR_LEN + 1];
     unsigned long q_usec = 0UL, req_usec = 0UL;
-    time_t now = time(NULL);
     pool *sp, *tp;
 
     user[MAX_USER_NAME_LEN + 1] = group[MAX_GID_CHAR_LEN] = '\0';
@@ -772,7 +757,6 @@ static void dynamic_kill_idle_fs_procs(void)
 {
     fcgi_server *s;
     struct FuncData *funcData = NULL;
-    time_t now = time(NULL);
     float connTime;         /* server's smoothed running time, or
                              * if that's 0, the current total */
     float totalTime;        /* maximum number of microseconds that all
@@ -940,7 +924,7 @@ int fcgi_pm_main(void *dummy, child_info *info)
 {
     fcgi_server *s;
     int i, read_ready;
-    int status, callWaitPid, callDynamicProcs;
+    int callWaitPid, callDynamicProcs;
     int alarmLeft = 0;
     pool *tp;
     const char *err;
@@ -990,11 +974,12 @@ int fcgi_pm_main(void *dummy, child_info *info)
     ap_log_error(FCGI_LOG_NOTICE_NOERRNO, fcgi_apache_main_server,
         "FastCGI: process manager initialized (pid %ld)", (long)getpid());
 
+    now = time(NULL);
+
     /*
      * Loop until SIGTERM
      */
     for (;;) {
-        time_t now;
         int sleepSeconds = min(dynamicKillInterval, dynamicUpdateInterval);
         pid_t childPid;
         int waitStatus;
@@ -1006,13 +991,6 @@ int fcgi_pm_main(void *dummy, child_info *info)
          */
         if (alarmLeft)
             sleepSeconds = alarmLeft;
-
-        /*
-         * If there is no parent process, then the Apache has
-         * terminated or restarted, so perform the cleanup
-         */
-        if (1 == getppid())
-            goto ProcessSigTerm;
 
         /*
          * Examine each configured AppClass for a process that needs
@@ -1036,8 +1014,6 @@ int fcgi_pm_main(void *dummy, child_info *info)
                 {
                     time_t restartTime;
 
-                    now = time(NULL);
-
                     if (s->procs[i].pid == 0) {
                         restartTime = s->restartTime + s->initStartDelay;
                     } else {
@@ -1051,13 +1027,9 @@ int fcgi_pm_main(void *dummy, child_info *info)
                         if (caughtSigTerm) {
                             goto ProcessSigTerm;
                         }
-                        status = spawn_fs_process(
-                                &s->procs[i].pid,
-                                s->listenFd,
-                                s->processPriority,
-                                s->fs_path,
-                                s->envp, s->username, s->group);
-                        if (status != 0) {
+
+                        s->procs[i].pid = spawn_fs_process(s);
+                        if (s->procs[i].pid <= 0) {
                             ap_log_error(FCGI_LOG_CRIT, fcgi_apache_main_server,
                                 "FastCGI: can't start%s server \"%s\": spawn_fs_process() failed",
                                 (s->directive == APP_CLASS_DYNAMIC) ? " (dynamic)" : "",
@@ -1118,16 +1090,13 @@ int fcgi_pm_main(void *dummy, child_info *info)
         callDynamicProcs = caughtSigUsr2;
         caughtSigUsr2 = FALSE;
 
-        /*
-         * End of critical region for caughtSigChld and caughtSigTerm.
-         */
+        now = time(NULL);
 
         /*
          * Dynamic fcgi process management
          */
         if((callDynamicProcs) || (!callWaitPid)) {
             dynamic_read_msgs(read_ready);
-            now = time(NULL);
             if(fcgi_dynamic_epoch == 0) {
                 fcgi_dynamic_epoch = now;
             }
