@@ -1,4 +1,4 @@
-2.2.9
+2.2.10
 
  *) Allow absolute pathnames in the -socket argument.  Suggested by 
     Christian Jaeger [christian.jaeger@sl.ethz.ch].
