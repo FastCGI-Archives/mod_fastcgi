@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.123 2002/02/16 03:18:11 robs Exp $
+ *  $Id: mod_fastcgi.c,v 1.124 2002/02/28 21:38:51 robs Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -1860,8 +1860,6 @@ static int content_handler(request_rec *r)
     fcgi_request *fr = NULL;
     int ret;
 
-    FCGIDBG1("->content_handler()");
-
     /* Setup a new FastCGI request */
     if ((fr = create_fcgi_request(r, NULL)) == NULL)
         return SERVER_ERROR;
@@ -1879,8 +1877,6 @@ static int content_handler(request_rec *r)
 
     /* Special case redirects */
     ret = post_process_for_redirects(r, fr);
-
-    FCGIDBG1("<-content_handler()");
 
     return ret;
 }
