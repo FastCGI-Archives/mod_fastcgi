@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_pm.c,v 1.92 2004/04/15 01:23:05 robs Exp $
+ * $Id: fcgi_pm.c,v 1.93 2004/04/15 02:01:26 robs Exp $
  */
 
 
@@ -404,10 +404,7 @@ static pid_t spawn_fs_process(fcgi_server *fs, ServerProcess *process)
      * install its own handler. */
     signal(SIGPIPE, SIG_IGN);
 
-    /* Apache (2 anyway) doesn't use suexec if there is no user/group in
-     * effect - this translates to a uid/gid of 0/0 (which should never
-     * be a valid uid/gid for a suexec invocation so it should be safe */
-    if (fcgi_wrapper && fs->uid && fs->gid)
+    if (fcgi_wrapper)
     {
         char *shortName;
 
@@ -415,15 +412,20 @@ static pid_t spawn_fs_process(fcgi_server *fs, ServerProcess *process)
         seteuid_root();
         setuid(ap_user_id);
 
+        /* Apache (2 anyway) doesn't use suexec if there is no user/group in
+         * effect - this translates to a uid/gid of 0/0 (which should never
+         * be a valid uid/gid for an suexec invocation so it should be safe */
+        if (fs->uid == 0 && fs->gid == 0) {
+            goto NO_SUEXEC;
+        }
+
+#ifdef NO_SUEXEC_FOR_AP_USER_N_GROUP
+
         /* AP13 does not use suexec if the target uid/gid is the same as the 
          * server's - AP20 does.  I (now) consider the AP2 approach better
          * (fcgi_pm.c v1.42 incorporated the 1.3 behaviour, v1.84 reverted it,
          * v1.85 added the compile time option to use the old behaviour). */
-
-#ifdef NO_SUEXEC_FOR_AP_USER_N_GROUP
-
-        if (fcgi_user_id == fs->uid && fcgi_group_id == fs->gid)
-        {
+        if (fcgi_user_id == fs->uid && fcgi_group_id == fs->gid) {
             goto NO_SUEXEC;
         }
 
@@ -437,7 +439,6 @@ static pid_t spawn_fs_process(fcgi_server *fs, ServerProcess *process)
     }
     else 
     {
-
 NO_SUEXEC:
         do {
             execle(fs->fs_path, fs->fs_path, NULL, fs->envp);
