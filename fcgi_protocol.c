@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_protocol.c,v 1.11 2000/04/06 05:29:25 robs Exp $
+ * $Id: fcgi_protocol.c,v 1.12 2000/04/06 12:31:49 robs Exp $
  */
 
 
@@ -361,7 +361,6 @@ int fcgi_protocol_dequeue(pool *p, fcgi_request *fr)
                 if (fr->fs_stderr == NULL)
                 {
                     fr->fs_stderr = ap_palloc(p, FCGI_SERVER_MAX_STDERR_LINE_LEN + 1);
-                    fr->fs_stderr_len = 0;
                 }
 
                 /* We're gonna consume all thats here */
@@ -373,10 +372,10 @@ int fcgi_protocol_dequeue(pool *p, fcgi_request *fr)
 
                     /* Get as much as will fit in the buffer */
                     int get_len = min(len, FCGI_SERVER_MAX_STDERR_LINE_LEN - fr->fs_stderr_len);
-                    fcgi_buf_get_to_block(fr->serverInputBuffer, fr->fs_stderr + fr->fs_stderr_len, get_len);
+                    fcgi_buf_get_to_block(fr->serverInputBuffer, start + fr->fs_stderr_len, get_len);
                     len -= get_len;
                     fr->fs_stderr_len += get_len;
-                    *(fr->fs_stderr + fr->fs_stderr_len) = '\0';
+                    *(start + fr->fs_stderr_len) = '\0';
 
                     /* Disallow nulls */
                     while ((null = memchr(start, '\0', fr->fs_stderr_len)))
@@ -414,7 +413,7 @@ int fcgi_protocol_dequeue(pool *p, fcgi_request *fr)
                                 "FastCGI: too much stderr received from server \"%s\", "
                                 "increase FCGI_SERVER_MAX_STDERR_LINE_LEN (%d) and rebuild "
                                 "or use \"\\n\" to terminate lines",
-                                fr->fs_path, len, FCGI_SERVER_MAX_STDERR_LINE_LEN);
+                                fr->fs_path, FCGI_SERVER_MAX_STDERR_LINE_LEN);
                             fr->fs_stderr_len = 0;
                         }
                     }
