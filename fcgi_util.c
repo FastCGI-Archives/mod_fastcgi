@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_util.c,v 1.21 2002/02/13 02:50:24 robs Exp $
+ * $Id: fcgi_util.c,v 1.22 2002/03/13 18:25:20 robs Exp $
  */
 
 #include "fcgi.h"
@@ -460,7 +460,7 @@ int fcgi_util_ticks(struct timeval * tv)
     DWORD millis = GetTickCount();
 
     tv->tv_sec = millis / 1000;
-    tv->tv_usec = millis - (tv->tv_sec * 1000);
+    tv->tv_usec = (millis % 1000) * 1000;
 
     return 0;
 #else
