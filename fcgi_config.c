@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_config.c,v 1.42 2002/10/19 00:07:54 robs Exp $
+ * $Id: fcgi_config.c,v 1.43 2002/10/21 23:55:46 robs Exp $
  */
 
 #define CORE_PRIVATE
@@ -522,11 +522,6 @@ const char *fcgi_config_set_wrapper(cmd_parms *cmd, void *dummy, const char *arg
     pool * const tp = cmd->temp_pool;
     char * wrapper;
 
-    if (!ap_suexec_enabled && strcasecmp(arg, "On") == 0) {
-	fprintf(stderr, "Warning: \"%s On\" requires SUEXEC be enabled in Apache", name);
-	return NULL;
-    }
-
     err = fcgi_config_set_fcgi_uid_n_gid(1);
     if (err != NULL)
         return ap_psprintf(tp, "%s %s: %s", name, arg, err);
@@ -536,32 +531,37 @@ const char *fcgi_config_set_wrapper(cmd_parms *cmd, void *dummy, const char *arg
             "The %s command must preceed static FastCGI server definitions", name);
     }
 
-    if (strcasecmp(arg, "On") == 0) {
-        fcgi_wrapper = SUEXEC_BIN;
-    }
-    else if (strcasecmp(arg, "Off") == 0) {
+    if (strcasecmp(arg, "Off") == 0) {
         fcgi_wrapper = NULL;
+        return NULL;
     }
-    else {
+
+    if (strcasecmp(arg, "On") == 0) 
+    {
+        wrapper = SUEXEC_BIN;
+    }
+    else
+    {
 #ifdef APACHE2
-    if (apr_filepath_merge((char **) &arg, "", arg, 0, cmd->pool))
-        return ap_psprintf(tp, "%s %s: invalid filepath", name, arg);
+        if (apr_filepath_merge((char **) &arg, "", arg, 0, cmd->pool))
+            return ap_psprintf(tp, "%s %s: invalid filepath", name, arg);
 #else
         wrapper = ap_os_canonical_filename(cmd->pool, (char *) arg);
 #endif
 
         wrapper = ap_server_root_relative(cmd->pool, wrapper);
-
-        err = fcgi_util_check_access(tp, wrapper, NULL, X_OK, fcgi_user_id, fcgi_group_id);
-
-        if (err != NULL) {
-            return ap_psprintf(tp,
-                "%s: \"%s\" access for server (uid %ld, gid %ld) failed: %s",
-                name, wrapper, (long)fcgi_user_id, (long)fcgi_group_id, err);
-        }
-
-        fcgi_wrapper = wrapper;
     }
+
+    err = fcgi_util_check_access(tp, wrapper, NULL, X_OK, fcgi_user_id, fcgi_group_id);
+    if (err) 
+    {
+        return ap_psprintf(tp, "%s: \"%s\" execute access for server "
+                           "(uid %ld, gid %ld) failed: %s", name, wrapper,
+                           (long) fcgi_user_id, (long) fcgi_group_id, err);
+    }
+
+    fcgi_wrapper = wrapper;
+
     return NULL;
 #endif /* !WIN32 */
 }
@@ -730,27 +730,25 @@ const char *fcgi_config_new_static_server(cmd_parms *cmd, void *dummy, const cha
     } /* while */
 
 #ifndef WIN32
-    if (s->user)
+    if (fcgi_wrapper)
     {
         if (s->group == NULL)
         {
-            return ap_psprintf(tp, 
-                "%s %s: -user and -group must be used together", name, fs_path);
+            s->group = ap_psprintf(tp, "#%ld", fcgi_util_get_server_gid(cmd->server));
+        }
+
+        if (s->user == NULL)
+        {
+            s->user = ap_psprintf(p, "#%ld", fcgi_util_get_server_uid(cmd->server)); 
         }
 
         s->uid = ap_uname2id(s->user);
         s->gid = ap_gname2id(s->group);
     }
-    else
+    else if (s->user || s->group)
     {
-        if (s->group)
-        {
-            return ap_psprintf(tp, 
-                "%s %s: -user and -group must be used together", name, fs_path);
-        }
-
-        s->uid = fcgi_util_get_server_uid(cmd->server); 
-        s->gid = fcgi_util_get_server_gid(cmd->server);
+        ap_log_error(FCGI_LOG_WARN, cmd->server, "FastCGI: there is no "
+                     "fastcgi wrapper set, user/group options are ignored");
     }
 
     if ((err = fcgi_util_fs_set_uid_n_gid(p, s, s->uid, s->gid)))
@@ -915,33 +913,32 @@ const char *fcgi_config_new_external_server(cmd_parms *cmd, void *dummy, const c
         }
     } /* while */
 
+
 #ifndef WIN32
-    if (s->user)
+    if (fcgi_wrapper)
     {
         if (s->group == NULL)
         {
-            return ap_psprintf(tp, 
-                "%s %s: -user and -group must be used together", name, fs_path);
+            s->group = ap_psprintf(tp, "#%ld", fcgi_util_get_server_gid(cmd->server));
+        }
+
+        if (s->user == NULL)
+        {
+            s->user = ap_psprintf(p, "#%ld", fcgi_util_get_server_uid(cmd->server));
         }
 
         s->uid = ap_uname2id(s->user);
         s->gid = ap_gname2id(s->group);
     }
-    else
+    else if (s->user || s->group)
     {
-        if (s->group)
-        {
-            return ap_psprintf(tp, 
-                "%s %s: -user and -group must be used together", name, fs_path);
-        }
-
-        s->uid = fcgi_util_get_server_uid(cmd->server); 
-        s->gid = fcgi_util_get_server_gid(cmd->server);
+        ap_log_error(FCGI_LOG_WARN, cmd->server, "FastCGI: there is no "
+                     "fastcgi wrapper set, user/group options are ignored");
     }
 
     if ((err = fcgi_util_fs_set_uid_n_gid(p, s, s->uid, s->gid)))
     {
-        return ap_psprintf(tp, 
+        return ap_psprintf(tp,
             "%s %s: invalid user or group: %s", name, fs_path, err);
     }
 #endif /* !WIN32 */
