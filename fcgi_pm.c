@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_pm.c,v 1.22 2000/04/27 15:14:27 robs Exp $
+ * $Id: fcgi_pm.c,v 1.23 2000/04/27 15:51:32 robs Exp $
  */
 
 
@@ -1100,7 +1100,7 @@ static void dynamic_kill_idle_fs_procs(void)
                 if (s->procs[i].state == STATE_STARTED) {
                     s->procs[i].state = STATE_KILL;
                     ap_log_error(FCGI_LOG_WARN_NOERRNO, fcgi_apache_main_server,
-                        "FastCGI: (dynamic) server \"%s\" (pid %d) termination scheduled",
+                        "FastCGI: (dynamic) server \"%s\" (pid %ld) termination scheduled",
                         s->fs_path, s->procs[i].pid);
                     victims++;
                     got_one = 1;
@@ -1737,7 +1737,11 @@ ProcessSigTerm:
         kill_fs_procs(fcgi_config_pool, fcgi_servers);
     }
 
+#ifdef WIN32
     return;
+#else
+    exit(0);
+#endif
 }
 
 #ifdef WIN32
