@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_buf.c,v 1.12 2001/11/20 01:51:27 robs Exp $
+ * $Id: fcgi_buf.c,v 1.13 2001/12/15 14:30:47 robs Exp $
  */
 
 #include "fcgi.h"
@@ -54,6 +54,8 @@ static int fd_read(SOCKET fd, char *buf, int len)
 {
     DWORD bytes_read;
     
+    ap_assert(len);
+
     // HACK - we don't know if its a pipe or socket..
     if (ReadFile((HANDLE) fd, buf, len, &bytes_read, NULL)) 
     {
@@ -95,6 +97,9 @@ static int fd_read(SOCKET fd, char *buf, int len)
 static int fd_read(int fd, char * buf, int len)
 {
     int bytes_read;
+
+    ap_assert(len);
+
     do {
         bytes_read = read(fd, buf, len);
     } while (bytes_read == -1 && errno == EINTR);
@@ -162,6 +167,9 @@ int fcgi_buf_add_fd(Buffer *buf, int fd)
         vec[0].iov_len = len;
         vec[1].iov_base = buf->data;
         vec[1].iov_len = buf->size - buf->length - len;
+
+        ap_assert(len);
+        ap_assert(vec[1].iov_len);
 
         do
         len = readv(fd, vec, 2);
