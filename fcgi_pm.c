@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_pm.c,v 1.67 2002/02/16 03:18:11 robs Exp $
+ * $Id: fcgi_pm.c,v 1.68 2002/02/23 21:31:19 robs Exp $
  */
 
 
@@ -420,7 +420,7 @@ FailedSystemCallExit:
         sa.nLength = sizeof(sa);
 
         listen_handle = CreateNamedPipe(fs->socket_path, 
-            PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED,
+            PIPE_ACCESS_DUPLEX,
             PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT,
             PIPE_UNLIMITED_INSTANCES, 4096, 4096, 0, &sa);
 
@@ -430,8 +430,6 @@ FailedSystemCallExit:
                 "FastCGI: can't exec server \"%s\", CreateNamedPipe() failed", fs->fs_path);
             exit(0);
         }
-
-//        SetHandleInformation(listen_handle, HANDLE_FLAG_INHERIT, TRUE);
     }
     else 
     {
@@ -823,7 +821,7 @@ static void dynamic_read_msgs(int read_ready)
         {
 #ifdef WIN32
 
-            HANDLE mutex = CreateMutex(NULL, FALSE, "cjob->fs_path");
+            HANDLE mutex = CreateMutex(NULL, FALSE, cjob->fs_path);
 
             if (mutex == NULL)
             {

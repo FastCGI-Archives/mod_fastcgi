@@ -1,5 +1,10 @@
 2.2.13
 
+ *) [WIN32] Don't set the OVERLAPPED_IO flag on NamedPipe listen HANDLEs - 
+    setting it was just plain broken.
+
+ *) [WIN32] Fix the accept mutex - all applications were sharing one!? 
+
  *) Fix 'FastCgiConfig -autoUpdate'.
 
  *) Fix 'FastCgiConfig -flush'.
