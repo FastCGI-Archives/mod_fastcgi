@@ -908,6 +908,9 @@ typedef request_rec WS_Request;
 					    * processes exceeds maxProcs, then
 					    * the KillDynamicProcs() is invoked */
 #define FCGI_DEFAULT_RESTART_DYNAMIC 0	   /* Do not restart dynamic processes */
+#define FCGI_DEFAULT_AUTOUPDATE 0	   /* do not automatically restart
+					    * fcgi apps when the binary on the
+					    * disk is changed. */
 
 /* 
  * FcgiProcessInfo holds info for each process specified in
@@ -2240,6 +2243,7 @@ static int startProcessDelay = FCGI_DEFAULT_START_PROCESS_DELAY;
 static int appConnTimeout = FCGI_DEFAULT_APP_CONN_TIMEOUT;
 static int processSlack = FCGI_DEFAULT_PROCESS_SLACK;
 static int restartDynamic = FCGI_DEFAULT_RESTART_DYNAMIC;
+static int autoUpdate = FCGI_DEFAULT_AUTOUPDATE;
 
 const char *FCGIConfigCmd(cmd_parms *cmd, void *dummy, char *arg)
 {
@@ -2388,6 +2392,9 @@ const char *FCGIConfigCmd(cmd_parms *cmd, void *dummy, char *arg)
             continue;
         } else if((strcmp(argv[i], "-restart") == 0)) {
 	    restartDynamic = 1;
+            continue;
+        } else if((strcmp(argv[i], "-autoUpdate") == 0)) {
+	    autoUpdate = 1;
             continue;
         } else {
             sprintf(errMsg, "FCGIConfig: Unknown option %s\n", argv[i]);
@@ -2703,8 +2710,38 @@ NothingToDo:
 		free(lockFileName);
 	    } else {
 	        if(opcode==PLEASE_START) {
-		    /* repeated calls to PLEASE_START, ignore */
-		    continue;
+		  if (autoUpdate) {
+		      /* Check to see if the binary has changed.  If so,
+		       * kill the FCGI application processes, and 
+		       * restart them.
+		       */
+		      struct stat stbuf;
+		      int i;
+		      if ((stat(execName, &stbuf)>=0) &&
+			  (stbuf.st_mtime > s->restartTime)) {
+			/* kill old server(s) */
+			for (i = 0; i < s->numProcesses; i++) {
+			  kill(s->procInfo[i].pid, SIGTERM);
+			}
+			fprintf(errorLogFile,
+				"mod_fastcgi: binary %s modified, restarting FCGI app server\n",
+				execName);
+		      }
+		      if (restartDynamic) {
+			/* don't worry about restarting the processes after
+			 * killing them.  We'll restart them after getting
+			 * the SIGCHLD because we're restarting dynamic
+			 * proceses automatically.
+			 */
+			continue;
+		      } else {
+			/* we need to restart this process now.  Don't do a
+			 * continue here, and we'll restart it below.
+			 */
+		      }
+		    } else {
+		      continue;
+		    }
 		}
 	    }
 	    switch (opcode) {
@@ -4720,6 +4757,24 @@ static int FastCgiHandler(WS_Request *reqPtr)
 		    sleep(1);
                     break;
 	        case 1:
+		    if (autoUpdate) {
+		      /* there's a process running. See if the binary is newer,
+		       * meaning we need to restart the process.
+		       */
+		      struct stat lstbuf, bstbuf;
+		      if (stat(lockFileName, &lstbuf)>=0 &&
+			  stat(reqPtr->filename, &bstbuf) >=0 &&
+			  lstbuf.st_mtime < bstbuf.st_mtime) {
+			/* ask the process manager to start it.
+			 * it will notice that the binary is newer,
+			 * and do a restart instead.
+			 */
+			SignalProcessManager(PLEASE_START, 
+					     reqPtr->filename, 0, 0, 0);
+			sleep(1);
+			break;
+		      }
+		    }
    	    	    lockFd = open(lockFileName,O_APPEND);
 		    result = (lockFd<0)?(0):(1);
 		    break;
