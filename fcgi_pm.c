@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_pm.c,v 1.17 1999/09/22 05:03:45 roberts Exp $
+ * $Id: fcgi_pm.c,v 1.18 1999/09/24 02:28:29 roberts Exp $
  */
 
 #include "fcgi.h"
@@ -438,8 +438,7 @@ static void dynamic_read_msgs(int read_ready)
     char execName[FCGI_MAXPATH + 1];
     char user[MAX_USER_NAME_LEN + 2];
     char group[MAX_GID_CHAR_LEN + 1];
-    unsigned long qsec = 0, start_time = 0; /* microseconds spent waiting for the
-                                             * application, and spent using it */
+    unsigned long q_usec = 0UL, req_usec = 0UL;
     time_t now = time(NULL);
     pool *sp, *tp;
 
@@ -505,15 +504,15 @@ static void dynamic_read_msgs(int read_ready)
             }
             break;
         case CONN_TIMEOUT:
-            if (sscanf(ptr1, "%c %s %16s %15s %lu",
-                &opcode, execName, user, group, &qsec) != 5)
+            if (sscanf(ptr1, "%c %s %16s %15s",
+                &opcode, execName, user, group) != 4)
             {
                 scan_failed = 1;
             }
             break;
         case REQ_COMPLETE:
             if (sscanf(ptr1, "%c %s %16s %15s %lu %lu",
-                &opcode, execName, user, group, &qsec, &start_time) != 6)
+                &opcode, execName, user, group, &q_usec, &req_usec) != 6)
             {
                 scan_failed = 1;
             }
@@ -730,8 +729,8 @@ static void dynamic_read_msgs(int read_ready)
             case REQ_COMPLETE:
                 /* only record stats if we have a structure */
                 if (s) {
-                    s->totalConnTime += start_time;
-                    s->totalQueueTime += qsec;
+                    s->totalConnTime += req_usec;
+                    s->totalQueueTime += q_usec;
                 }
                 break;
         }
