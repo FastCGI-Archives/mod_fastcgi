@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_config.c,v 1.36 2002/08/20 02:36:15 robs Exp $
+ * $Id: fcgi_config.c,v 1.37 2002/08/20 03:01:15 robs Exp $
  */
 
 #include "fcgi.h"
@@ -10,6 +10,7 @@
 #include <direct.h>
 #else
 #include <unistd.h>
+#include "unixd.h"
 #endif
 #endif
 
