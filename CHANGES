@@ -1,4 +1,4 @@
-2.4.1
+2.4.2
 
  *) [WIN] Fix handle leaks in the process manager.  
     Sascha Schumann [sascha@schumann.cx]
