@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_pm.c,v 1.32 2000/07/19 17:58:37 robs Exp $
+ * $Id: fcgi_pm.c,v 1.33 2000/07/19 18:08:12 robs Exp $
  */
 
 
@@ -199,7 +199,6 @@ static const char *bind_n_listen(pool *p, struct sockaddr *socket_addr,
 static void dynamic_blocking_kill(void *data)
 {
     struct FuncData *funcData = (struct FuncData *)data;
-    FCGIDBG1("dynamic_blocking_kill()");
 
 #ifndef WIN32
     int lockFd;
@@ -216,7 +215,9 @@ static void dynamic_blocking_kill(void *data)
     }
     /* exit() may flush stdio buffers inherited from the parent. */
     _exit(0);
+
 #else
+    FCGIDBG1("dynamic_blocking_kill()");
     if (fcgi_wait_for_shared_write_lock(funcData->lock) < 0) {
        // This is a major problem 
         FCGIDBG1("fcgi_wait_for_shared_write_lock() failed >> MAJOR PROBLEM");
