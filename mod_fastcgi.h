@@ -1,11 +1,11 @@
 /*
- * $Id: mod_fastcgi.h,v 1.29 2000/08/23 12:21:14 robs Exp $
+ * $Id: mod_fastcgi.h,v 1.30 2000/09/19 14:54:20 robs Exp $
  */
 
 #ifndef MOD_FASTCGI_H
 #define MOD_FASTCGI_H
 
-#define MOD_FASTCGI_VERSION "2.2.8"
+#define MOD_FASTCGI_VERSION "2.2.9"
 
 /*
  * # of idle seconds allowed to pass while connected to a FastCGI before aborting
