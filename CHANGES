@@ -1,5 +1,8 @@
 2.2.13
 
+ *) [WIN32] Under Apache2, require v2.0.41 or later in order to pickup my 
+    apr_proc_create() changes.
+
  *) Log when invoking and restoring the restart backoff policy.
 
  *) [WIN32] Prevent intermittent ReadFile() failures (properly initialize the

@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi.h,v 1.41 2002/08/20 02:36:15 robs Exp $
+ * $Id: fcgi.h,v 1.42 2002/09/22 16:49:34 robs Exp $
  */
 
 #ifndef FCGI_H
@@ -34,6 +34,12 @@
 #include "ap_compat.h"
 #include "apr_strings.h"
 
+#ifdef WIN32
+#if MODULE_MAGIC_NUMBER < 20020903
+#error "mod_fastcgi is incompatible with Apache versions older than 2.0.41 under WIN"
+#endif
+#endif
+
 typedef struct apr_array_header_t array_header;
 typedef struct apr_table_t table;
 typedef struct apr_pool_t pool;
@@ -45,9 +51,10 @@ typedef apr_status_t apcb_t;
 #define XtOffsetOf APR_OFFSETOF
 #define ap_select select
 
-#define ap_user_id    unixd_config.user_id
-#define ap_group_id   unixd_config.group_id
-#define ap_user_name  unixd_config.user_name
+#define ap_user_id        unixd_config.user_id
+#define ap_group_id       unixd_config.group_id
+#define ap_user_name      unixd_config.user_name
+#define ap_suexec_enabled unixd_config.suexec_enabled
 
 #ifndef S_ISDIR
 #define S_ISDIR(m)      (((m)&(S_IFMT)) == (S_IFDIR))
