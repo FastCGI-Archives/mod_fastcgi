@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_config.c,v 1.8 1999/06/18 02:59:15 roberts Exp $
+ * $Id: fcgi_config.c,v 1.9 1999/07/30 21:15:15 roberts Exp $
  */
 
 #include "fcgi.h"
@@ -18,7 +18,7 @@ static const char *get_host_n_port(pool *p, const char **arg,
     *host = ap_getword_conf(p, arg);
     if (**host == '\0')
         return "\"\"";
-        
+
     portStr = strchr(*host, ':');
     if (portStr == NULL)
         return "missing port specification";
@@ -94,9 +94,9 @@ static const char *get_env_var(pool *p, const char **arg, const char **envp, int
         *(envp + *envc) = ap_pstrcat(p, val, "=", getenv(val), NULL);
     else
         *(envp + *envc) = val;
-        
+
     (*envc)++;
-    
+
     return NULL;
 }
 
@@ -229,7 +229,7 @@ const char *fcgi_config_make_dir(pool *tp, char *path)
 
 /*******************************************************************************
  * Create a "dynamic" subdirectory and fcgi_dynamic_mbox (used for RH->PM comm)
- * in the fcgi_socket_dir with appropriate permissions.  If the directory 
+ * in the fcgi_socket_dir with appropriate permissions.  If the directory
  * already exists we don't mess with it unless 'wax' is set.
  */
 const char *fcgi_config_make_dynamic_dir_n_mbox(pool *p, const int wax)
@@ -248,7 +248,7 @@ const char *fcgi_config_make_dynamic_dir_n_mbox(pool *p, const int wax)
     /* Don't step on a running server unless its OK. */
     if (!wax)
         return NULL;
-    
+
     /* Create a subpool for the directory operations */
     tp = ap_make_sub_pool(p);
 
@@ -322,7 +322,7 @@ const char *fcgi_config_set_socket_dir(cmd_parms *cmd, void *dummy, char *arg)
 
     if (!ap_os_is_path_absolute(arg))
         arg = ap_make_full_path(cmd->pool, ap_server_root, arg);
-    
+
     fcgi_socket_dir = arg;
 
     err = fcgi_config_make_dir(tp, fcgi_socket_dir);
@@ -370,7 +370,7 @@ const char *fcgi_config_set_suexec(cmd_parms *cmd, void *dummy, const char *arg)
     else {
         if (!ap_os_is_path_absolute(arg))
             arg = ap_make_full_path(cmd->pool, ap_server_root, arg);
-    
+
         err = fcgi_util_check_access(tp, arg, NULL, X_OK, fcgi_user_id, fcgi_group_id);
         if (err != NULL) {
             return ap_psprintf(tp,
@@ -403,10 +403,10 @@ const char *fcgi_config_new_static_server(cmd_parms *cmd, void *dummy, const cha
 
     if ((err = fcgi_config_set_fcgi_uid_n_gid(1)) != NULL)
         return ap_psprintf(tp, "%s %s: %s", name, fs_path, err);
-    
+
     if (!ap_os_is_path_absolute(fs_path))
         fs_path = ap_make_full_path(p, ap_server_root, fs_path);
-        
+
     /* See if we've already got one of these configured */
     s = fcgi_util_fs_get_by_id(fs_path, cmd->server->server_uid,
                        cmd->server->server_gid);
@@ -429,7 +429,7 @@ const char *fcgi_config_new_static_server(cmd_parms *cmd, void *dummy, const cha
     if (err != NULL) {
         return ap_psprintf(tp, "%s: \"%s\" %s", name, fs_path, err);
     }
-          
+
     s = fcgi_util_fs_new(p);
     s->fs_path = fs_path;
     s->directive = APP_CLASS_STANDARD;
@@ -467,65 +467,48 @@ const char *fcgi_config_new_static_server(cmd_parms *cmd, void *dummy, const cha
         option = ap_getword_conf(tp, &arg);
 
         if (strcasecmp(option, "-processes") == 0) {
-            err = get_u_int(tp, &arg, &s->numProcesses, 1);
-            if (err != NULL)
+            if ((err = get_u_int(tp, &arg, &s->numProcesses, 1)))
                 return invalid_value(tp, name, fs_path, option, err);
-            continue;
         }
         else if (strcasecmp(option, "-restart-delay") == 0) {
-            err = get_u_int(tp, &arg, &s->restartDelay, 0);
-            if (err != NULL)
+            if ((err = get_u_int(tp, &arg, &s->restartDelay, 0)))
                 return invalid_value(tp, name, fs_path, option, err);
-            continue;
         }
         else if (strcasecmp(option, "-init-start-delay") == 0) {
-            err = get_u_int(tp, &arg, &s->initStartDelay, 0);
-            if (err != NULL)
+            if ((err = get_u_int(tp, &arg, &s->initStartDelay, 0)))
                 return invalid_value(tp, name, fs_path, option, err);
-            continue;
         }
         else if (strcasecmp(option, "-priority") == 0) {
-            err = get_u_int(tp, &arg, &s->processPriority, 0);
-            if (err != NULL)
+            if ((err = get_u_int(tp, &arg, &s->processPriority, 0)))
                 return invalid_value(tp, name, fs_path, option, err);
-            continue;
         }
         else if (strcasecmp(option, "-listen-queue-depth") == 0) {
-            err = get_u_int(tp, &arg, &s->listenQueueDepth, 1);
-            if (err != NULL)
+            if ((err = get_u_int(tp, &arg, &s->listenQueueDepth, 1)))
                 return invalid_value(tp, name, fs_path, option, err);
-            continue;
         }
         else if (strcasecmp(option, "-appConnTimeout") == 0) {
-            err = get_u_int(tp, &arg, &s->appConnectTimeout, 0);
-            if (err != NULL)
+            if ((err = get_u_int(tp, &arg, &s->appConnectTimeout, 0)))
                 return invalid_value(tp, name, fs_path, option, err);
-            continue;
         }
         else if (strcasecmp(option, "-port") == 0) {
-            err = get_u_int(tp, &arg, &s->port, 1);
-            if (err != NULL)
+            if ((err = get_u_int(tp, &arg, &s->port, 1)))
                 return invalid_value(tp, name, fs_path, option, err);
-            continue;
         }
         else if (strcasecmp(option, "-socket") == 0) {
             s->socket_path = ap_getword_conf(tp, &arg);
             if (*s->socket_path == '\0')
                 return invalid_value(tp, name, fs_path, option, "\"\"");
-            continue;
         }
         else if (strcasecmp(option, "-initial-env") == 0) {
-            err = get_env_var(p, &arg, envp, &envc);
-            if (err != NULL)
+            if ((err = get_env_var(p, &arg, envp, &envc)))
                 return invalid_value(tp, name, fs_path, option, err);
-            continue;
         }
         else if (strcasecmp(option, "-flush") == 0) {
             s->flush = 1;
-            continue;
         }
-        else
-            return invalid_value(tp, name, fs_path, option, NULL);
+        else {
+            return ap_psprintf(tp, "%s %s: invalid option: %s", name, fs_path, option);
+        }
     } /* while */
 
     if (s->socket_path != NULL && s->port != 0) {
@@ -577,13 +560,12 @@ const char *fcgi_config_new_external_server(cmd_parms *cmd, void *dummy, const c
     const char *option, *err;
 
     if (!*fs_path) {
-        return ap_pstrcat(tp, name,
-            " requires a path and either a -socket or -host option", NULL);
+        return ap_pstrcat(tp, name, " requires a path and either a -socket or -host option", NULL);
     }
-    
+
     if (!ap_os_is_path_absolute(fs_path))
         fs_path = ap_make_full_path(p, ap_server_root, fs_path);
-    
+
     /* See if we've already got one of these bettys configured */
     s = fcgi_util_fs_get_by_id(fs_path, cmd->server->server_uid,
                        cmd->server->server_gid);
@@ -596,8 +578,7 @@ const char *fcgi_config_new_external_server(cmd_parms *cmd, void *dummy, const c
         }
         else {
             return ap_psprintf(tp,
-                "%s: redefinition of previously defined class \"%s\"",
-                name, fs_path);
+                "%s: redefinition of previously defined class \"%s\"", name, fs_path);
         }
     }
 
@@ -614,30 +595,23 @@ const char *fcgi_config_new_external_server(cmd_parms *cmd, void *dummy, const c
         option = ap_getword_conf(tp, &arg);
 
         if (strcasecmp(option, "-host") == 0) {
-            err = get_host_n_port(p, &arg, &s->host, &s->port);
-            if (err != NULL)
+            if ((err = get_host_n_port(p, &arg, &s->host, &s->port)))
                 return invalid_value(tp, name, fs_path, option, err);
-            continue;
         }
         else if (strcasecmp(option, "-socket") == 0) {
             s->socket_path = ap_getword_conf(tp, &arg);
             if (*s->socket_path == '\0')
                 return invalid_value(tp, name, fs_path, option, "\"\"");
-            continue;
         }
         else if (strcasecmp(option, "-appConnTimeout") == 0) {
-            err = get_u_int(tp, &arg, &s->appConnectTimeout, 0);
-            if (err != NULL)
+            if ((err = get_u_int(tp, &arg, &s->appConnectTimeout, 0)))
                 return invalid_value(tp, name, fs_path, option, err);
-            continue;
         }
         else if (strcasecmp(option, "-flush") == 0) {
             s->flush = 1;
-            continue;
         }
         else {
-            return ap_psprintf(tp, "%s %s: invalid option: %s",
-                            name, fs_path, option);
+            return ap_psprintf(tp, "%s %s: invalid option: %s", name, fs_path, option);
         }
     } /* while */
 
@@ -700,102 +674,70 @@ const char *fcgi_config_set_config(cmd_parms *cmd, void *dummy, const char *arg)
         option = ap_getword_conf(tp, &arg);
 
         if (strcasecmp(option, "-maxProcesses") == 0) {
-            err = get_u_int(tp, &arg, &dynamicMaxProcs, 1);
-            if (err != NULL)
+            if ((err = get_u_int(tp, &arg, &dynamicMaxProcs, 1)))
                 return invalid_value(tp, name, NULL, option, err);
-            continue;
         }
         else if (strcasecmp(option, "-minProcesses") == 0) {
-            err = get_u_int(tp, &arg, &dynamicMinProcs, 0);
-            if (err != NULL)
+            if ((err = get_u_int(tp, &arg, &dynamicMinProcs, 0)))
                 return invalid_value(tp, name, NULL, option, err);
-            continue;
         }
         else if (strcasecmp(option, "-maxClassProcesses") == 0) {
-            err = get_u_int(tp, &arg, &dynamicMaxClassProcs, 1);
-            if (err != NULL)
+            if ((err = get_u_int(tp, &arg, &dynamicMaxClassProcs, 1)))
                 return invalid_value(tp, name, NULL, option, err);
-            continue;
         }
         else if (strcasecmp(option, "-killInterval") == 0) {
-            err = get_u_int(tp, &arg, &dynamicKillInterval, 1);
-            if (err != NULL)
+            if ((err = get_u_int(tp, &arg, &dynamicKillInterval, 1)))
                 return invalid_value(tp, name, NULL, option, err);
-            continue;
         }
         else if (strcasecmp(option, "-updateInterval") == 0) {
-            err = get_u_int(tp, &arg, &dynamicUpdateInterval, 1);
-            if (err != NULL)
+            if ((err = get_u_int(tp, &arg, &dynamicUpdateInterval, 1)))
                 return invalid_value(tp, name, NULL, option, err);
-            continue;
         }
         else if (strcasecmp(option, "-gainValue") == 0) {
-            err = get_float(tp, &arg, &dynamicGain, 0.0, 1.0);
-            if (err != NULL)
+            if ((err = get_float(tp, &arg, &dynamicGain, 0.0, 1.0)))
                 return invalid_value(tp, name, NULL, option, err);
-            continue;
         }
         else if (strcasecmp(option, "-singleThreshhold") == 0) {
-            err = get_u_int(tp, &arg, &dynamicThreshhold1, 1);
-            if (err != NULL)
+            if ((err = get_u_int(tp, &arg, &dynamicThreshhold1, 1)))
                 return invalid_value(tp, name, NULL, option, err);
-            continue;
         }
         else if (strcasecmp(option, "-multiThreshhold") == 0) {
-            err = get_u_int(tp, &arg, &dynamicThreshholdN, 1);
-            if (err != NULL)
+            if ((err = get_u_int(tp, &arg, &dynamicThreshholdN, 1)))
                 return invalid_value(tp, name, NULL, option, err);
-            continue;
         }
         else if (strcasecmp(option, "-startDelay") == 0) {
-            err = get_u_int(tp, &arg, &dynamicPleaseStartDelay, 1);
-            if (err != NULL)
+            if ((err = get_u_int(tp, &arg, &dynamicPleaseStartDelay, 1)))
                 return invalid_value(tp, name, NULL, option, err);
-            continue;
         }
         else if (strcasecmp(option, "-initial-env") == 0) {
-            err = get_env_var(p, &arg, envp, &envc);
-            if (err != NULL)
+            if ((err = get_env_var(p, &arg, envp, &envc)))
                 return invalid_value(tp, name, NULL, option, err);
-            continue;
         }
         else if (strcasecmp(option, "-appConnTimeout") == 0) {
-            err = get_u_int(tp, &arg, &dynamicAppConnectTimeout, 0);
-            if (err != NULL)
+            if ((err = get_u_int(tp, &arg, &dynamicAppConnectTimeout, 0)))
                 return invalid_value(tp, name, NULL, option, err);
-            continue;
         }
         else if (strcasecmp(option, "-listen-queue-depth") == 0) {
-            err = get_u_int(tp, &arg, &dynamicListenQueueDepth, 1);
-            if (err != NULL)
+            if ((err = get_u_int(tp, &arg, &dynamicListenQueueDepth, 1)))
                 return invalid_value(tp, name, NULL, option, err);
-            continue;
         }
         else if (strcasecmp(option, "-restart-delay") == 0) {
-            err = get_u_int(tp, &arg, &dynamicRestartDelay, 0);
-            if (err != NULL)
+            if ((err = get_u_int(tp, &arg, &dynamicRestartDelay, 0)))
                 return invalid_value(tp, name, NULL, option, err);
-            continue;
         }
         else if (strcasecmp(option, "-init-start-delay") == 0) {
-            err = get_u_int(tp, &arg, &dynamicInitStartDelay, 0);
-            if (err != NULL)
+            if ((err = get_u_int(tp, &arg, &dynamicInitStartDelay, 0)))
                 return invalid_value(tp, name, NULL, option, err);
-            continue;
         }
         else if (strcasecmp(option, "-processSlack") == 0) {
-            err = get_u_int(tp, &arg, &dynamicProcessSlack, 1);
-            if (err != NULL)
+            if ((err = get_u_int(tp, &arg, &dynamicProcessSlack, 1)))
                 return invalid_value(tp, name, NULL, option, err);
-            continue;
         }
         else if (strcasecmp(option, "-restart") == 0) {
             dynamicAutoRestart = 1;
-            continue;
         }
         else if (strcasecmp(option, "-autoUpdate") == 0) {
             dynamicAutoUpdate = 1;
-            continue;
         }
         else {
             return ap_psprintf(tp, "%s: invalid option: %s", name, option);
@@ -805,7 +747,7 @@ const char *fcgi_config_set_config(cmd_parms *cmd, void *dummy, const char *arg)
     /* If -intial-env option was used, move env array to a surviving pool */
     if (envc++) {
         dynamicEnvp = (const char **)ap_palloc(p, sizeof(char *) * envc);
-        memcpy(dynamicEnvp, envp, sizeof(char *) * envc); 
+        memcpy(dynamicEnvp, envp, sizeof(char *) * envc);
     }
 
     return NULL;
@@ -814,22 +756,22 @@ const char *fcgi_config_set_config(cmd_parms *cmd, void *dummy, const char *arg)
 void *fcgi_config_create_dir_config(pool *p, char *dummy)
 {
     fcgi_dir_config *dir_config = ap_pcalloc(p, sizeof(fcgi_dir_config));
-    
+
     dir_config->authenticator_options = FCGI_AUTHORITATIVE;
     dir_config->authorizer_options = FCGI_AUTHORITATIVE;
     dir_config->access_checker_options = FCGI_AUTHORITATIVE;
-    
+
     return dir_config;
 }
 
 
-const char *fcgi_config_new_auth_server(cmd_parms * const cmd, 
+const char *fcgi_config_new_auth_server(cmd_parms * const cmd,
     fcgi_dir_config *dir_config, const char *fs_path, const char * const compat)
 {
     pool * const tp = cmd->temp_pool;
     const uid_t uid = cmd->server->server_uid;
     const gid_t gid = cmd->server->server_gid;
-   
+
     if (!ap_os_is_path_absolute(fs_path))
         fs_path = ap_make_full_path(cmd->pool, ap_server_root, fs_path);
 
@@ -839,10 +781,10 @@ const char *fcgi_config_new_auth_server(cmd_parms * const cmd,
         if (err)
             return ap_psprintf(tp, "%s: \"%s\" %s", cmd->cmd->name, fs_path, err);
     }
-    
+
     if (compat && strcasecmp(compat, "-compat"))
         return ap_psprintf(cmd->temp_pool, "%s: unknown option: \"%s\"", cmd->cmd->name, compat);
-    
+
     switch((int)cmd->info) {
         case FCGI_AUTH_TYPE_AUTHENTICATOR:
             dir_config->authenticator = fs_path;
@@ -851,25 +793,25 @@ const char *fcgi_config_new_auth_server(cmd_parms * const cmd,
         case FCGI_AUTH_TYPE_AUTHORIZER:
             dir_config->authorizer = fs_path;
             dir_config->authorizer_options |= (compat) ? FCGI_COMPAT : 0;
-            break;        
+            break;
         case FCGI_AUTH_TYPE_ACCESS_CHECKER:
             dir_config->access_checker = fs_path;
             dir_config->access_checker_options |= (compat) ? FCGI_COMPAT : 0;
             break;
-    }                
-                 
+    }
+
     return NULL;
 }
 
-const char *fcgi_config_set_authoritative_slot(const cmd_parms * const cmd, 
+const char *fcgi_config_set_authoritative_slot(const cmd_parms * const cmd,
     fcgi_dir_config * const dir_config, int arg)
 {
     int offset = (int)(long)cmd->info;
-    
+
     if (arg)
         *(int *)(dir_config + offset) |= FCGI_AUTHORITATIVE;
     else
         *(int *)(dir_config + offset) &= ~FCGI_AUTHORITATIVE;
-    
+
     return NULL;
-}    
+}
