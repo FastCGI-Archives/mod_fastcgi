@@ -1,5 +1,5 @@
 /*
- * $Id: mod_fastcgi.h,v 1.25 2000/06/06 14:18:54 robs Exp $
+ * $Id: mod_fastcgi.h,v 1.26 2000/06/19 19:24:28 robs Exp $
  */
 
 #ifndef MOD_FASTCGI_H
@@ -105,10 +105,12 @@
 #define FCGI_MAX_MSG_LEN  FCGI_MAXPATH + FCGI_MSG_CRAP
 #endif
 
-#ifdef OPEN_MAX
-#define MAX_OPEN_FDS OPEN_MAX
+/* There is no way to reliably determiine the highest descriptor that can be
+ * assigned (UNP Vol1 Ed2 p337, and APUE p43) so we pick a number. */
+#if (defined FD_SETSIZE) && (FD_SETSIZE > 1024)
+#define FCGI_MAX_FD FD_SETSIZE
 #else
-#define MAX_OPEN_FDS (128)
+#define FCGI_MAX_FD  1024
 #endif
 
 #ifndef SUN_LEN

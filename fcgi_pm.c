@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_pm.c,v 1.30 2000/05/24 01:51:52 robs Exp $
+ * $Id: fcgi_pm.c,v 1.31 2000/06/19 19:24:28 robs Exp $
  */
 
 
@@ -361,7 +361,7 @@ static pid_t spawn_fs_process(fcgi_server *fs, ServerProcess *process)
      */
     ap_error_log2stderr(fcgi_apache_main_server);
     dup2(STDERR_FILENO, STDOUT_FILENO);
-    for (i = 0; i < MAX_OPEN_FDS; i++) {
+    for (i = 0; i < FCGI_MAX_FD; i++) {
         if (i != FCGI_LISTENSOCK_FILENO && i != STDERR_FILENO && i != STDOUT_FILENO) {
             close(i);
         }

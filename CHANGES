@@ -1,4 +1,6 @@
 Changes with mod_fastcgi 2.2.5
+ 
+ *) Increase the number of open FDs we look to close when spawning apps.
 
  *) Prevent an assert from popping unnecessarily.
 
