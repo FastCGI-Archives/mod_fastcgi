@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_pm.c,v 1.12 1999/09/13 03:19:31 roberts Exp $
+ * $Id: fcgi_pm.c,v 1.13 1999/09/14 11:11:28 roberts Exp $
  */
 
 #include "fcgi.h"
@@ -424,6 +424,17 @@ static void change_process_name(const char * const name)
     strncpy(ap_server_argv0, name, strlen(ap_server_argv0));
 }
 
+static void schedule_start(fcgi_server *s, int proc)
+{
+    s->procs[proc].state = STATE_NEEDS_STARTING;
+    if (proc == dynamicMaxClassProcs - 1) {
+        ap_log_error(FCGI_LOG_WARN_NOERRNO, fcgi_apache_main_server, 
+            "FastCGI: scheduled the %sstart of the last (dynamic) server "
+            "\"%s\" process: reached dynamicMaxClassProcs (%d)", 
+            s->procs[proc].pid ? "re" : "", s->fs_path, dynamicMaxClassProcs);
+    }
+}
+
 /*
  *----------------------------------------------------------------------
  *
@@ -516,7 +527,7 @@ NothingToDo:
     if (recs==0) {
         goto CleanupReturn;
     }
-
+    
     /* Update data structures for processing */
     for (ptr1 = buf; ptr1 != NULL; ptr1 = ptr2) {
         if((ptr2 = strchr(ptr1, '\n'))!=NULL) {
@@ -647,17 +658,15 @@ NothingToDo:
                     * restart them.
                     */
                     struct stat stbuf;
-                    int i, numChildren;
+                    int i;
+
                     if ((stat(execName, &stbuf)==0) &&
                             (stbuf.st_mtime > s->restartTime)) {
                         /* kill old server(s) */
-                        if (s->directive == APP_CLASS_DYNAMIC) {
-                            numChildren = dynamicMaxClassProcs;
-                        } else {
-                            numChildren = s->numProcesses;
-                        }
-                        for (i = 0; i < s->numProcesses; i++) {
-                            fcgi_kill(s->procs[i].pid, SIGTERM);
+                        for (i = 0; i < dynamicMaxClassProcs; i++) {
+                            if (s->procs[i].pid > 0) {
+                                fcgi_kill(s->procs[i].pid, SIGTERM);
+                            }
                         }
                         ap_log_error(FCGI_LOG_WARN_NOERRNO, fcgi_apache_main_server,
                             "FastCGI: restarting server \"%s\" processes, newer version found", execName);
@@ -675,22 +684,14 @@ NothingToDo:
                     * it if we're not already running at least one
                     * instance.
                     */
-                    int i, count = 0;
-                    int numChildren;
+                    int i;
 
-                    /* see if any instances of this app are running */
-                    if (s->directive == APP_CLASS_DYNAMIC) {
-                        numChildren = dynamicMaxClassProcs;
-                    } else {
-                        numChildren = s->numProcesses;
-                    }
-
-                    for (i = 0; i < numChildren; i++) {
+                    for (i = 0; i < dynamicMaxClassProcs; i++) {
                         if (s->procs[i].state == STATE_STARTED)
-                            count++;
+                            break;
                     }
                     /* if already running, don't start another one */
-                    if (count > 0) {
+                    if (i < dynamicMaxClassProcs) {
                         continue;
                     }
                 }
@@ -698,16 +699,19 @@ NothingToDo:
         }
         switch (opcode) {
 	    int i;
+            time_t time_passed;
 
             case PLEASE_START:
             case CONN_TIMEOUT:
-                if ((s->numProcesses + 1) > dynamicMaxClassProcs) {
-                    /* Can't do anything here, log error */
-                    ap_log_error(FCGI_LOG_WARN_NOERRNO, fcgi_apache_main_server, 
-                        "FastCGI: can't schedule the start of another (dynamic) server \"%s\" process: "
-                        "exceeded dynamicMaxClassProcs (%d)", s->fs_path, dynamicMaxClassProcs);
+                /* If we've started one recently, don't register another */
+                time_passed  = now - s->restartTime;
+
+                if (time_passed < s->initStartDelay 
+                     && time_passed < s->restartDelay) 
+                {
                     continue;
-                }
+                } 
+
                 if ((fcgi_dynamic_total_proc_count + 1) > dynamicMaxProcs) {
                     /*
                      * Extra instances should have been
@@ -721,14 +725,26 @@ NothingToDo:
                 }
                 /* find next free slot */
                 for (i = 0; i < dynamicMaxClassProcs; i++) {
-                    if ((s->procs[i].pid <= 0) &&
-                            ((s->procs[i].state == STATE_READY) ||
-                            (s->procs[i].state == STATE_NEEDS_STARTING) ||
-                            (s->procs[i].state == STATE_KILLED)))
+                    if (s->procs[i].state != STATE_READY
+                        && s->procs[i].state != STATE_NEEDS_STARTING
+                        && s->procs[i].state != STATE_KILLED)
+                    {
+                        continue;
+                    }
+                    if (s->procs[i].pid < 0) {
+                        if (time_passed > s->restartDelay) {
+                            schedule_start(s, i);
+                        }
                         break;
+                    }
+                    else if (s->procs[i].pid == 0) {
+                        if (time_passed > s->initStartDelay) {
+                            schedule_start(s, i);
+                        }
+                        break;
+                    }
                 }
-                ap_assert(i<dynamicMaxClassProcs);
-                s->procs[i].state = STATE_NEEDS_STARTING;
+
                 break;
             case REQ_COMPLETE:
                 /* only record stats if we have a structure */
@@ -749,7 +765,6 @@ CleanupReturn:
     ap_destroy_pool(tp);
     return (recs);
 }
-
 
 /*
  *----------------------------------------------------------------------

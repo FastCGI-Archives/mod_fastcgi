@@ -1,5 +1,10 @@
 Changes with mod_fastcgi 2.2.3
 
+ *) Prevent dynamic processes from being scheduled to be started before
+    the init-start-delay or restart-delay period expires.  This prevents
+	the queuing of process start requests while an application which has
+	a long initialization period starts up. 
+
  *) When suexec is enabled, allow the process manager to become root again in
     order to signal applications it spawned.
 
