@@ -1,17 +1,21 @@
 /*
- * $Id: fcgi_config.c,v 1.37 2002/08/20 03:01:15 robs Exp $
+ * $Id: fcgi_config.c,v 1.38 2002/09/22 19:01:59 robs Exp $
  */
 
 #include "fcgi.h"
 
 #ifdef APACHE2
+
 #include <limits.h>
+#include "mpm_common.h"     /* ap_uname2id, ap_gname2id */
+
 #ifdef WIN32
 #include <direct.h>
 #else
 #include <unistd.h>
 #include "unixd.h"
 #endif
+
 #endif
 
 #ifdef WIN32
@@ -508,21 +512,19 @@ const char *fcgi_config_set_socket_dir(cmd_parms *cmd, void *dummy, const char *
  */
 const char *fcgi_config_set_wrapper(cmd_parms *cmd, void *dummy, const char *arg)
 {
-#ifdef APACHE2
-    /* 
-     * AP2TODO use ap_run_get_suexec_identity() (this will be hard as it 
-     * takes a request_rec) and/or mod_userdir_user note 
-     */
-    return ap_psprintf(cmd->temp_pool, "%s isn't supported yet under Apache2", cmd->cmd->name);
+#ifdef WIN32
+    return ap_psprintf(cmd->temp_pool, 
+        "the %s directive is not supported on WIN", cmd->cmd->name);
 #else
+
     const char *err = NULL;
     const char * const name = cmd->cmd->name;
     pool * const tp = cmd->temp_pool;
     char * wrapper;
 
     if (!ap_suexec_enabled && strcasecmp(arg, "On") == 0) {
-	    fprintf(stderr, "Warning: \"%s On\" requires SUEXEC be enabled in Apache", name);
-	    return NULL;
+	fprintf(stderr, "Warning: \"%s On\" requires SUEXEC be enabled in Apache", name);
+	return NULL;
     }
 
     err = fcgi_config_set_fcgi_uid_n_gid(1);
@@ -544,11 +546,7 @@ const char *fcgi_config_set_wrapper(cmd_parms *cmd, void *dummy, const char *arg
         wrapper = (char *) ap_os_canonical_filename(cmd->pool, arg);
         wrapper = ap_server_root_relative(cmd->pool, wrapper);
 
-#ifdef WIN32
-        err = fcgi_util_check_access(tp, wrapper, NULL, _S_IEXEC, fcgi_user_id, fcgi_group_id);
-#else
         err = fcgi_util_check_access(tp, wrapper, NULL, X_OK, fcgi_user_id, fcgi_group_id);
-#endif
 
         if (err != NULL) {
             return ap_psprintf(tp,
@@ -559,7 +557,7 @@ const char *fcgi_config_set_wrapper(cmd_parms *cmd, void *dummy, const char *arg
         fcgi_wrapper = wrapper;
     }
     return NULL;
-#endif /* !APACHE2 */
+#endif /* !WIN32 */
 }
 
 /*******************************************************************************
@@ -646,33 +644,6 @@ const char *fcgi_config_new_static_server(cmd_parms *cmd, void *dummy, const cha
 
     s->mutex_env_string = ap_psprintf(p, "_FCGI_MUTEX_=%ld", mutex);
 
-#elif !defined(APACHE2)
-
-    if (fcgi_wrapper) {
-        struct passwd *pw;
-        struct group  *gr;
-
-        s->uid = cmd->server->server_uid;
-        pw = getpwuid(s->uid);
-        if (pw == NULL) {
-            return ap_psprintf(tp, "mod_fastcgi: "
-                "getpwuid() couldn't determine the username for uid '%ld', "
-                "you probably need to modify the User directive: %s",
-                (long)s->uid, strerror(errno));
-        }
-        s->user = ap_pstrdup(p, pw->pw_name);
-        s->username = s->user;
-
-        s->gid = cmd->server->server_gid;
-        gr = getgrgid(s->gid);
-        if (gr == NULL) {
-            return ap_psprintf(tp, "mod_fastcgi: "
-                "getgrgid() couldn't determine the group name for gid '%ld', "
-                "you probably need to modify the Group directive: %s\n",
-                (long)s->gid, strerror(errno));
-        }
-        s->group = ap_pstrdup(p, gr->gr_name);
-    }
 #endif
 
     /*  Parse directive arguments */
@@ -727,10 +698,61 @@ const char *fcgi_config_new_static_server(cmd_parms *cmd, void *dummy, const cha
         else if (strcasecmp(option, "-flush") == 0) {
             s->flush = 1;
         }
+        else if (strcasecmp(option, "-user") == 0) {
+#ifdef WIN32
+            return ap_psprintf(tp, 
+                "%s %s: the -user option isn't supported on WIN", name, fs_path);
+#else
+            s->username = ap_getword_conf(tp, &arg);
+            if (*s->user == '\0')
+                return invalid_value(tp, name, fs_path, option, "\"\"");
+#endif
+        }
+        else if (strcasecmp(option, "-group") == 0) {
+#ifdef WIN32
+            return ap_psprintf(tp, 
+                "%s %s: the -group option isn't supported on WIN", name, fs_path);
+#else
+            s->group = ap_getword_conf(tp, &arg);
+            if (*s->group == '\0')
+                return invalid_value(tp, name, fs_path, option, "\"\"");
+#endif
+        }
         else {
             return ap_psprintf(tp, "%s %s: invalid option: %s", name, fs_path, option);
         }
     } /* while */
+
+#ifndef WIN32
+    if (s->user)
+    {
+        if (s->group == NULL)
+        {
+            return ap_psprintf(tp, 
+                "%s %s: -user and -group must be used together", name, fs_path);
+        }
+
+        s->uid = ap_uname2id(s->user);
+        s->gid = ap_gname2id(s->group);
+    }
+    else
+    {
+        if (s->group)
+        {
+            return ap_psprintf(tp, 
+                "%s %s: -user and -group must be used together", name, fs_path);
+        }
+
+        s->uid = fcgi_util_get_server_uid(cmd->server); 
+        s->gid = fcgi_util_get_server_gid(cmd->server);
+    }
+
+    if ((err = fcgi_util_fs_set_uid_n_gid(p, s, s->uid, s->gid)))
+    {
+        return ap_psprintf(tp, 
+            "%s %s: invalid user or group: %s", name, fs_path, err);
+    }
+#endif /* !WIN32 */
 
     if (s->socket_path != NULL && s->port != 0) {
         return ap_psprintf(tp,
@@ -824,11 +846,6 @@ const char *fcgi_config_new_external_server(cmd_parms *cmd, void *dummy, const c
     s->fs_path = fs_path;
     s->directive = APP_CLASS_EXTERNAL;
 
-    err = fcgi_util_fs_set_uid_n_gid(p, s, fcgi_util_get_server_uid(cmd->server), 
-                                     fcgi_util_get_server_gid(cmd->server));
-    if (err != NULL)
-        return ap_psprintf(tp, "%s %s: %s", name, fs_path, err);
-
     /*  Parse directive arguments */
     while (*arg != '\0') {
         option = ap_getword_conf(tp, &arg);
@@ -857,10 +874,61 @@ const char *fcgi_config_new_external_server(cmd_parms *cmd, void *dummy, const c
         else if (strcasecmp(option, "-flush") == 0) {
             s->flush = 1;
         }
+        else if (strcasecmp(option, "-user") == 0) {
+#ifdef WIN32
+            return ap_psprintf(tp, 
+                "%s %s: the -user option isn't supported on WIN", name, fs_path);
+#else
+            s->username = ap_getword_conf(tp, &arg);
+            if (*s->user == '\0')
+                return invalid_value(tp, name, fs_path, option, "\"\"");
+#endif
+        }
+        else if (strcasecmp(option, "-group") == 0) {
+#ifdef WIN32
+            return ap_psprintf(tp, 
+                "%s %s: the -group option isn't supported on WIN", name, fs_path);
+#else
+            s->group = ap_getword_conf(tp, &arg);
+            if (*s->group == '\0')
+                return invalid_value(tp, name, fs_path, option, "\"\"");
+#endif
+        }
         else {
             return ap_psprintf(tp, "%s %s: invalid option: %s", name, fs_path, option);
         }
     } /* while */
+
+#ifndef WIN32
+    if (s->user)
+    {
+        if (s->group == NULL)
+        {
+            return ap_psprintf(tp, 
+                "%s %s: -user and -group must be used together", name, fs_path);
+        }
+
+        s->uid = ap_uname2id(s->user);
+        s->gid = ap_gname2id(s->group);
+    }
+    else
+    {
+        if (s->group)
+        {
+            return ap_psprintf(tp, 
+                "%s %s: -user and -group must be used together", name, fs_path);
+        }
+
+        s->uid = fcgi_util_get_server_uid(cmd->server); 
+        s->gid = fcgi_util_get_server_gid(cmd->server);
+    }
+
+    if ((err = fcgi_util_fs_set_uid_n_gid(p, s, s->uid, s->gid)))
+    {
+        return ap_psprintf(tp, 
+            "%s %s: invalid user or group: %s", name, fs_path, err);
+    }
+#endif /* !WIN32 */
 
     /* Require one of -socket or -host, but not both */
     if (s->socket_path != NULL && s->port != 0) {
