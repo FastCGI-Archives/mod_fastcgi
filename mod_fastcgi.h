@@ -1,5 +1,5 @@
 /*
- * $Id: mod_fastcgi.h,v 1.26 2000/06/19 19:24:28 robs Exp $
+ * $Id: mod_fastcgi.h,v 1.27 2000/07/19 17:58:38 robs Exp $
  */
 
 #ifndef MOD_FASTCGI_H
@@ -11,6 +11,14 @@
  * # of idle seconds allowed to pass while connected to a FastCGI before aborting
  */
 #define FCGI_DEFAULT_IDLE_TIMEOUT 30
+
+/*
+ * (WIN32) # of sec to wait while trying to connect using a named pipe.
+ * This is overridden by -appConnTimeout, if set.  This value is similiar
+ * to the OS specific (blocking) connect() timeout.  According to XXX
+ * this is typically XXX sec.
+ */
+#define FCGI_NAMED_PIPE_CONNECT_TIMEOUT  90
 
 #define FCGI_DEFAULT_LISTEN_Q 100          /* listen queue (backlog) depth */
 #define FCGI_DEFAULT_RESTART_DELAY 5       /* delay between restarts */

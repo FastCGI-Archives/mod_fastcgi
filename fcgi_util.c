@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_util.c,v 1.13 2000/05/24 01:51:52 robs Exp $
+ * $Id: fcgi_util.c,v 1.14 2000/07/19 17:58:37 robs Exp $
  */
 
 #include "fcgi.h"
@@ -492,98 +492,92 @@ int fcgi_util_gettimeofday(struct timeval *Time) {
 
 #ifdef WIN32
 
-FcgiRWLock * fcgi_rdwr_create() {
+/*
+ * We allow only one writer at a time and a writer can proceed only
+ * when there are no readers.
+ *
+ * @@@ For named pipes we could lock only the process we're going to waste.
+ */
+
+FcgiRWLock * fcgi_rdwr_create() 
+{
 	FcgiRWLock *newlock = NULL;
 
 	newlock = (FcgiRWLock *) malloc(sizeof(FcgiRWLock));
+	ap_assert(newlock);
 
-	if (newlock == NULL)
-		return NULL;
-
-	newlock->read_event = CreateEvent(NULL, TRUE, FALSE, NULL);
-	newlock->lock_mutex = CreateEvent(NULL, FALSE, TRUE, NULL);
-	newlock->write_event = CreateMutex(NULL, FALSE, NULL);
-	newlock->counter = -1;
+	newlock->write_lock = CreateEvent(NULL, FALSE, TRUE, NULL);
+    newlock->mutex = CreateMutex(NULL, FALSE, NULL);
+	newlock->counter = 0;
 
 	return newlock;
 }
 
-void fcgi_rdwr_destroy(FcgiRWLock *lock) {
-	CloseHandle(lock->read_event);
-	CloseHandle(lock->lock_mutex);
-	CloseHandle(lock->write_event);
-
+void fcgi_rdwr_destroy(FcgiRWLock *lock) 
+{
+	CloseHandle(lock->write_lock);
+    CloseHandle(lock->mutex);
 	free(lock);
-	lock = NULL;
 }
 
-
-int fcgi_rdwr_lock(FcgiRWLock *lock, int type) {
-	
-	if (lock == NULL)
-		return -1;
-
-	if (type == WRITER) {  
-		WaitForSingleObject(lock->write_event,INFINITE);
-		WaitForSingleObject(lock->lock_mutex, INFINITE);
-	}
-	else {   
-		if (InterlockedIncrement(&lock->counter) == 0) { 
-			WaitForSingleObject(lock->lock_mutex, INFINITE);
-			SetEvent(lock->read_event);
-		}
-
-		WaitForSingleObject(lock->read_event,INFINITE);
-	}
+int fcgi_rdwr_lock(FcgiRWLock *lock, int type) 
+{
+	if (type == WRITER)
+    {
+		WaitForSingleObject(lock->write_lock, INFINITE);
+    }
+    else 
+    {
+        WaitForSingleObject(lock->mutex, INFINITE);
+        if (lock->counter == 0)
+        {
+		    WaitForSingleObject(lock->write_lock, INFINITE);
+	    }
+        ++lock->counter;
+        ReleaseMutex(lock->mutex);
+    }
 
 	return 0;
 }
 
-int fcgi_rdwr_try_lock(FcgiRWLock *lock, int type) {
-	DWORD dwret;
-	
-	if (lock == NULL)
-		return -1;
-
-	if (type == WRITER) {  
-		dwret = WaitForSingleObject(lock->write_event, 0);
-		if (dwret == WAIT_TIMEOUT)
-			return -1;
-
-		dwret = WaitForSingleObject(lock->lock_mutex, 0);
-		if (dwret == WAIT_TIMEOUT)
-			return -1;
-	}
-	else {   
-		if (InterlockedIncrement(&lock->counter) == 0) { 
-			dwret = WaitForSingleObject(lock->lock_mutex, 0);
-			if (dwret == WAIT_TIMEOUT)
-				return -1;
-
-			SetEvent(lock->read_event);
-		}
-
-		dwret = WaitForSingleObject(lock->read_event, 0);
-		if (dwret == WAIT_TIMEOUT)
-			return -1;
-	}
+int fcgi_rdwr_unlock(FcgiRWLock *lock, int type) 
+{
+	if (type == WRITER)
+    {
+        SetEvent(lock->write_lock);
+    }
+    else
+    {
+        WaitForSingleObject(lock->mutex, INFINITE);
+        --lock->counter;
+        if (lock->counter == 0) 
+        {
+		    SetEvent(lock->write_lock);
+        }
+        ReleaseMutex(lock->mutex);
+    }
 
 	return 0;
 }
 
-int fcgi_rdwr_unlock(FcgiRWLock *lock, int type) {
+int fcgi_rdwr_try_lock(FcgiRWLock *lock, int type) 
+{
+    DWORD rc;
 
-	if (type == WRITER) { 
-		SetEvent(lock->lock_mutex);
-	    ReleaseMutex(lock->write_event);
-	}
-	else {
-		if (InterlockedDecrement(&lock->counter) < 0) {
-			ResetEvent(lock->read_event);
-			SetEvent(lock->lock_mutex);
-		}
-	}
+	if (type == WRITER)
+    {
+		rc = WaitForSingleObject(lock->write_lock, 0);
+        if (rc == WAIT_TIMEOUT || rc == WAIT_FAILED)
+        {
+            return -1;
+        }
+    }
+    else
+    {
+        ap_assert(0);
+    }
 
-	return 0;
+    return 0;
 }
+    
 #endif

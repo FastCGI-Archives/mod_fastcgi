@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi.h,v 1.24 2000/05/24 01:51:52 robs Exp $
+ * $Id: fcgi.h,v 1.25 2000/07/19 17:58:37 robs Exp $
  */
 
 #ifndef FCGI_H
@@ -26,7 +26,9 @@
 #include <sys/uio.h>
 #endif
 
-#ifndef WIN32
+#ifdef WIN32
+#include "multithread.h"
+#else
 #include <sys/un.h>
 #endif
 
@@ -53,9 +55,8 @@ typedef struct {
 
 /* Reader/Writer lock structure for NT */
 typedef struct _FcgiRWLock {
-    HANDLE read_event;      /* reader handle */
-    HANDLE lock_mutex;      /* lock mutex */
-    HANDLE write_event;     /* write handle */
+    HANDLE write_lock;
+    HANDLE mutex;
     long counter;          /* number of readers */
 } FcgiRWLock;
 
@@ -94,7 +95,7 @@ typedef struct _FcgiProcessInfo {
  */
 typedef struct _FastCgiServerInfo {
     int flush;
-    const char *fs_path;            /* pathname of executable */
+    char *fs_path;                  /* pathname of executable */
     array_header *pass_headers;     /* names of headers to pass in the env */
     u_int idle_timeout;             /* fs idle secs allowed before aborting */
     char **envp;                    /* if NOT NULL, this is the env to send
@@ -273,17 +274,21 @@ typedef struct
 #define FCGI_LOG_DEBUG_NOERRNO    __FILE__,__LINE__,APLOG_DEBUG|APLOG_NOERRNO
 
 #ifdef FCGI_DEBUG
-#define FCGIDBG1(a)          ap_log_error(FCGI_LOG_DEBUG,fcgi_apache_main_server,a);
-#define FCGIDBG2(a,b)        ap_log_error(FCGI_LOG_DEBUG,fcgi_apache_main_server,a,b);
-#define FCGIDBG3(a,b,c)      ap_log_error(FCGI_LOG_DEBUG,fcgi_apache_main_server,a,b,c);
-#define FCGIDBG4(a,b,c,d)    ap_log_error(FCGI_LOG_DEBUG,fcgi_apache_main_server,a,b,c,d);
-#define FCGIDBG5(a,b,c,d,e)  ap_log_error(FCGI_LOG_DEBUG,fcgi_apache_main_server,a,b,c,d,e);
+#define FCGIDBG1(a)              ap_log_error(FCGI_LOG_DEBUG,fcgi_apache_main_server,a);
+#define FCGIDBG2(a,b)            ap_log_error(FCGI_LOG_DEBUG,fcgi_apache_main_server,a,b);
+#define FCGIDBG3(a,b,c)          ap_log_error(FCGI_LOG_DEBUG,fcgi_apache_main_server,a,b,c);
+#define FCGIDBG4(a,b,c,d)        ap_log_error(FCGI_LOG_DEBUG,fcgi_apache_main_server,a,b,c,d);
+#define FCGIDBG5(a,b,c,d,e)      ap_log_error(FCGI_LOG_DEBUG,fcgi_apache_main_server,a,b,c,d,e);
+#define FCGIDBG6(a,b,c,d,e,f)    ap_log_error(FCGI_LOG_DEBUG,fcgi_apache_main_server,a,b,c,d,e,f);
+#define FCGIDBG7(a,b,c,d,e,f,g)  ap_log_error(FCGI_LOG_DEBUG,fcgi_apache_main_server,a,b,c,d,e,f,g);
 #else
 #define FCGIDBG1(a)
 #define FCGIDBG2(a,b)
 #define FCGIDBG3(a,b,c)
 #define FCGIDBG4(a,b,c,d)
 #define FCGIDBG5(a,b,c,d,e)
+#define FCGIDBG6(a,b,c,d,e,f)
+#define FCGIDBG7(a,b,c,d,e,f,g)
 #endif
 
 /*

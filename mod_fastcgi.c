@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.93 2000/05/24 15:09:39 robs Exp $
+ *  $Id: mod_fastcgi.c,v 1.94 2000/07/19 17:58:37 robs Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -171,26 +171,33 @@ static void send_to_pm(pool * const p, const char id, const char * const fs_path
     }
 
     switch(id) {
+
     case PLEASE_START:
 #ifdef WIN32
         job->id = id;
         job->fs_path = strdup(fs_path);
         job->user = strdup(user);
         job->group = strdup(group);
+        job->qsec = 0L;
+        job->start_time = 0L;
 #else
         buflen = sprintf(buf, "%c %s %s %s*", id, fs_path, user, group);
 #endif
         break;
+
     case CONN_TIMEOUT:
 #ifdef WIN32
         job->id = id;
         job->fs_path = strdup(fs_path);
         job->user = strdup(user);
         job->group = strdup(group);
+        job->qsec = 0L;
+        job->start_time = 0L;
 #else
         buflen = sprintf(buf, "%c %s %s %s*", id, fs_path, user, group);
 #endif
         break;
+
     case REQ_COMPLETE:
 #ifdef WIN32
         job->id = id;
@@ -299,7 +306,7 @@ static void fcgi_child_init(server_rec *server_conf, pool *p)
     fcgi_event_handles[0] = CreateEvent(NULL, FALSE, FALSE, NULL);
     fcgi_event_handles[1] = CreateEvent(NULL, FALSE, FALSE, NULL);
     fcgi_event_handles[2] = CreateEvent(NULL, FALSE, FALSE, NULL);
-	fcgi_dynamic_mbox_mutex = CreateMutex(FALSE, FALSE, NULL);
+	fcgi_dynamic_mbox_mutex = ap_create_mutex("fcgi_dynamic_mbox_mutex");
 
     /* Spawn of the process manager thread */
     fcgi_pm_thread = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)fcgi_pm_main, NULL, 0, &tid);
@@ -773,6 +780,13 @@ static void close_connection_to_fs(fcgi_request *fr)
     }
 }
 
+#ifdef WIN32
+static void lock_cleanup(void * data)
+{
+    fcgi_rdwr_unlock((FcgiRWLock *) data, READER);
+}
+#endif
+
 /*******************************************************************************
  * Connect to the FastCGI server.
  */
@@ -883,44 +897,93 @@ static const char *open_connection_to_fs(fcgi_request *fr)
 
         /* Block until we get a shared (non-exclusive) read Lock */
         if (fcgi_wait_for_shared_read_lock(fr->lockFd) < 0)
-            return "failed to obtain a shared read lock on server lockfile";
+            return "failed to obtain a shared read lock";
+
+#ifdef WIN32
+        ap_block_alarms();
+        ap_register_cleanup(rp, (void *) fr->lockFd, lock_cleanup, ap_null_cleanup);
+        ap_unblock_alarms();
+#endif
+
+        FCGIDBG2("got_dynamic_shared_read_lock: %s", fr->fs_path);
     }
 
 #ifdef WIN32
-    if (socket_path) {
+    if (socket_path) 
+    {
+        BOOL ready;
+        int connect_time;
 
-		if (fr->dynamic && fcgi_util_gettimeofday(&fr->startTime) < 0)
-	        return "gettimeofday() failed";
-
-        if ((fr->dynamic && dynamicAppConnectTimeout) || (!fr->dynamic && fr->fs->appConnectTimeout)) {
-            DWORD interval = (fr->dynamic ? dynamicAppConnectTimeout : fr->fs->appConnectTimeout) * 1000;
-
-            if (!WaitNamedPipe(socket_path, interval))
-                return "named pipe failed to connect()";
-        }
-		else {
-			if (! WaitNamedPipe(socket_path, NMPWAIT_WAIT_FOREVER) ) {
-				errcode = GetLastError();
-				return "named pipe failed to connect()";
-			}
-		}
-
-        fr->fd = (int) CreateFile(socket_path, GENERIC_READ | GENERIC_WRITE,
-                            FILE_SHARE_READ | FILE_SHARE_WRITE, NULL,
-                            OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-
-        if ((HANDLE)fr->fd == INVALID_HANDLE_VALUE) {
-            errno = GetLastError();
-            return "CreateFile() failed";
-        }
-
-        ap_note_cleanups_for_h(rp, (HANDLE)fr->fd);
-
+        DWORD interval;
+        int max_connect_time = FCGI_NAMED_PIPE_CONNECT_TIMEOUT;
+            
         fr->using_npipe_io = TRUE;
 
-		if (fcgi_util_gettimeofday(&fr->queueTime) < 0)
-            return "gettimeofday() failed";
+        if (fr->dynamic) 
+        {
+            interval = dynamicPleaseStartDelay * 1000;
+            
+            if (dynamicAppConnectTimeout) {
+                max_connect_time = dynamicAppConnectTimeout;
+            }
+        }
+        else
+        {
+            interval = FCGI_NAMED_PIPE_CONNECT_TIMEOUT * 1000;
+            
+            if (fr->fs->appConnectTimeout) {
+                max_connect_time = fr->fs->appConnectTimeout;
+            }
+        }
 
+        if (fcgi_util_gettimeofday(&fr->startTime) < 0) {
+	        return "gettimeofday() failed";
+        }
+
+        do 
+        {
+            fr->fd = (SOCKET) CreateFile(socket_path, 
+                GENERIC_READ | GENERIC_WRITE, 
+                FILE_SHARE_READ | FILE_SHARE_WRITE, 
+                NULL,                  // no security attributes
+                OPEN_EXISTING,         // opens existing pipe 
+                FILE_ATTRIBUTE_NORMAL, // default attributes 
+                NULL);                 // no template file 
+
+            if (fr->fd != (SOCKET) INVALID_HANDLE_VALUE) {
+                break; 
+            }
+
+            if (GetLastError() != ERROR_PIPE_BUSY) {
+                return("CreateFile() failed ()"); 
+            }
+
+            // All pipe instances are busy, so wait 
+            ready = WaitNamedPipe(socket_path, interval);
+
+            if (fr->dynamic && !ready) {
+                send_to_pm(rp, CONN_TIMEOUT, fr->fs_path, fr->user, fr->group, 0, 0);
+            }
+
+            if (fcgi_util_gettimeofday(&fr->queueTime) < 0) {
+                return "gettimeofday() failed";
+            }
+
+            connect_time = fr->queueTime.tv_sec - fr->startTime.tv_sec;
+            
+            FCGIDBG5("interval=%d, max_connect_time=%d, connect_time=%d, ready=%d", interval, max_connect_time, connect_time, ready);
+
+        } while (connect_time < max_connect_time);
+
+        if (fr->fd == (SOCKET) INVALID_HANDLE_VALUE) {
+            return "CreateFile()/WaitNamedPipe() timed out";
+        }
+
+        FCGIDBG2("got_named_pipe_connect: %s", fr->fs_path);
+
+        ap_block_alarms();
+        ap_note_cleanups_for_h(rp, (HANDLE) fr->fd);
+        ap_unblock_alarms();
 
         return NULL;
     }

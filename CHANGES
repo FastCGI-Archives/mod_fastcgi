@@ -1,4 +1,11 @@
 Changes with mod_fastcgi 2.2.5
+
+ *) (Win32) More dynamic fixes.
+
+ *) (Win32) Eliminate the per application named pipe mutex.  Its now 
+    per process to keep the lib happy (the use _FCGI_MUTEX_ should
+    removed from the lib).  This allows pipe-based applications to
+    now handle multiple simoultanous requests (one per process).
  
  *) Increase the number of open FDs we look to close when spawning apps.
 

@@ -1,6 +1,6 @@
 <!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">
 <html>
-<!-- $Id: mod_fastcgi.html,v 1.16 2000/05/22 12:43:44 robs Exp $ -->
+<!-- $Id: mod_fastcgi.html,v 1.17 2000/07/19 17:58:38 robs Exp $ -->
 
 <head>
 <title>Apache module mod_fastcgi</title>
@@ -204,14 +204,21 @@ the specified extension(s) as FastCGI applications:</p>
   log the event (at the <code>warn</code> <a href="http://www.apache.org/docs/mod/core.html#loglevel"><code>LogLevel</code></a>).</p>
   <p><em>Option</em> can be one of (case insensitive):</p>
   <dt><code><b>-appConnTimeout <em>n</em></b>&nbsp;(0 seconds)</code></dt>
-  <dd>The number of seconds to wait for a connection to the FastCGI application to
+  <dd><b>Unix: </b>The number of seconds to wait for a connection to the FastCGI application to
     complete or 0 to indicate a blocking <code>connect()</code> should be
-    used.&nbsp; If the timeout expires, a&nbsp; SERVER_ERROR results.&nbsp; For
+    used.&nbsp; Blocking <code>connect()</code>s have an OS dependent internal
+    timeout<code>.&nbsp; </code>If the timeout expires, a&nbsp; SERVER_ERROR results.&nbsp; For
     non-zero values, this is the amount of time used in a <code>select()</code> 
     to write to the file descriptor returned by a non-blocking
     <code>connect().</code>&nbsp; Non-blocking <code>connect()</code>s are troublesome
     on many platforms.&nbsp; See also -idle-timeout, it produces similar results
-    but in a more portable manner.</dd>
+    but in a more portable manner.<br>
+ <b>Windows NT:&nbsp;</b>TCP based applications work as above.&nbsp; Named pipe
+    based applications (static applications configured without the -port option
+    and dynamic applications) use this value successfully to limit the amount of
+    time to wait for a connection (i.e. its not &quot;troublesome&quot;).&nbsp;
+    By default, this is 90 seconds (FCGI_NAMED_PIPE_CONNECT_TIMEOUT in
+    mod_fastcgi.h).</dd>
   <dt><code><b>-idle-timeout <em>n</em></b>&nbsp;(30 seconds)</code></dt>
   <dd>The number of seconds of FastCGI application inactivity allowed before the
     request is aborted and the event is logged (at the <code>error</code> <a href="http://www.apache.org/docs/mod/core.html#loglevel"><code>LogLevel</code></a>).&nbsp;
@@ -300,16 +307,21 @@ mutually exclusive.</DD>
   process.</p>
   <p><em>Option</em> can be one of (case insensitive):</p>
   <dt><code><b>-appConnTimeout <em>n</em></b>&nbsp;(0 seconds)</code></dt>
-  <dd>The number of seconds to wait for a connection to the FastCGI application to
+  <dd><b>Unix: </b>The number of seconds to wait for a connection to the FastCGI application to
     complete or 0 to indicate a blocking <code>connect()</code> should be
-    used.&nbsp;
-    If the timeout expires, a&nbsp; SERVER_ERROR results.&nbsp; For non-zero
-    values, this is the amount of time used in a <code>select()</code>  to write
-    to the file descriptor returned by a non-blocking
-    <code>connect().</code>&nbsp;
-    Non-blocking <code>connect()</code>s are troublesome on many platforms and
-    thus the use of the option is not recommended.&nbsp; See also -idle-timeout, it produces similar results but in
-    a more portable manner.</dd>
+    used.&nbsp; Blocking <code>connect()</code>s have an OS dependent internal
+    timeout<code>.&nbsp; </code>If the timeout expires, a&nbsp; SERVER_ERROR results.&nbsp; For
+    non-zero values, this is the amount of time used in a <code>select()</code> 
+    to write to the file descriptor returned by a non-blocking
+    <code>connect().</code>&nbsp; Non-blocking <code>connect()</code>s are troublesome
+    on many platforms.&nbsp; See also -idle-timeout, it produces similar results
+    but in a more portable manner.<br>
+ <b>Windows NT:&nbsp;</b>TCP based applications work as above.&nbsp; Named pipe
+    based applications (static applications configured without the -port option
+    and dynamic applications) use this value successfully to limit the amount of
+    time to wait for a connection (i.e. its not &quot;troublesome&quot;).&nbsp;
+    By default, this is 90 seconds (FCGI_NAMED_PIPE_CONNECT_TIMEOUT in
+    mod_fastcgi.h).</dd>
   <dt><code><b>-idle-timeout <em>n</em></b>&nbsp;(30 seconds)</code></dt>
   <dd>The number of seconds of FastCGI application inactivity allowed before the
     request is aborted and the event is logged (at the <code>error</code> <a href="http://www.apache.org/docs/mod/core.html#loglevel"><code>LogLevel</code></a>).&nbsp;
@@ -430,16 +442,21 @@ mutually exclusive.</DD>
   FastCGI devkit provides a simple tool, <code>cgi-fcgi</code>,&nbsp; for starting FastCGI applications independent of the
   server (applications can also be <i>self-starting</i>, see the devkit).</p>
   <dt><code><b>-appConnTimeout <em>n</em></b>&nbsp;(0 seconds)</code></dt>
-  <dd>The number of seconds to wait for a connection to the FastCGI application to
+  <dd><b>Unix: </b>The number of seconds to wait for a connection to the FastCGI application to
     complete or 0 to indicate a blocking <code>connect()</code> should be
-    used.&nbsp;
-    If the timeout expires, a&nbsp; SERVER_ERROR results.&nbsp; For non-zero
-    values, this is the amount of time used in a <code>select()</code>  to write
-    to the file descriptor returned by a non-blocking
-    <code>connect().</code>&nbsp;
-    Non-blocking <code>connect()</code>s are troublesome on many
-    platforms.&nbsp; See also -idle-timeout, it produces similar results but in
-    a more portable manner.</dd>
+    used.&nbsp; Blocking <code>connect()</code>s have an OS dependent internal
+    timeout<code>.&nbsp; </code>If the timeout expires, a&nbsp; SERVER_ERROR results.&nbsp; For
+    non-zero values, this is the amount of time used in a <code>select()</code> 
+    to write to the file descriptor returned by a non-blocking
+    <code>connect().</code>&nbsp; Non-blocking <code>connect()</code>s are troublesome
+    on many platforms.&nbsp; See also -idle-timeout, it produces similar results
+    but in a more portable manner.<br>
+ <b>Windows NT:&nbsp;</b>TCP based applications work as above.&nbsp; Named pipe
+    based applications (static applications configured without the -port option
+    and dynamic applications) use this value successfully to limit the amount of
+    time to wait for a connection (i.e. its not &quot;troublesome&quot;).&nbsp;
+    By default, this is 90 seconds (FCGI_NAMED_PIPE_CONNECT_TIMEOUT in
+    mod_fastcgi.h).</dd>
   <dt><code><b>-idle-timeout <em>n</em></b>&nbsp;(30 seconds)</code></dt>
   <dd>The number of seconds of FastCGI application inactivity allowed before the
     request is aborted and the event is logged (at the <code>error</code> <a href="http://www.apache.org/docs/mod/core.html#loglevel"><code>LogLevel</code></a>).&nbsp;
