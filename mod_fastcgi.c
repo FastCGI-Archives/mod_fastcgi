@@ -2778,11 +2778,11 @@ NothingToDo:
 		    for(i=0;i<maxClassProcs;i++) {
 		        if((s->procInfo[i].pid == -1) &&
 			       ((s->procInfo[i].state == STATE_READY) ||
+				(s->procInfo[i].state == STATE_NEEDS_STARTING) ||
 				(s->procInfo[i].state == STATE_KILLED)))
 			  break;
 		    }
 		    ASSERT(i<maxClassProcs);
-		    s->procInfo[i].pid = -1;
 	            s->procInfo[i].state = 
 		            STATE_NEEDS_STARTING;
 		    break;
