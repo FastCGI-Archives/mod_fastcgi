@@ -1,5 +1,8 @@
 Changes with mod_fastcgi 2.2.2
 
+ *) Wrap the SIGPIPE handler manipulation code such that it is only applicable
+    to Apache releases prior to 1.3.6.
+
  *) Minor tweaks for RUSSIAN_APACHE.  [Sergey Gershtein <sg@mplik.ru>]
 
  *) Dynamic updates: 

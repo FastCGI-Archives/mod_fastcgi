@@ -1,5 +1,5 @@
 /* 
- * $Id: fcgi.h,v 1.8 1999/04/22 03:57:31 roberts Exp $
+ * $Id: fcgi.h,v 1.9 1999/04/29 02:28:24 roberts Exp $
  */
 
 #ifndef FCGI_H
@@ -135,7 +135,9 @@ typedef struct {
     table *authHeaders;			 /* headers received from an auth fs */
 	int auth_compat;			 /* whether the auth request is spec compat */
 	table *saved_subprocess_env; /* subprocess_env before auth handling */
+#ifdef SIGPIPE && MODULE_MAGIC_NUMBER < 19990320
     void (*apache_sigpipe_handler)(int);
+#endif
     int expectingClientContent;     /* >0 => more content, <=0 => no more */
     array_header *header;
     char *fs_stderr;
