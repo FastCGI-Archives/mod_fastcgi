@@ -1,6 +1,6 @@
 <!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">
 <html>
-<!-- $Id: mod_fastcgi.html,v 1.9 1999/04/22 04:23:09 roberts Exp $ -->
+<!-- $Id: mod_fastcgi.html,v 1.10 1999/04/24 03:43:38 roberts Exp $ -->
 
 <head>
 <title>Apache module mod_fastcgi</title>
@@ -186,11 +186,12 @@ the specified extension(s) as FastCGI applications:</p>
     the listen-queue is obtained (the three-way handshake completes), but before the
     connection is <code>accept()</code>ed by the application.&nbsp; Unix sockets appear to
     need the connection to be <code>accept()</code>ed before becoming writeable.</dd>
-  <dt><code><b>-initial-env <em>name=value</b> none</em></code></dt>
+  <dt><code><b>-initial-env <em>name[=value</b><strong>]</strong> none</em></code></dt>
   <dd>A name-value pair to be passed in the initial environment when instances of the
-    application are spawned.&nbsp; No white space is allowed and the equals sign is mandatory
-    (i.e. use &quot;-initial-env name=&quot; to define a variable with an empty value). &nbsp;
-    The option can be used repeatedly.</dd>
+    application are spawned.&nbsp; To pass a variable from the Apache environment, don't
+    provide the &quot;=&quot; (if the variable isn't actually in the environment, it will be
+    defined without a value).&nbsp; To define a variable without a value, provide the
+    &quot;=&quot; without any value.&nbsp; The option can be used repeatedly.</dd>
   <dt><code><b>-init-start-delay <em>n</b>&nbsp;</em>(1 second)</code></dt>
   <dd>The minimum number of seconds between the spawning of instances of this application.
     &nbsp; This delay decreases the demand placed on the system at server initialization.</dd>
@@ -274,11 +275,12 @@ the specified extension(s) as FastCGI applications:</p>
     FastCGI applications.&nbsp; Old values are scaled by (1 -<code> gainValue</code>), so
     making it smaller weights them more heavily compared to the current value, which is scaled
     by <code>gainValue</code>.</dd>
-  <dt><code><b>-initial-env <em>name=value</b> none</em></code></dt>
+  <dt><code><b>-initial-env <em>name[=value</b><strong>]</strong> none</em></code></dt>
   <dd>A name-value pair to be passed in the initial environment when instances of the
-    application are spawned.&nbsp; No white space is allowed and the equals sign is mandatory
-    (i.e. use &quot;-initial-env name=&quot; to define a variable with an empty value). &nbsp;
-    The option can be used repeatedly.</dd>
+    application are spawned.&nbsp; To pass a variable from the Apache environment, don't
+    provide the &quot;=&quot; (if the variable isn't actually in the environment, it will be
+    defined without a value).&nbsp; To define a variable without a value, provide the
+    &quot;=&quot; without any value.&nbsp; The option can be used repeatedly.</dd>
   <dt><code><b>-init-start-delay <em>n</b>&nbsp;</em>(1 second)</code></dt>
   <dd>The minimum number of seconds between the spawning of instances of this application.
     &nbsp; This delay decreases the demand placed on the system at server initialization.</dd>
