@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.103 2001/02/19 03:43:10 robs Exp $
+ *  $Id: mod_fastcgi.c,v 1.104 2001/02/19 05:14:53 robs Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -1160,8 +1160,6 @@ static void cleanup(void *data)
         set_nonblocking(fr->fd, FALSE);
     }
 
-    set_nonblocking(fr->r->connection->client->fd, FALSE);
-
     if (fr->fs_stderr_len) {
         ap_log_rerror(FCGI_LOG_ERR_NOERRNO, fr->r,
             "FastCGI: server \"%s\" stderr: %s", fr->fs_path, fr->fs_stderr);
@@ -1183,7 +1181,6 @@ static int do_work(request_rec *r, fcgi_request *fr)
     env_status env;
     pool *rp = r->pool;
     const char *err = NULL;
-    int	is_first_write_to_client = TRUE;
 
     FD_ZERO(&read_set);
     FD_ZERO(&write_set);
@@ -1270,6 +1267,13 @@ static int do_work(request_rec *r, fcgi_request *fr)
 
         /* Read as much as possible from the client. */
         if (fr->role == FCGI_RESPONDER && !fr->eofSent && envSent) {
+
+            /* ap_get_client_block() (called in read_from_client_n_queue() 
+             * can't handle a non-blocking fd, its a bummer.  We might be
+             * able to completely bypass the Apache BUFF routines in still
+             * do it, but thats a major hassle. Apache 2.X will handle it,
+             * and then so will we. */
+
             if (read_from_client_n_queue(fr) != OK)
                 return server_error(fr);
         }
@@ -1471,19 +1475,6 @@ static int do_work(request_rec *r, fcgi_request *fr)
         }
 
         if (fr->role == FCGI_RESPONDER && doClientWrite) {
-
-            if (fr->keepReadingFromFcgiApp) {
-                if (is_first_write_to_client) {
-                    set_nonblocking(fr->r->connection->client->fd, TRUE);
-                }
-            }
-            else {
-                if (!is_first_write_to_client) {
-                    set_nonblocking(fr->r->connection->client->fd, FALSE);
-                }
-            }
-
-            is_first_write_to_client = FALSE;
 
             if (write_to_client(fr) != OK) {
 #if defined(SIGPIPE) && MODULE_MAGIC_NUMBER < 19990320
