@@ -1,31 +1,9 @@
 /* 
- * $Id: fcgi.h,v 1.2 1999/02/10 03:10:42 roberts Exp $
+ * $Id: fcgi.h,v 1.3 1999/02/11 03:59:07 roberts Exp $
  */
 
 #ifndef FCGI_H
 #define FCGI_H
-
-/* @@@ This is a bit sloppy, but for now.. */
-#include <arpa/inet.h>
-#include <errno.h>
-#include <fcntl.h>
-#include <limits.h>
-#include <netdb.h>
-#include <netinet/in.h>
-#include <signal.h>
-#include <stdarg.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/socket.h>
-#include <sys/stat.h>
-#include <sys/time.h>
-#include <sys/types.h>
-#ifndef NO_WRITEV
-#include <sys/uio.h>
-#endif
-#include <sys/un.h>
-#include <unistd.h>
 
 /* Apache header files */
 #include "httpd.h"
@@ -38,6 +16,11 @@
 #include "util_script.h"
 #include "http_conf_globals.h"
 #include "util_md5.h"
+
+#ifndef NO_WRITEV
+#include <sys/uio.h>
+#endif
+#include <sys/un.h>
 
 /* FastCGI header files */
 #include "mod_fastcgi.h"
