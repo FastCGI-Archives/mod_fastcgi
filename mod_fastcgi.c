@@ -907,6 +907,7 @@ typedef request_rec WS_Request;
 					    * number of the currently running 
 					    * processes exceeds maxProcs, then
 					    * the KillDynamicProcs() is invoked */
+#define FCGI_DEFAULT_RESTART_DYNAMIC 0	   /* Do not restart dynamic processes */
 
 /* 
  * FcgiProcessInfo holds info for each process specified in
@@ -2238,6 +2239,7 @@ static int threshholdN = FCGI_DEFAULT_THRESHHOLD_N;
 static int startProcessDelay = FCGI_DEFAULT_START_PROCESS_DELAY;
 static int appConnTimeout = FCGI_DEFAULT_APP_CONN_TIMEOUT;
 static int processSlack = FCGI_DEFAULT_PROCESS_SLACK;
+static int restartDynamic = FCGI_DEFAULT_RESTART_DYNAMIC;
 
 const char *FCGIConfigCmd(cmd_parms *cmd, void *dummy, char *arg)
 {
@@ -2383,6 +2385,9 @@ const char *FCGIConfigCmd(cmd_parms *cmd, void *dummy, char *arg)
                 goto BadValueReturn;
             }
 	    processSlack = n;
+            continue;
+        } else if((strcmp(argv[i], "-restart") == 0)) {
+	    restartDynamic = 1;
             continue;
         } else {
             sprintf(errMsg, "FCGIConfig: Unknown option %s\n", argv[i]);
@@ -3017,7 +3022,7 @@ static int CaughtSigTerm(void)
 
 void FastCgiProcMgr(void *data)
 {
-    FastCgiServerInfo *s, *tmp;
+    FastCgiServerInfo *s, *tmp, *prev;
     int i;
     int status, callWaitPid, callDynamicProcs;
     sigset_t sigMask;
@@ -3267,11 +3272,14 @@ void FastCgiProcMgr(void *data)
 		    continue;
 		} else {
 		    /* 
-		     * dynamic app dies when it shoudn't have,
-		     * so the error is logged but the application
-		     * is not restarted by the process manager.
+		     * dynamic app dies when it shoudn't have.
 		     */
-		    s->procInfo[i].state = STATE_READY;
+		    if (restartDynamic) {
+		      s->procInfo[i].state = STATE_NEEDS_STARTING;
+		      s->numFailures++;
+		    } else {
+		      s->procInfo[i].state = STATE_READY;
+		    }
 		}
 	    }
 
@@ -3291,15 +3299,22 @@ void FastCgiProcMgr(void *data)
 	    }
             fflush(errorLogFile);
         } /* for (;;) */
+	prev = fastCgiServers;
 	for(s=fastCgiServers;s!=NULL;) {
 	    if(s->directive == APP_CLASS_DYNAMIC) {
 	        if(s->numProcesses == 0) {
 		    tmp=s->next;
 		    FreeFcgiServerInfo(s);
+		    if (s == fastCgiServers) {
+		      fastCgiServers = s->next;
+		    } else {
+		      prev->next = tmp;
+		    }
 		    s=tmp;
 		    continue;
 		}
 	    }
+	    prev = s;
 	    s=s->next;
 	}
     } /* for (;;) */
