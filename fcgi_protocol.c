@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_protocol.c,v 1.10 1999/09/24 02:26:28 roberts Exp $
+ * $Id: fcgi_protocol.c,v 1.11 2000/04/06 05:29:25 robs Exp $
  */
 
 
@@ -355,61 +355,72 @@ int fcgi_protocol_dequeue(pool *p, fcgi_request *fr)
                     fr->dataLen -= len;
                 }
                 break;
+
             case FCGI_STDERR:
-                if (len > 0) {
-                    int max_len;
-                    char *start_of_line, *end_of_line;
 
-                    /* This doesn't have to be fast, its the exception */
+                if (fr->fs_stderr == NULL)
+                {
+                    fr->fs_stderr = ap_palloc(p, FCGI_SERVER_MAX_STDERR_LINE_LEN + 1);
+                    fr->fs_stderr_len = 0;
+                }
 
-                    if (fr->fs_stderr == NULL)
-                        fr->fs_stderr = ap_pcalloc(p, FCGI_SERVER_MAX_STDERR_LINE_LEN + 1);
+                /* We're gonna consume all thats here */
+                fr->dataLen -= len;
 
-                    /* We're gonna consume all of it */
-                    fr->dataLen -= len;
+                while (len > 0) 
+                {
+                    char *null, *end, *start = fr->fs_stderr;
 
-                    while ((max_len = min(len, FCGI_SERVER_MAX_STDERR_LINE_LEN - strlen(fr->fs_stderr)))) {
-                        /* Put as much as we can in the block */
-                        int cur_stderr_len = strlen(fr->fs_stderr);
-                        fcgi_buf_get_to_block(fr->serverInputBuffer,
-                            fr->fs_stderr + cur_stderr_len, max_len);
-                        *(fr->fs_stderr + cur_stderr_len + max_len) = '\0';
-                        len -= max_len;
+                    /* Get as much as will fit in the buffer */
+                    int get_len = min(len, FCGI_SERVER_MAX_STDERR_LINE_LEN - fr->fs_stderr_len);
+                    fcgi_buf_get_to_block(fr->serverInputBuffer, fr->fs_stderr + fr->fs_stderr_len, get_len);
+                    len -= get_len;
+                    fr->fs_stderr_len += get_len;
+                    *(fr->fs_stderr + fr->fs_stderr_len) = '\0';
 
-                        /* Print as much as we can */
-                        start_of_line = fr->fs_stderr;
-                        while ((end_of_line = strpbrk(start_of_line, "\r\n"))) {
-                            *end_of_line = '\0';
-                            ap_log_rerror(FCGI_LOG_ERR_NOERRNO, fr->r,
-                                "FastCGI: server \"%s\" stderr: %s", fr->fs_path, start_of_line);
-                            ++end_of_line;
-                            start_of_line = end_of_line + strspn(end_of_line, "\r\n");
-                        }
+                    /* Disallow nulls */
+                    while ((null = memchr(start, '\0', fr->fs_stderr_len)))
+                    {
+                        int discard = ++null - start;
+                        ap_log_rerror(FCGI_LOG_ERR_NOERRNO, fr->r,
+                            "FastCGI: server \"%s\" sent a null character in the stderr stream!?, "
+                            "discarding %d characters of stderr", fr->fs_path, discard);
+                        start = null;
+                        fr->fs_stderr_len -= discard;
+                    } 
 
-                        /* Move any leftovers down */
-                        if (*start_of_line && start_of_line != fr->fs_stderr) {
-                            size_t move_len = strlen(start_of_line);
-
-                            memmove(fr->fs_stderr, start_of_line, move_len);
-                            *(fr->fs_stderr + move_len) = '\0';
-                        }
-                        else
-                            *fr->fs_stderr = '\0';
+                    /* Print as much as possible  */
+                    while ((end = strpbrk(start, "\r\n"))) 
+                    {
+                        *end = '\0';
+                        ap_log_rerror(FCGI_LOG_ERR_NOERRNO, fr->r, "FastCGI: server \"%s\" stderr: %s", fr->fs_path, start); 
+                        end += strspn(++end, "\r\n");
+                        fr->fs_stderr_len -= (end - start);
+                        start = end;
                     }
 
-                    if (len) {
-                        ap_log_rerror(FCGI_LOG_ERR_NOERRNO, fr->r,
-                            "FastCGI: server \"%s\" stderr: %s...", fr->fs_path, fr->fs_stderr);
-                        *fr->fs_stderr = '\0';
-                        ap_log_rerror(FCGI_LOG_WARN_NOERRNO, fr->r,
-                            "FastCGI: too much stderr received from server \"%s\", %d bytes discarded, "
-                            "increase FCGI_SERVER_MAX_STDERR_LINE_LEN (%d) and rebuild "
-                            "or use \"\\n\" to terminate lines",
-                            fr->fs_path, len, FCGI_SERVER_MAX_STDERR_LINE_LEN);
-                        fcgi_buf_toss(fr->serverInputBuffer, len);
+                    if (fr->fs_stderr_len) 
+                    {
+                        if (start != fr->fs_stderr)
+                        {
+                            /* Move leftovers down */
+                            memmove(fr->fs_stderr, start, fr->fs_stderr_len);
+                        }
+                        else if (fr->fs_stderr_len == FCGI_SERVER_MAX_STDERR_LINE_LEN)
+                        {
+                            /* Full buffer, dump it and complain */
+                            ap_log_rerror(FCGI_LOG_ERR_NOERRNO, fr->r, "FastCGI: server \"%s\" stderr: %s", fr->fs_path, fr->fs_stderr);
+                            ap_log_rerror(FCGI_LOG_WARN_NOERRNO, fr->r,
+                                "FastCGI: too much stderr received from server \"%s\", "
+                                "increase FCGI_SERVER_MAX_STDERR_LINE_LEN (%d) and rebuild "
+                                "or use \"\\n\" to terminate lines",
+                                fr->fs_path, len, FCGI_SERVER_MAX_STDERR_LINE_LEN);
+                            fr->fs_stderr_len = 0;
+                        }
                     }
                 }
                 break;
+
             case FCGI_END_REQUEST:
                 if (!fr->readingEndRequestBody) {
                     if (fr->dataLen != sizeof(FCGI_EndRequestBody)) {

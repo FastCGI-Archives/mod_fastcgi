@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.86 2000/03/27 18:07:47 robs Exp $
+ *  $Id: mod_fastcgi.c,v 1.87 2000/04/06 05:29:25 robs Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -904,7 +904,7 @@ static void log_fcgi_server_stderr(void *data)
     if (fr == NULL)
         return ;
 
-    if (fr->fs_stderr && *fr->fs_stderr) {
+    if (fr->fs_stderr_len) {
         ap_log_rerror(FCGI_LOG_ERR_NOERRNO, fr->r,
             "FastCGI: server \"%s\" stderr: %s", fr->fs_path, fr->fs_stderr);
     }

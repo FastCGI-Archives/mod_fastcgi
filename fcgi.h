@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi.h,v 1.18 1999/09/24 02:25:00 roberts Exp $
+ * $Id: fcgi.h,v 1.19 2000/04/06 05:29:24 robs Exp $
  */
 
 #ifndef FCGI_H
@@ -149,6 +149,7 @@ typedef struct {
     int expectingClientContent;     /* >0 => more content, <=0 => no more */
     array_header *header;
     char *fs_stderr;
+    int fs_stderr_len;
     int parseHeader;                /* TRUE iff parsing response headers */
     request_rec *r;
     int readingEndRequestBody;
