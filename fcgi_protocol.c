@@ -1,10 +1,14 @@
 /*
- * $Id: fcgi_protocol.c,v 1.18 2000/06/06 14:18:54 robs Exp $
+ * $Id: fcgi_protocol.c,v 1.19 2001/03/26 15:23:24 robs Exp $
  */
 
 
 #include "fcgi.h"
 #include "fcgi_protocol.h"
+
+#ifdef WIN32
+#pragma warning( disable : 4706)
+#endif
 
  /*******************************************************************************
  * Build and queue a FastCGI message header.  It is the caller's

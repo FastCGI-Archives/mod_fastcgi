@@ -1,8 +1,12 @@
 /*
- * $Id: fcgi_buf.c,v 1.10 2001/03/06 12:57:33 robs Exp $
+ * $Id: fcgi_buf.c,v 1.11 2001/03/26 15:23:02 robs Exp $
  */
 
 #include "fcgi.h"
+
+#ifdef WIN32
+#pragma warning( disable : 4127 ) 
+#endif
 
 /*******************************************************************************
  * Check buffer consistency with assertions.
@@ -177,7 +181,7 @@ int fcgi_buf_add_fd(Buffer *buf, int fd)
             int     status;
             int     numFDs = fd + 1;
             struct timeval timeOut;
-
+           
             FD_ZERO(&read_set);
             FD_SET(fd, &read_set);
 
