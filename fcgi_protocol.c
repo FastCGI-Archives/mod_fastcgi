@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_protocol.c,v 1.16 2000/04/27 19:08:44 robs Exp $
+ * $Id: fcgi_protocol.c,v 1.17 2000/04/27 19:53:54 robs Exp $
  */
 
 
@@ -241,7 +241,7 @@ int fcgi_protocol_queue_env(request_rec *r, fcgi_request *fr, env_status *env)
             }
             env->pass = PREP;
         }
-        (*env->envp)++;
+        ++env->envp;
     }
 
     if (BufferFree(fr->serverOutputBuffer) < sizeof(FCGI_Header)) {
