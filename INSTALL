@@ -1,6 +1,12 @@
 
 
-             ***  Apache FastCGI Module Installation  ***
+                  Apache FastCGI Module Installation
+
+
+!!!
+!!!  See the INSTALL.AP2 document for information on how to build
+!!!  mod_fastcgi for the Apache 2.X series.
+!!!
 
 
 Notes
