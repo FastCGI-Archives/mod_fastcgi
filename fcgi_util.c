@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_util.c,v 1.22 2002/03/13 18:25:20 robs Exp $
+ * $Id: fcgi_util.c,v 1.23 2002/07/23 00:54:18 robs Exp $
  */
 
 #include "fcgi.h"
@@ -7,6 +7,28 @@
 #ifdef WIN32
 #pragma warning( disable : 4100 )
 #endif
+
+uid_t 
+fcgi_util_get_server_uid(const server_rec * const s)
+{
+#ifdef APACHE2
+    /* AP2TODO get the server's uid */
+    return 0;
+#else
+    return s->server_uid;
+#endif
+}
+
+uid_t 
+fcgi_util_get_server_gid(const server_rec * const s)
+{
+#ifdef APACHE2
+    /* AP2TODO get the server's gid */
+    return 0;
+#else
+    return s->server_gid;
+#endif
+}
  
 /*******************************************************************************
  * Compute printable MD5 hash. Pool p is used for scratch as well as for
@@ -70,7 +92,11 @@ const char *
 fcgi_util_socket_make_path_absolute(pool * const p, 
         const char *const file, const int dynamic)
 {
+#ifdef APACHE2
+    if (ap_os_is_path_absolute(p, (char *) file))
+#else
     if (ap_os_is_path_absolute(file))
+#endif
     {
 	    return file;
     }

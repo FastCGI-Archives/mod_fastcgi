@@ -1,10 +1,13 @@
 /*
- * $Id: fcgi_protocol.c,v 1.22 2002/03/12 13:06:29 robs Exp $
+ * $Id: fcgi_protocol.c,v 1.23 2002/07/23 00:54:18 robs Exp $
  */
-
 
 #include "fcgi.h"
 #include "fcgi_protocol.h"
+
+#ifdef APACHE2
+#include "apr_lib.h"
+#endif
 
 #ifdef WIN32
 #pragma warning( disable : 4706)
@@ -321,13 +324,13 @@ int fcgi_protocol_dequeue(pool *p, fcgi_request *fr)
                 ap_log_rerror(FCGI_LOG_ERR_NOERRNO, fr->r,
                     "FastCGI: comm with server \"%s\" aborted: protocol error: invalid version: %d != FCGI_VERSION(%d)",
                     fr->fs_path, header.version, FCGI_VERSION);
-                return SERVER_ERROR;
+                return HTTP_INTERNAL_SERVER_ERROR;
             }
             if (header.type > FCGI_MAXTYPE) {
                 ap_log_rerror(FCGI_LOG_ERR_NOERRNO, fr->r,
                     "FastCGI: comm with server \"%s\" aborted: protocol error: invalid type: %d > FCGI_MAXTYPE(%d)",
                     fr->fs_path, header.type, FCGI_MAXTYPE);
-                return SERVER_ERROR;
+                return HTTP_INTERNAL_SERVER_ERROR;
             }
 
             fr->packetType = header.type;
@@ -440,7 +443,7 @@ int fcgi_protocol_dequeue(pool *p, fcgi_request *fr)
                             "FastCGI: comm with server \"%s\" aborted: protocol error: invalid FCGI_END_REQUEST size: "
                             "%d != sizeof(FCGI_EndRequestBody)(%d)",
                             fr->fs_path, fr->dataLen, sizeof(FCGI_EndRequestBody));
-                        return SERVER_ERROR;
+                        return HTTP_INTERNAL_SERVER_ERROR;
                     }
                     fr->readingEndRequestBody = TRUE;
                 }
@@ -461,7 +464,7 @@ int fcgi_protocol_dequeue(pool *p, fcgi_request *fr)
                             "FastCGI: comm with server \"%s\" aborted: protocol error: invalid FCGI_END_REQUEST status: "
                             "%d != FCGI_REQUEST_COMPLETE(%d)", fr->fs_path,
                             erBody->protocolStatus, FCGI_REQUEST_COMPLETE);
-                        return SERVER_ERROR;
+                        return HTTP_INTERNAL_SERVER_ERROR;
                     }
                     fr->exitStatus = (erBody->appStatusB3 << 24)
                         + (erBody->appStatusB2 << 16)

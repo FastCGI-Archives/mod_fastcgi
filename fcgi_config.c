@@ -1,10 +1,17 @@
 /*
- * $Id: fcgi_config.c,v 1.31 2002/02/04 19:39:32 robs Exp $
+ * $Id: fcgi_config.c,v 1.32 2002/07/23 00:54:18 robs Exp $
  */
 
 #include "fcgi.h"
 
-#ifdef WIN32 
+#ifdef APACHE2
+#include <limits.h>
+#include <direct.h>
+#endif
+
+#ifdef WIN32
+/* warning C4100: unreferenced formal parameter */
+/* warning C4706: assignment within conditional expression */ 
 #pragma warning( disable : 4100 4706 )
 #endif
 
@@ -232,7 +239,7 @@ const char *fcgi_config_set_fcgi_uid_n_gid(int set)
     return NULL;
 }
 
-void fcgi_config_reset_globals(void* dummy)
+apcb_t fcgi_config_reset_globals(void* dummy)
 {
     fcgi_config_pool = NULL;
     fcgi_servers = NULL;
@@ -276,6 +283,8 @@ void fcgi_config_reset_globals(void* dummy)
 		fcgi_pm_pipe[1] = -1;
 	}
 #endif
+
+    return APCB_OK;
 }
 
 /*******************************************************************************
@@ -417,9 +426,16 @@ const char *fcgi_config_set_socket_dir(cmd_parms *cmd, void *dummy, char *arg)
     }
 
 #ifndef WIN32
-    arg = ap_os_canonical_filename(cmd->pool, arg);
-    arg = ap_server_root_relative(cmd->pool, arg);
+
+#ifdef APACHE2
+    if (apr_filepath_merge(&arg, "", arg, 0, cmd->pool))
+        return ap_psprintf(tp, "%s %s: invalid filepath", name, arg);
 #else
+    arg = ap_os_canonical_filename(cmd->pool, arg);
+#endif
+
+    arg = ap_server_root_relative(cmd->pool, arg);
+#else /* WIN32 */
 	if (strncmp(arg, "\\\\.\\pipe\\", 9) != 0)
 		return ap_psprintf(tp, "%s %s is invalid format",name, arg);
 #endif
@@ -445,6 +461,13 @@ const char *fcgi_config_set_socket_dir(cmd_parms *cmd, void *dummy, char *arg)
  */
 const char *fcgi_config_set_wrapper(cmd_parms *cmd, void *dummy, const char *arg)
 {
+#ifdef APACHE2
+    /* 
+     * AP2TODO use ap_run_get_suexec_identity() (this will be hard as it 
+     * takes a request_rec) and/or mod_userdir_user note 
+     */
+    return ap_psprintf(cmd->temp_pool, "%s isn't supported yet under Apache2", cmd->cmd->name);
+#else
     const char *err = NULL;
     const char * const name = cmd->cmd->name;
     pool * const tp = cmd->temp_pool;
@@ -489,6 +512,7 @@ const char *fcgi_config_set_wrapper(cmd_parms *cmd, void *dummy, const char *arg
         fcgi_wrapper = wrapper;
     }
     return NULL;
+#endif /* !APACHE2 */
 }
 
 /*******************************************************************************
@@ -515,22 +539,28 @@ const char *fcgi_config_new_static_server(cmd_parms *cmd, void *dummy, const cha
 
     if ((err = fcgi_config_set_fcgi_uid_n_gid(1)) != NULL)
         return ap_psprintf(tp, "%s %s: %s", name, fs_path, err);
-        
+
+#ifdef APACHE2
+    if (apr_filepath_merge(&fs_path, "", fs_path, 0, p))
+        return ap_psprintf(tp, "%s %s: invalid filepath", name, fs_path);
+#else
     fs_path = ap_os_canonical_filename(p, fs_path);
+#endif
     fs_path = ap_server_root_relative(p, fs_path);
 
     ap_getparents(fs_path);
     ap_no2slash(fs_path);
 
     /* See if we've already got one of these configured */
-    s = fcgi_util_fs_get_by_id(fs_path, cmd->server->server_uid,
-                       cmd->server->server_gid);
+    s = fcgi_util_fs_get_by_id(fs_path, fcgi_util_get_server_uid(cmd->server),
+                               fcgi_util_get_server_gid(cmd->server));
     if (s != NULL) {
         if (fcgi_wrapper) {
             return ap_psprintf(tp,
-                "%s: redefinition of a previously defined FastCGI server \"%s\" with uid=%ld and gid=%ld",
-                name, fs_path, (long)cmd->server->server_uid,
-                (long)cmd->server->server_gid);
+                "%s: redefinition of a previously defined FastCGI "
+                "server \"%s\" with uid=%ld and gid=%ld",
+                name, fs_path, (long) fcgi_util_get_server_uid(cmd->server),
+                (long) fcgi_util_get_server_gid(cmd->server));
         }
         else {
             return ap_psprintf(tp,
@@ -659,8 +689,7 @@ const char *fcgi_config_new_static_server(cmd_parms *cmd, void *dummy, const cha
     }
 
     /* Move env array to a surviving pool */
-    ++envc;
-    s->envp = (char **)ap_palloc(p, sizeof(char *) * ++envc);
+    s->envp = (char **)ap_pcalloc(p, sizeof(char *) * (envc + 4));
     memcpy(s->envp, envp, sizeof(char *) * envc);
 
     /* Initialize process structs */
@@ -711,23 +740,31 @@ const char *fcgi_config_new_external_server(cmd_parms *cmd, void *dummy, const c
         return ap_pstrcat(tp, name, " requires a path and either a -socket or -host option", NULL);
     }
 
+#ifdef APACHE2
+    if (apr_filepath_merge(&fs_path, "", fs_path, 0, p))
+        return ap_psprintf(tp, "%s %s: invalid filepath", name, fs_path);
+#else
     fs_path = ap_os_canonical_filename(p, fs_path);
+#endif
+
     fs_path = ap_server_root_relative(p, fs_path);
 
     ap_getparents(fs_path);
     ap_no2slash(fs_path);
 
     /* See if we've already got one of these bettys configured */
-    s = fcgi_util_fs_get_by_id(fs_path, cmd->server->server_uid,
-                       cmd->server->server_gid);
+    s = fcgi_util_fs_get_by_id(fs_path, fcgi_util_get_server_uid(cmd->server),
+                               fcgi_util_get_server_gid(cmd->server));
     if (s != NULL) {
         if (fcgi_wrapper) {
             return ap_psprintf(tp,
-                "%s: redefinition of a previously defined class \"%s\" with uid=%ld and gid=%ld",
-                name, fs_path, (long)cmd->server->server_uid,
-                (long)cmd->server->server_gid);
+                "%s: redefinition of a previously defined class \"%s\" "
+                "with uid=%ld and gid=%ld",
+                name, fs_path, (long) fcgi_util_get_server_uid(cmd->server),
+                (long) fcgi_util_get_server_gid(cmd->server));
         }
-        else {
+        else 
+        {
             return ap_psprintf(tp,
                 "%s: redefinition of previously defined class \"%s\"", name, fs_path);
         }
@@ -737,7 +774,8 @@ const char *fcgi_config_new_external_server(cmd_parms *cmd, void *dummy, const c
     s->fs_path = fs_path;
     s->directive = APP_CLASS_EXTERNAL;
 
-    err = fcgi_util_fs_set_uid_n_gid(p, s, cmd->server->server_uid, cmd->server->server_gid);
+    err = fcgi_util_fs_set_uid_n_gid(p, s, fcgi_util_get_server_uid(cmd->server), 
+                                     fcgi_util_get_server_gid(cmd->server));
     if (err != NULL)
         return ap_psprintf(tp, "%s %s: %s", name, fs_path, err);
 
@@ -927,9 +965,9 @@ const char *fcgi_config_set_config(cmd_parms *cmd, void *dummy, const char *arg)
         	name, dynamicProcessSlack, dynamicMaxProcs);
     }
 
-    /* Move env array to a surviving pool, leave an extra slot for WIN32 _FCGI_MUTEX_ */
-    ++envc;
-    dynamicEnvp = (char **)ap_palloc(p, sizeof(char *) * ++envc);
+    /* Move env array to a surviving pool, leave 2 extra slots for 
+     * WIN32 _FCGI_MUTEX_ and _FCGI_SHUTDOWN_EVENT_ */
+    dynamicEnvp = (char **)ap_pcalloc(p, sizeof(char *) * (envc + 4));
     memcpy(dynamicEnvp, envp, sizeof(char *) * envc);
 
     return NULL;
@@ -951,15 +989,21 @@ const char *fcgi_config_new_auth_server(cmd_parms * const cmd,
     fcgi_dir_config *dir_config, const char *fs_path, const char * const compat)
 {
     pool * const tp = cmd->temp_pool;
-    const uid_t uid = cmd->server->server_uid;
-    const gid_t gid = cmd->server->server_gid;
     char * auth_server;
 
+#ifdef APACHE2
+    if (apr_filepath_merge(&auth_server, "", fs_path, 0, cmd->pool))
+        return ap_psprintf(tp, "%s %s: invalid filepath", cmd->cmd->name, fs_path);
+#else
     auth_server = (char *) ap_os_canonical_filename(cmd->pool, fs_path);
+#endif
+
     auth_server = ap_server_root_relative(cmd->pool, auth_server);
 
     /* Make sure its already configured or at least a candidate for dynamic */
-    if (fcgi_util_fs_get_by_id(auth_server, uid, gid) == NULL) {
+    if (fcgi_util_fs_get_by_id(auth_server, fcgi_util_get_server_uid(cmd->server),
+                               fcgi_util_get_server_gid(cmd->server)) == NULL) 
+    {
         const char *err = fcgi_util_fs_is_path_ok(tp, auth_server, NULL);
         if (err)
             return ap_psprintf(tp, "%s: \"%s\" %s", cmd->cmd->name, auth_server, err);

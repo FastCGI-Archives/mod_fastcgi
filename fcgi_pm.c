@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_pm.c,v 1.71 2002/03/13 23:31:08 robs Exp $
+ * $Id: fcgi_pm.c,v 1.72 2002/07/23 00:54:18 robs Exp $
  */
 
 
@@ -249,7 +249,7 @@ static int init_listen_sock(fcgi_server * fs)
         return 0;
     }
 
-    ap_pclosesocket(fcgi_config_pool, fs->listenFd);
+    close(fs->listenFd);
     fs->listenFd = -1;
     return -2;
 }
@@ -324,6 +324,7 @@ static void signal_handler(int signo)
 static pid_t spawn_fs_process(fcgi_server *fs, ServerProcess *process)
 {
 #ifndef WIN32
+
     pid_t child_pid;
     int i;
     char *dirName;
@@ -406,7 +407,97 @@ FailedSystemCallExit:
     /* avoid an irrelevant compiler warning */
     return(0);
 
-#else
+#else /* WIN32 */
+
+#ifdef APACHE2
+
+    /* based on mod_cgi.c:run_cgi_child() */
+
+    apr_pool_t * tp;
+    char * termination_env_string;
+    HANDLE listen_handle = INVALID_HANDLE_VALUE;
+    apr_procattr_t * procattr;
+    apr_proc_t proc = { 0 };
+    apr_file_t * file;
+    int i = 0;
+
+    if (apr_pool_create(&tp, fcgi_config_pool))
+        return 0;
+
+    process->terminationEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
+    if (process->terminationEvent == NULL)
+        goto CLEANUP;
+    
+    SetHandleInformation(process->terminationEvent, HANDLE_FLAG_INHERIT, TRUE);
+    
+    termination_env_string = ap_psprintf(tp, 
+        "_FCGI_SHUTDOWN_EVENT_=%ld", process->terminationEvent);
+
+    while (fs->envp[i]) i++;
+    fs->envp[i++] = termination_env_string;
+    fs->envp[i] = (char *) fs->mutex_env_string;
+    
+    ap_assert(fs->envp[i + 1] == NULL);
+        
+    if (fs->socket_path) 
+    {
+        SECURITY_ATTRIBUTES sa = { 0 };
+
+        sa.bInheritHandle = TRUE;
+        sa.nLength = sizeof(sa);
+
+        listen_handle = CreateNamedPipe(fs->socket_path, 
+            PIPE_ACCESS_DUPLEX,
+            PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT,
+            PIPE_UNLIMITED_INSTANCES, 4096, 4096, 0, &sa);
+
+        if (listen_handle == INVALID_HANDLE_VALUE) 
+        {
+            ap_log_error(FCGI_LOG_CRIT, fcgi_apache_main_server,
+                "FastCGI: can't exec server \"%s\", CreateNamedPipe() failed", 
+                fs->fs_path);
+            goto CLEANUP;
+        }
+    }
+    else 
+    {
+        listen_handle = (HANDLE) fs->listenFd;
+    }
+    
+    if (apr_procattr_create(&procattr, tp))
+        goto CLEANUP;
+   
+    if (apr_procattr_dir_set(procattr, ap_make_dirstr_parent(tp, fs->fs_path)))
+        goto CLEANUP;
+
+    if (apr_procattr_detach_set(procattr, 1))
+        goto CLEANUP;
+
+    if (apr_os_file_put(&file, &listen_handle, 0, tp))
+        goto CLEANUP;
+
+    /* procattr is opaque so we have to use this - unfortuantely it dups */
+    if (apr_procattr_child_in_set(procattr, file, NULL))
+        goto CLEANUP; 
+
+    if (apr_proc_create(&proc, fs->fs_path, NULL, fs->envp, procattr, tp))
+        goto CLEANUP;
+
+    process->handle = proc.hproc;
+
+    
+CLEANUP:
+    
+    if (i)
+    {
+        fs->envp[i - 1] = NULL;
+    }
+
+    ap_destroy_pool(tp);
+
+    return proc.pid;
+
+#else /* WIN32 && !APACHE2 */
 
     /* Adapted from Apache's util_script.c ap_call_exec() */
     char *interpreter = NULL;
@@ -436,7 +527,7 @@ FailedSystemCallExit:
         ap_log_error(FCGI_LOG_CRIT, fcgi_apache_main_server,
             "FastCGI: can't create termination event for server \"%s\", "
             "CreateEvent() failed", fs->fs_path);
-        exit(0);
+        goto CLEANUP;
     }
     SetHandleInformation(process->terminationEvent, HANDLE_FLAG_INHERIT, TRUE);
     
@@ -460,7 +551,7 @@ FailedSystemCallExit:
         {
             ap_log_error(FCGI_LOG_CRIT, fcgi_apache_main_server,
                 "FastCGI: can't exec server \"%s\", CreateNamedPipe() failed", fs->fs_path);
-            exit(0);
+            goto CLEANUP;
         }
     }
     else 
@@ -486,7 +577,7 @@ FailedSystemCallExit:
             "\"#!\" as their first line", 
             fs->fs_path);
         ap_destroy_pool(tp);
-        return (pid);
+        goto CLEANUP;
     }
 
     /*
@@ -568,11 +659,14 @@ FailedSystemCallExit:
         CloseHandle(listen_handle);
     }
 
+CLEANUP:
+
     ap_destroy_pool(tp);
 
     return pid;
 
-#endif
+#endif /* !APACHE2 */
+#endif /* WIN32 */
 }
 
 #ifndef WIN32
@@ -774,8 +868,12 @@ static void dynamic_read_msgs(int read_ready)
 
     cjob = joblist;
 #endif
-    
+
+#ifdef APACHE2
+    apr_pool_create(&tp, fcgi_config_pool);
+#else
     tp = ap_make_sub_pool(fcgi_config_pool);
+#endif
 
 #ifndef WIN32
     for (ptr1 = buf; ptr1; ptr1 = ptr2) {
@@ -872,7 +970,11 @@ static void dynamic_read_msgs(int read_ready)
             
             /* Create a perm subpool to hold the new server data,
              * we can destroy it if something doesn't pan out */
+#ifdef APACHE2
+            apr_pool_create(&sp, fcgi_config_pool);
+#else
             sp = ap_make_sub_pool(fcgi_config_pool);
+#endif
 
             /* Create a new "dynamic" server */
             s = fcgi_util_fs_new(sp);

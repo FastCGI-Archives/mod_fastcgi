@@ -1,5 +1,7 @@
 2.2.13
 
+ *) Apache 2.0 support.
+
  *) [WIN32] Don't read from a potentially closed named pipe. 
     Philip Gladstone [philip@okena.com]
 

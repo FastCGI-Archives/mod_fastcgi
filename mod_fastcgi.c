@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.132 2002/06/07 00:54:13 robs Exp $
+ *  $Id: mod_fastcgi.c,v 1.133 2002/07/23 00:54:18 robs Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -240,7 +240,12 @@ static void send_to_pm(const char id, const char * const fs_path,
  *
  *----------------------------------------------------------------------
  */
-static void init_module(server_rec *s, pool *p)
+#ifdef APACHE2
+static apcb_t init_module(apr_pool_t * p, apr_pool_t * plog, 
+                          apr_pool_t * ptemp, server_rec * s)
+#else
+static apcb_t init_module(server_rec *s, pool *p)
+#endif
 {
     const char *err;
 
@@ -249,7 +254,11 @@ static void init_module(server_rec *s, pool *p)
     ap_register_cleanup(p, NULL, fcgi_config_reset_globals, ap_null_cleanup);
     ap_unblock_alarms();
 
+#ifdef APACHE2
+    ap_add_version_component(p, "mod_fastcgi/" MOD_FASTCGI_VERSION);    
+#else
     ap_add_version_component("mod_fastcgi/" MOD_FASTCGI_VERSION);
+#endif
 
     fcgi_config_set_fcgi_uid_n_gid(1);
 
@@ -291,9 +300,32 @@ static void init_module(server_rec *s, pool *p)
 
     close(fcgi_pm_pipe[0]);
 #endif
+
+    return APCB_OK;
 }
 
-static void fcgi_child_init(server_rec *dc0, pool *dc1)
+#ifdef APACHE2
+static apcb_t fcgi_child_exit(void * dc)
+#else
+static apcb_t fcgi_child_exit(server_rec *dc0, pool *dc1)
+#endif 
+{
+#ifdef WIN32
+    /* Signal the PM thread to exit*/
+    SetEvent(fcgi_event_handles[TERM_EVENT]);
+
+    /* Waiting on pm thread to exit */
+    WaitForSingleObject(fcgi_pm_thread, INFINITE);
+#endif
+
+    return APCB_OK;
+}
+
+#ifdef APACHE2
+static apcb_t fcgi_child_init(apr_pool_t * p, server_rec * dc)
+#else
+static apcb_t fcgi_child_init(server_rec *dc, pool *p)
+#endif
 {
 #ifdef WIN32
     /* Create the MBOX, TERM, and WAKE event handlers */
@@ -326,22 +358,13 @@ static void fcgi_child_init(server_rec *dc0, pool *dc1)
         ap_log_error(FCGI_LOG_ALERT, fcgi_apache_main_server, 
             "_beginthread() failed to spawn the process manager");
     }
+
+#ifdef APACHE2
+    apr_pool_cleanup_register(p, NULL, fcgi_child_exit, fcgi_child_exit);
+#endif
 #endif
 
-    return;
-}
-
-static void fcgi_child_exit(server_rec *dc0, pool *dc1) 
-{
-#ifdef WIN32
-    /* Signal the PM thread to exit*/
-    SetEvent(fcgi_event_handles[TERM_EVENT]);
-
-    /* Waiting on pm thread to exit */
-    WaitForSingleObject(fcgi_pm_thread, INFINITE);
-#endif
-
-    return;
+    return APCB_OK;
 }
 
 /*
@@ -670,6 +693,12 @@ static int write_to_client(fcgi_request *fr)
 {
     char *begin;
     int count;
+    int rv;
+#ifdef APACHE2
+    apr_bucket * bkt;
+    apr_bucket_brigade * bde;
+    apr_bucket_alloc_t * const bkt_alloc = fr->r->connection->bucket_alloc;
+#endif
 
     fcgi_buf_get_block_info(fr->clientOutputBuffer, &begin, &count);
     if (count == 0)
@@ -683,19 +712,39 @@ static int write_to_client(fcgi_request *fr)
      * to size the fcgi_bufs to hold all of the script output (within
      * reason) so the script can be released from having to wait around
      * for the transmission to the client to complete. */
-#ifdef RUSSIAN_APACHE
-    if (ap_rwrite(begin, count, fr->r) != count) {
-        ap_log_rerror(FCGI_LOG_INFO_NOERRNO, fr->r,
-            "FastCGI: client stopped connection before send body completed");
-        return -1;
+
+#ifdef APACHE2
+
+    bde = apr_brigade_create(fr->r->pool, bkt_alloc);
+    bkt = apr_bucket_transient_create(begin, count, bkt_alloc);
+    APR_BRIGADE_INSERT_TAIL(bde, bkt);
+
+    if (fr->fs ? fr->fs->flush : dynamicFlush) 
+    {
+        bkt = apr_bucket_flush_create(bkt_alloc);
+        APR_BRIGADE_INSERT_TAIL(bde, bkt);
     }
+
+    rv = ap_pass_brigade(fr->r->output_filters, bde);
+
+#elif defined(RUSSIAN_APACHE)
+
+    rv = (ap_rwrite(begin, count, fr->r) != count);
+
 #else
-    if (ap_bwrite(fr->r->connection->client, begin, count) != count) {
+
+    rv = (ap_bwrite(fr->r->connection->client, begin, count) != count);
+
+#endif
+
+    if (rv)
+    {
         ap_log_rerror(FCGI_LOG_INFO_NOERRNO, fr->r,
             "FastCGI: client stopped connection before send body completed");
         return -1;
     }
-#endif
+
+#ifndef APACHE2
 
     ap_reset_timeout(fr->r);
 
@@ -707,22 +756,26 @@ static int write_to_client(fcgi_request *fr)
 
     /* The default behaviour used to be to flush with every write, but this
      * can tie up the FastCGI server longer than is necessary so its an option now */
-    if (fr->fs ? fr->fs->flush : dynamicFlush) {
+
+    if (fr->fs ? fr->fs->flush : dynamicFlush) 
+    {
 #ifdef RUSSIAN_APACHE
-       if (ap_rflush(fr->r)) {
-            ap_log_rerror(FCGI_LOG_INFO_NOERRNO, fr->r,
-                "FastCGI: client stopped connection before send body completed");
-            return -1;
-        }
+        rv = ap_rflush(fr->r);
 #else
-       if (ap_bflush(fr->r->connection->client)) {
+        rv = ap_bflush(fr->r->connection->client);
+#endif
+
+        if (rv)
+        {
             ap_log_rerror(FCGI_LOG_INFO_NOERRNO, fr->r,
                 "FastCGI: client stopped connection before send body completed");
             return -1;
         }
-#endif
+
         ap_reset_timeout(fr->r);
     }
+
+#endif /* !APACHE2 */
 
     fcgi_buf_toss(fr->clientOutputBuffer, count);
     return OK;
@@ -751,8 +804,8 @@ static void set_uid_n_gid(request_rec *r, const char **user, const char **group)
         *group = "-";
     }
     else {
-        *user = ap_psprintf(r->pool, "%ld", (long)r->server->server_uid);
-        *group = ap_psprintf(r->pool, "%ld", (long)r->server->server_gid);
+        *user = ap_psprintf(r->pool, "%ld", (long) fcgi_util_get_server_uid(r->server));
+        *group = ap_psprintf(r->pool, "%ld", (long) fcgi_util_get_server_gid(r->server));
     }
 }
 
@@ -1354,11 +1407,11 @@ static void sink_client_data(fcgi_request *fr)
 	while (ap_get_client_block(fr->r, base, size) > 0);
 }
 
-static void cleanup(void *data)
+static apcb_t cleanup(void *data)
 {
     fcgi_request * const fr = (fcgi_request *) data;
 
-    if (fr == NULL) return;
+    if (fr == NULL) return APCB_OK;
 
     /* its more than likely already run, but... */
     close_connection_to_fs(fr);
@@ -1369,6 +1422,8 @@ static void cleanup(void *data)
         ap_log_rerror(FCGI_LOG_ERR_NOERRNO, fr->r,
             "FastCGI: server \"%s\" stderr: %s", fr->fs_path, fr->fs_stderr);
     }
+
+    return APCB_OK;
 }
 
 #ifdef WIN32
@@ -1765,13 +1820,13 @@ static int socket_io(fcgi_request * const fr)
 {
     enum 
     {
+        STATE_SOCKET_NONE,
         STATE_ENV_SEND,
         STATE_CLIENT_RECV,
         STATE_SERVER_SEND,
         STATE_SERVER_RECV,
         STATE_CLIENT_SEND,
         STATE_ERROR,
-        STATE_SERVER_SEND_ERROR,
         STATE_CLIENT_ERROR
     }
     state = STATE_ENV_SEND;
@@ -1867,7 +1922,6 @@ SERVER_SEND:
             /* fall through */
 
         case STATE_SERVER_RECV:
-        case STATE_SERVER_SEND_ERROR:
 
             FD_SET(fr->fd, &read_set);
 
@@ -1888,12 +1942,17 @@ SERVER_SEND:
 
             break;
 
+        case STATE_ERROR:
+        case STATE_CLIENT_ERROR:
+
+            break;
+
         default:
 
             ap_assert(0);
         }
 
-        if (state == STATE_CLIENT_ERROR)
+        if (state == STATE_CLIENT_ERROR || state == STATE_ERROR)
         {
             break;
         }
@@ -2003,7 +2062,7 @@ SERVER_SEND:
                 ap_log_rerror(FCGI_LOG_ERR_NOERRNO, r, "FastCGI: comm with "
                     "server \"%s\" aborted: idle timeout (%d sec)",
                     fr->fs_path, idle_timeout);
-                state = STATE_SERVER_SEND_ERROR;
+                state = STATE_ERROR;
             }
         }
 
@@ -2108,12 +2167,13 @@ static int do_work(request_rec * const r, fcgi_request * const fr)
     ap_register_cleanup(rp, (void *)fr, cleanup, ap_null_cleanup);
     ap_unblock_alarms();
 
-    /* Connect to the FastCGI Application */
     ap_hard_timeout("connect() to FastCGI server", r);
+
+    /* Connect to the FastCGI Application */
     if (open_connection_to_fs(fr) != FCGI_OK) 
     {
         ap_kill_timeout(r);
-        return SERVER_ERROR;
+        return HTTP_INTERNAL_SERVER_ERROR;
     }
 
 #ifdef WIN32
@@ -2139,7 +2199,7 @@ static int do_work(request_rec * const r, fcgi_request * const fr)
     {
         if (fcgi_protocol_dequeue(rp, fr)) 
         {
-            rv = SERVER_ERROR;
+            rv = HTTP_INTERNAL_SERVER_ERROR;
         }
     
         if (fr->parseHeader == SCAN_CGI_READING_HEADERS) 
@@ -2150,7 +2210,7 @@ static int do_work(request_rec * const r, fcgi_request * const fr)
                 ap_log_rerror(FCGI_LOG_ERR_NOERRNO, r,
                     "FastCGI: comm with server \"%s\" aborted: "
                     "error parsing headers: %s", fr->fs_path, err);
-                rv = SERVER_ERROR;
+                rv = HTTP_INTERNAL_SERVER_ERROR;
             }
         }
 
@@ -2175,7 +2235,9 @@ static int do_work(request_rec * const r, fcgi_request * const fr)
         {
             /* RUSSIAN_APACHE requires rflush() over bflush() */
             ap_rflush(r);
+#ifndef APACHE2
             ap_bgetopt(r->connection->client, BO_BYTECT, &r->bytes_sent);
+#endif
         }
 
         /* fall through */
@@ -2194,13 +2256,13 @@ static int do_work(request_rec * const r, fcgi_request * const fr)
 
     case SCAN_CGI_BAD_HEADER:
 
-        rv = SERVER_ERROR;
+        rv = HTTP_INTERNAL_SERVER_ERROR;
         break;
 
     default:
 
         ap_assert(0);
-        rv = SERVER_ERROR;
+        rv = HTTP_INTERNAL_SERVER_ERROR;
     }
    
     ap_kill_timeout(r);
@@ -2214,20 +2276,26 @@ static fcgi_request *create_fcgi_request(request_rec * const r, const char *fs_p
     fcgi_server *fs;
     fcgi_request * const fr = (fcgi_request *)ap_pcalloc(p, sizeof(fcgi_request));
 
-    if (fs_path) {
+#ifndef APACHE2
+    if (fs_path) 
+    {
+#endif
         my_finfo = (struct stat *)ap_palloc(p, sizeof(struct stat));
         if (stat(fs_path, my_finfo) < 0) {
             ap_log_rerror(FCGI_LOG_ERR_ERRNO, r, 
                 "FastCGI: stat() of \"%s\" failed", fs_path);
             return NULL;
         }
+#ifndef APACHE2
     }
     else {
         my_finfo = &r->finfo;
         fs_path = r->filename;
     }
+#endif
 
-    fs = fcgi_util_fs_get_by_id(fs_path, r->server->server_uid, r->server->server_gid);
+    fs = fcgi_util_fs_get_by_id(fs_path, fcgi_util_get_server_uid(r->server), 
+                                fcgi_util_get_server_gid(r->server));
     if (fs == NULL) {
         /* Its a request for a dynamic FastCGI application */
         const char * const err =
@@ -2283,7 +2351,7 @@ static fcgi_request *create_fcgi_request(request_rec * const r, const char *fs_p
  *      a FastCGI connection.  It performs the request synchronously.
  *
  * Results:
- *      Final status of request: OK or NOT_FOUND or SERVER_ERROR.
+ *      Final status of request: OK or NOT_FOUND or HTTP_INTERNAL_SERVER_ERROR.
  *
  * Side effects:
  *      Request performed.
@@ -2328,7 +2396,7 @@ static int post_process_for_redirects(request_rec * const r,
             return OK;
 
         case SCAN_CGI_SRV_REDIRECT:
-            return REDIRECT;
+            return HTTP_MOVED_TEMPORARILY;
 
         default:
             return OK;
@@ -2343,15 +2411,28 @@ static int content_handler(request_rec *r)
     fcgi_request *fr = NULL;
     int ret;
 
+#ifdef APACHE2
+
+    if (strcmp(r->handler, "fastcgi-script"))
+        return DECLINED;
+
+    /* Setup a new FastCGI request */
+    if ((fr = create_fcgi_request(r, r->filename)) == NULL)
+        return HTTP_INTERNAL_SERVER_ERROR;
+
+#else
+
     /* Setup a new FastCGI request */
     if ((fr = create_fcgi_request(r, NULL)) == NULL)
-        return SERVER_ERROR;
+        return HTTP_INTERNAL_SERVER_ERROR;
+
+#endif
 
     /* If its a dynamic invocation, make sure scripts are OK here */
     if (fr->dynamic && !(ap_allow_options(r) & OPT_EXECCGI) && !apache_is_scriptaliased(r)) {
         ap_log_rerror(FCGI_LOG_ERR_NOERRNO, r,
             "FastCGI: \"ExecCGI Option\" is off in this directory: %s", r->uri);
-        return SERVER_ERROR;
+        return HTTP_INTERNAL_SERVER_ERROR;
     }
 
     /* Process the fastcgi-script request */
@@ -2431,7 +2512,7 @@ static int check_user_authentication(request_rec *r)
         return res;
 
     if ((fr = create_fcgi_request(r, dir_config->authenticator)) == NULL)
-        return SERVER_ERROR;
+        return HTTP_INTERNAL_SERVER_ERROR;
 
     /* Save the existing subprocess_env, because we're gonna muddy it up */
     fr->saved_subprocess_env = ap_copy_table(r->pool, r->subprocess_env);
@@ -2469,8 +2550,14 @@ AuthenticationFailed:
     /* @@@ Probably should support custom_responses */
     ap_note_basic_auth_failure(r);
     ap_log_rerror(FCGI_LOG_ERR_NOERRNO, r,
-        "FastCGI: authentication failed for user \"%s\": %s", r->connection->user, r->uri);
-    return (res == OK) ? AUTH_REQUIRED : res;
+        "FastCGI: authentication failed for user \"%s\": %s",
+#ifdef APACHE2
+        r->user, r->uri);
+#else
+        r->connection->user, r->uri);
+#endif
+
+        return (res == OK) ? HTTP_UNAUTHORIZED : res;
 }
 
 static int check_user_authorization(request_rec *r)
@@ -2489,7 +2576,7 @@ static int check_user_authorization(request_rec *r)
      * it simple. */
 
     if ((fr = create_fcgi_request(r, dir_config->authorizer)) == NULL)
-        return SERVER_ERROR;
+        return HTTP_INTERNAL_SERVER_ERROR;
 
     /* Save the existing subprocess_env, because we're gonna muddy it up */
     fr->saved_subprocess_env = ap_copy_table(r->pool, r->subprocess_env);
@@ -2525,8 +2612,14 @@ AuthorizationFailed:
     /* @@@ Probably should support custom_responses */
     ap_note_basic_auth_failure(r);
     ap_log_rerror(FCGI_LOG_ERR_NOERRNO, r,
-        "FastCGI: authorization failed for user \"%s\": %s", r->connection->user, r->uri);
-    return (res == OK) ? AUTH_REQUIRED : res;
+        "FastCGI: authorization failed for user \"%s\": %s", 
+#ifdef APACHE2
+        r->user, r->uri);
+#else
+        r->connection->user, r->uri);
+#endif
+
+    return (res == OK) ? HTTP_UNAUTHORIZED : res;
 }
 
 static int check_access(request_rec *r)
@@ -2540,7 +2633,7 @@ static int check_access(request_rec *r)
         return DECLINED;
 
     if ((fr = create_fcgi_request(r, dir_config->access_checker)) == NULL)
-        return SERVER_ERROR;
+        return HTTP_INTERNAL_SERVER_ERROR;
 
     /* Save the existing subprocess_env, because we're gonna muddy it up */
     fr->saved_subprocess_env = ap_copy_table(r->pool, r->subprocess_env);
@@ -2576,10 +2669,11 @@ AccessFailed:
 
     /* @@@ Probably should support custom_responses */
     ap_log_rerror(FCGI_LOG_ERR_NOERRNO, r, "FastCGI: access denied: %s", r->uri);
-    return (res == OK) ? FORBIDDEN : res;
+    return (res == OK) ? HTTP_FORBIDDEN : res;
 }
 
-command_rec fastcgi_cmds[] = {
+static const command_rec fastcgi_cmds[] = 
+{
     { "AppClass",      fcgi_config_new_static_server, NULL, RSRC_CONF, RAW_ARGS, NULL },
     { "FastCgiServer", fcgi_config_new_static_server, NULL, RSRC_CONF, RAW_ARGS, NULL },
 
@@ -2617,13 +2711,37 @@ command_rec fastcgi_cmds[] = {
     { NULL }
 };
 
+#ifdef APACHE2
+
+static void register_hooks(apr_pool_t * p)
+{
+    //    ap_hook_pre_config(x_pre_config, NULL, NULL, APR_HOOK_MIDDLE);
+    ap_hook_post_config(init_module, NULL, NULL, APR_HOOK_MIDDLE);
+    ap_hook_child_init(fcgi_child_init, NULL, NULL, APR_HOOK_MIDDLE);
+    ap_hook_handler(content_handler, NULL, NULL, APR_HOOK_MIDDLE);
+    ap_hook_check_user_id(check_user_authentication, NULL, NULL, APR_HOOK_MIDDLE);
+    ap_hook_access_checker(check_access, NULL, NULL, APR_HOOK_MIDDLE);
+    ap_hook_auth_checker(check_user_authorization, NULL, NULL, APR_HOOK_MIDDLE);
+}
+
+module AP_MODULE_DECLARE_DATA fastcgi_module =
+{
+    STANDARD20_MODULE_STUFF,
+    fcgi_config_create_dir_config,  /* per-directory config creator */
+    NULL,                           /* dir config merger */
+    NULL,                           /* server config creator */
+    NULL,                           /* server config merger */
+    fastcgi_cmds,                   /* command table */
+    register_hooks,                 /* set up other request processing hooks */
+};
+
+#else /* !APACHE2 */
 
 handler_rec fastcgi_handlers[] = {
     { FCGI_MAGIC_TYPE, content_handler },
     { "fastcgi-script", content_handler },
     { NULL }
 };
-
 
 module MODULE_VAR_EXPORT fastcgi_module = {
     STANDARD_MODULE_STUFF,
@@ -2646,3 +2764,5 @@ module MODULE_VAR_EXPORT fastcgi_module = {
     fcgi_child_exit,           /* process exit/cleanup */
     NULL                       /* [1] post read-request handling */
 };
+
+#endif /* !APACHE2 */
