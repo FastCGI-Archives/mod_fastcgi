@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi.h,v 1.22 2000/04/27 19:03:34 robs Exp $
+ * $Id: fcgi.h,v 1.23 2000/04/29 21:01:43 robs Exp $
  */
 
 #ifndef FCGI_H
@@ -56,7 +56,7 @@ typedef struct _FcgiRWLock {
     HANDLE read_event;      /* reader handle */
     HANDLE lock_mutex;      /* lock mutex */
     HANDLE write_event;     /* write handle */
-    long counter;           /* number of readers */
+    long counter;          /* number of readers */
 } FcgiRWLock;
 
 typedef struct _fcgi_pm_job {
@@ -161,6 +161,7 @@ typedef struct _FastCgiServerInfo {
                                      * since the last dynamicUpdateInterval. */
 #ifdef WIN32
     FcgiRWLock *dynamic_lock;       /* dynamic server lock */
+    HANDLE hPipeMutex;
 #endif
 
     struct _FastCgiServerInfo *next;
@@ -315,6 +316,7 @@ const char *fcgi_config_set_authoritative_slot(const cmd_parms * const cmd,
 const char *fcgi_config_set_socket_dir(cmd_parms *cmd, void *dummy, char *arg);
 const char *fcgi_config_set_suexec(cmd_parms *cmd, void *dummy, const char *arg);
 void fcgi_config_reset_globals(void* dummy);
+const char *fcgi_config_set_env_var(pool *p, char **envp, unsigned int *envc, char * var);
 
 /*
  * fcgi_pm.c
@@ -388,14 +390,6 @@ void fcgi_buf_get_to_array(Buffer *buf,array_header *arr, size_t len);
 #define fcgi_wait_for_shared_write_lock(fd) fcgi_util_lock_fd(fd, F_SETLKW, F_WRLCK, 0, SEEK_SET, 0)
 #endif
 
-/* Remove a shared or exclusive lock, no wait, failure->errno=EACCES.  */
-#ifdef WIN32
-#define fcgi_read_unlock(fd) fcgi_rdwr_unlock(fd, READER)
-#define fcgi_writer_unlock(fd) fcgi_rdwr_unlock(fd, WRITER);
-#else
-#define fcgi_unlock(fd) fcgi_util_lock_fd(fd, F_SETLK, F_UNLCK, 0, SEEK_SET, 0)
-#endif
-
 char *fcgi_util_socket_hash_filename(pool *p, const char *path,
     const char *user, const char *group);
 const char *fcgi_util_socket_make_path_absolute(pool * const p,
@@ -424,7 +418,7 @@ int fcgi_util_gettimeofday(struct timeval *);
 
 #ifdef WIN32
 FcgiRWLock * fcgi_rdwr_create(void);
-void fcgi_rdwr_destory(FcgiRWLock *);
+void fcgi_rdwr_destroy(FcgiRWLock *);
 int fcgi_rdwr_lock(FcgiRWLock *, int);
 int fcgi_rdwr_try_lock(FcgiRWLock *, int);
 int fcgi_rdwr_unlock(FcgiRWLock *, int);

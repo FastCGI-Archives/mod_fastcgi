@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_buf.c,v 1.6 2000/04/28 06:16:31 robs Exp $
+ * $Id: fcgi_buf.c,v 1.7 2000/04/29 21:01:43 robs Exp $
  */
 
 #include "fcgi.h"
@@ -48,10 +48,10 @@ Buffer *fcgi_buf_new(pool *p, int size)
 
 static int fd_read(SOCKET fd, char *buf, int len)
 {
-    int bytes_read;
+    long bytes_read;
     
     // HACK - we don't know if its a pipe or socket..
-    if (!ReadFile((HANDLE) fd, buf, len, &bytes_read, NULL)) {
+    if (!ReadFile((HANDLE) fd, buf, len, (unsigned long *) &bytes_read, NULL)) {
         bytes_read = recv(fd, buf, len, 0);
         if (bytes_read == SOCKET_ERROR) {
             errno = WSAGetLastError();
@@ -191,10 +191,10 @@ int fcgi_buf_add_fd(Buffer *buf, int fd)
 
 static int fd_write(SOCKET fd, char * buf, int len)
 {
-    int bytes_sent;
+    long bytes_sent;
     
     // HACK - We don't know if its a pipe or socket..
-    if (!WriteFile((HANDLE) fd, (LPVOID) buf, len, &bytes_sent, NULL)) {
+    if (!WriteFile((HANDLE) fd, (LPVOID) buf, len, (unsigned long *) &bytes_sent, NULL)) {
         bytes_sent = send(fd, buf, len, 0);
         if (bytes_sent == SOCKET_ERROR) {
             errno = WSAGetLastError();

@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.90 2000/04/27 19:03:34 robs Exp $
+ *  $Id: mod_fastcgi.c,v 1.91 2000/04/29 21:01:44 robs Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -209,7 +209,7 @@ static void send_to_pm(pool * const p, const char id, const char * const fs_path
     if (fcgi_pm_add_job(job) == 0)
         return;
 
-    SetEvent(fcgi_event_handles[0]);
+    SetEvent(fcgi_event_handles[MBOX_EVENT]);
 #else
     ap_assert(buflen <= FCGI_MAX_MSG_LEN);
 
@@ -311,7 +311,7 @@ static void fcgi_child_exit(server_rec *server_conf, pool *p) {
 
 #ifdef WIN32
 	/* Signaling the PM thread tp exit*/
-	SetEvent(fcgi_event_handles[1]);
+	SetEvent(fcgi_event_handles[TERM_EVENT]);
 
 	/* Waiting on pm thread to exit */
     WaitForSingleObject(fcgi_pm_thread, INFINITE);
@@ -1281,7 +1281,8 @@ static int do_work(request_rec *r, fcgi_request *fr)
 
                     while ((timeOut.tv_sec == 0) || (time(NULL) <= stopTime)) {
                         if (PeekNamedPipe((HANDLE) fr->fd,NULL, 0, NULL, &bytesavail, NULL) &&
-                            bytesavail > 0) {
+                            bytesavail > 0) 
+                        {
                             status =1;
                             break;
                         }

@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_config.c,v 1.20 2000/04/28 13:41:03 robs Exp $
+ * $Id: fcgi_config.c,v 1.21 2000/04/29 21:01:44 robs Exp $
  */
 
 #include "fcgi.h"
@@ -109,7 +109,7 @@ static const char *get_float(pool *p, const char **arg,
     return NULL;
 }
 
-static const char *set_env_var(pool *p, char **envp, int *envc, char * var)
+const char *fcgi_config_set_env_var(pool *p, char **envp, unsigned int *envc, char * var)
 {
     if (*envc >= MAX_INIT_ENV_VARS) {
         return "too many variables, must be <= MAX_INIT_ENV_VARS";
@@ -131,7 +131,7 @@ static const char *set_env_var(pool *p, char **envp, int *envc, char * var)
  * Get the next configuration directive argument, & add it to an env array.
  * The pool arg should be permanent storage.
  */
-static const char *get_env_var(pool *p, const char **arg, char **envp, int *envc)
+static const char *get_env_var(pool *p, const char **arg, char **envp, unsigned int *envc)
 {
     char * const val = ap_getword_conf(p, arg);
 
@@ -139,7 +139,7 @@ static const char *get_env_var(pool *p, const char **arg, char **envp, int *envc
         return "\"\"";
     }
 
-    return set_env_var(p, envp, envc, val);
+    return fcgi_config_set_env_var(p, envp, envc, val);
 }
 
 static const char *get_pass_header(pool *p, const char **arg, array_header **array)
@@ -377,8 +377,8 @@ const char *fcgi_config_set_socket_dir(cmd_parms *cmd, void *dummy, char *arg)
     }
 
 #ifndef WIN32
-    if (!ap_os_is_path_absolute(arg))
-        arg = ap_make_full_path(cmd->pool, ap_server_root, arg);
+    arg = ap_os_canonical_filename(p, arg);
+    arg = ap_server_root_relative(p, arg);
 #else
 	if (strncmp(arg, "\\\\.\\pipe\\", 9) != 0)
 		return ap_psprintf(tp, "%s %s is invalid format",name, arg);
@@ -407,6 +407,7 @@ const char *fcgi_config_set_suexec(cmd_parms *cmd, void *dummy, const char *arg)
     const char *err = NULL;
     const char * const name = cmd->cmd->name;
     pool * const tp = cmd->temp_pool;
+    char * suexec;
 
     if (!ap_suexec_enabled) {
         if (strcasecmp(arg, "Off") != 0) {
@@ -431,22 +432,22 @@ const char *fcgi_config_set_suexec(cmd_parms *cmd, void *dummy, const char *arg)
         fcgi_suexec = NULL;
     }
     else {
-        if (!ap_os_is_path_absolute(arg))
-            arg = ap_make_full_path(cmd->pool, ap_server_root, arg);
+        suexec = ap_os_canonical_filename(cmd->pool, arg);
+        suexec = ap_server_root_relative(cmd->pool, suexec);
 
 #ifdef WIN32
-        err = fcgi_util_check_access(tp, arg, NULL, _S_IEXEC, fcgi_user_id, fcgi_group_id);
+        err = fcgi_util_check_access(tp, suexec, NULL, _S_IEXEC, fcgi_user_id, fcgi_group_id);
 #else
-        err = fcgi_util_check_access(tp, arg, NULL, X_OK, fcgi_user_id, fcgi_group_id);
+        err = fcgi_util_check_access(tp, suexec, NULL, X_OK, fcgi_user_id, fcgi_group_id);
 #endif
 
         if (err != NULL) {
             return ap_psprintf(tp,
                 "%s: \"%s\" access for server (uid %ld, gid %ld) failed: %s",
-                name, arg, (long)fcgi_user_id, (long)fcgi_group_id, err);
+                name, suexec, (long)fcgi_user_id, (long)fcgi_group_id, err);
         }
 
-        fcgi_suexec = arg;
+        fcgi_suexec = suexec;
     }
     return NULL;
 }
@@ -464,18 +465,16 @@ const char *fcgi_config_new_static_server(cmd_parms *cmd, void *dummy, const cha
 
     /* Allocate temp storage for the array of initial environment variables */
     char **envp = ap_pcalloc(tp, sizeof(char *) * (MAX_INIT_ENV_VARS + 3));
-    int envc = 0;
+    unsigned int envc = 0;
 
     if (*fs_path == '\0')
         return "AppClass requires a pathname!?";
 
     if ((err = fcgi_config_set_fcgi_uid_n_gid(1)) != NULL)
         return ap_psprintf(tp, "%s %s: %s", name, fs_path, err);
-
-    if (!ap_os_is_path_absolute(fs_path))
-        fs_path = ap_make_full_path(p, ap_server_root, fs_path);
         
     fs_path = ap_os_canonical_filename(p, fs_path);
+    fs_path = ap_server_root_relative(p, fs_path);
 
     ap_getparents(fs_path);
     ap_no2slash(fs_path);
@@ -512,7 +511,7 @@ const char *fcgi_config_new_static_server(cmd_parms *cmd, void *dummy, const cha
 #ifdef WIN32
     // TCP FastCGI applications require SystemRoot be present in the environment
     // Put it in both for consistency to the application
-    set_env_var(tp, envp, &envc, "SystemRoot");
+    fcgi_config_set_env_var(tp, envp, &envc, "SystemRoot");
 #else
     if (fcgi_suexec) {
         struct passwd *pw;
@@ -657,10 +656,8 @@ const char *fcgi_config_new_external_server(cmd_parms *cmd, void *dummy, const c
         return ap_pstrcat(tp, name, " requires a path and either a -socket or -host option", NULL);
     }
 
-    if (!ap_os_is_path_absolute(fs_path))
-        fs_path = ap_make_full_path(p, ap_server_root, fs_path);
-
     fs_path = ap_os_canonical_filename(p, fs_path);
+    fs_path = ap_server_root_relative(p, fs_path);
 
     ap_getparents(fs_path);
     ap_no2slash(fs_path);
@@ -775,14 +772,8 @@ const char *fcgi_config_set_config(cmd_parms *cmd, void *dummy, const char *arg)
     const char * const name = cmd->cmd->name;
 
     /* Allocate temp storage for an initial environment */
-    int envc = 0;
+    unsigned int envc = 0;
     char **envp = (char **)ap_pcalloc(tp, sizeof(char *) * (MAX_INIT_ENV_VARS + 3));
-
-#ifdef WIN32
-    // TCP FastCGI applications require SystemRoot be present in the environment
-    // Put it in both for consistency to the application
-    set_env_var(tp, envp, &envc, "SystemRoot");
-#endif
 
     /* Parse the directive arguments */
     while (*arg) {
@@ -893,15 +884,16 @@ const char *fcgi_config_new_auth_server(cmd_parms * const cmd,
     pool * const tp = cmd->temp_pool;
     const uid_t uid = cmd->server->server_uid;
     const gid_t gid = cmd->server->server_gid;
+    char * auth_server;
 
-    if (!ap_os_is_path_absolute(fs_path))
-        fs_path = ap_make_full_path(cmd->pool, ap_server_root, fs_path);
+    auth_server = ap_os_canonical_filename(cmd->pool, fs_path);
+    auth_server = ap_server_root_relative(cmd->pool, auth_server);
 
     /* Make sure its already configured or at least a candidate for dynamic */
-    if (fcgi_util_fs_get_by_id(fs_path, uid, gid) == NULL) {
-        const char *err = fcgi_util_fs_is_path_ok(tp, fs_path, NULL, uid, gid);
+    if (fcgi_util_fs_get_by_id(auth_server, uid, gid) == NULL) {
+        const char *err = fcgi_util_fs_is_path_ok(tp, auth_server, NULL, uid, gid);
         if (err)
-            return ap_psprintf(tp, "%s: \"%s\" %s", cmd->cmd->name, fs_path, err);
+            return ap_psprintf(tp, "%s: \"%s\" %s", cmd->cmd->name, auth_server, err);
     }
 
     if (compat && strcasecmp(compat, "-compat"))
@@ -909,15 +901,15 @@ const char *fcgi_config_new_auth_server(cmd_parms * const cmd,
 
     switch((int)cmd->info) {
         case FCGI_AUTH_TYPE_AUTHENTICATOR:
-            dir_config->authenticator = fs_path;
+            dir_config->authenticator = auth_server;
             dir_config->authenticator_options |= (compat) ? FCGI_COMPAT : 0;
             break;
         case FCGI_AUTH_TYPE_AUTHORIZER:
-            dir_config->authorizer = fs_path;
+            dir_config->authorizer = auth_server;
             dir_config->authorizer_options |= (compat) ? FCGI_COMPAT : 0;
             break;
         case FCGI_AUTH_TYPE_ACCESS_CHECKER:
-            dir_config->access_checker = fs_path;
+            dir_config->access_checker = auth_server;
             dir_config->access_checker_options |= (compat) ? FCGI_COMPAT : 0;
             break;
     }

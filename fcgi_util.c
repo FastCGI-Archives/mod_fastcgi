@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_util.c,v 1.10 2000/04/27 15:14:28 robs Exp $
+ * $Id: fcgi_util.c,v 1.11 2000/04/29 21:01:44 robs Exp $
  */
 
 #include "fcgi.h"
@@ -475,7 +475,6 @@ int fcgi_util_gettimeofday(struct timeval *Time) {
 
     clock = GetTickCount();
 
-
     t = time(NULL);
 
     Time->tv_sec = t; //clock / 1000;
@@ -493,97 +492,97 @@ int fcgi_util_gettimeofday(struct timeval *Time) {
 #ifdef WIN32
 
 FcgiRWLock * fcgi_rdwr_create() {
-    FcgiRWLock *newlock = NULL;
+	FcgiRWLock *newlock = NULL;
 
-    newlock = (FcgiRWLock *) malloc(sizeof(FcgiRWLock));
+	newlock = (FcgiRWLock *) malloc(sizeof(FcgiRWLock));
 
-    if (newlock == NULL)
-        return NULL;
+	if (newlock == NULL)
+		return NULL;
 
-    newlock->read_event = CreateEvent(NULL, TRUE, FALSE, NULL);
-    newlock->lock_mutex = CreateEvent(NULL, FALSE, TRUE, NULL);
-    newlock->write_event = CreateMutex(NULL, FALSE, NULL);
-    newlock->counter = -1;
+	newlock->read_event = CreateEvent(NULL, TRUE, FALSE, NULL);
+	newlock->lock_mutex = CreateEvent(NULL, FALSE, TRUE, NULL);
+	newlock->write_event = CreateMutex(NULL, FALSE, NULL);
+	newlock->counter = -1;
 
-    return newlock;
+	return newlock;
 }
 
-void fcgi_rdwr_destory(FcgiRWLock *lock) {
-    CloseHandle(lock->read_event);
-    CloseHandle(lock->lock_mutex);
-    CloseHandle(lock->write_event);
+void fcgi_rdwr_destroy(FcgiRWLock *lock) {
+	CloseHandle(lock->read_event);
+	CloseHandle(lock->lock_mutex);
+	CloseHandle(lock->write_event);
 
-    free(lock);
-    lock = NULL;
+	free(lock);
+	lock = NULL;
 }
 
 
 int fcgi_rdwr_lock(FcgiRWLock *lock, int type) {
-    
-    if (lock == NULL)
-        return -1;
+	
+	if (lock == NULL)
+		return -1;
 
-    if (type == WRITER) {  
-        WaitForSingleObject(lock->write_event,INFINITE);
-        WaitForSingleObject(lock->lock_mutex, INFINITE);
-    }
-    else {   
-        if (InterlockedIncrement(&lock->counter) == 0) { 
-            WaitForSingleObject(lock->lock_mutex, INFINITE);
-            SetEvent(lock->read_event);
-        }
+	if (type == WRITER) {  
+		WaitForSingleObject(lock->write_event,INFINITE);
+		WaitForSingleObject(lock->lock_mutex, INFINITE);
+	}
+	else {   
+		if (InterlockedIncrement(&lock->counter) == 0) { 
+			WaitForSingleObject(lock->lock_mutex, INFINITE);
+			SetEvent(lock->read_event);
+		}
 
-        WaitForSingleObject(lock->read_event,INFINITE);
-    }
+		WaitForSingleObject(lock->read_event,INFINITE);
+	}
 
-    return 0;
+	return 0;
 }
 
 int fcgi_rdwr_try_lock(FcgiRWLock *lock, int type) {
-    DWORD dwret;
-    
-    if (lock == NULL)
-        return -1;
+	DWORD dwret;
+	
+	if (lock == NULL)
+		return -1;
 
-    if (type == WRITER) {  
-        dwret = WaitForSingleObject(lock->write_event, 0);
-        if (dwret == WAIT_TIMEOUT)
-            return -1;
+	if (type == WRITER) {  
+		dwret = WaitForSingleObject(lock->write_event, 0);
+		if (dwret == WAIT_TIMEOUT)
+			return -1;
 
-        dwret = WaitForSingleObject(lock->lock_mutex, 0);
-        if (dwret == WAIT_TIMEOUT)
-            return -1;
-    }
-    else {   
-        if (InterlockedIncrement(&lock->counter) == 0) { 
-            dwret = WaitForSingleObject(lock->lock_mutex, 0);
-            if (dwret == WAIT_TIMEOUT)
-                return -1;
+		dwret = WaitForSingleObject(lock->lock_mutex, 0);
+		if (dwret == WAIT_TIMEOUT)
+			return -1;
+	}
+	else {   
+		if (InterlockedIncrement(&lock->counter) == 0) { 
+			dwret = WaitForSingleObject(lock->lock_mutex, 0);
+			if (dwret == WAIT_TIMEOUT)
+				return -1;
 
-            SetEvent(lock->read_event);
-        }
+			SetEvent(lock->read_event);
+		}
 
-        dwret = WaitForSingleObject(lock->read_event, 0);
-        if (dwret == WAIT_TIMEOUT)
-            return -1;
-    }
+		dwret = WaitForSingleObject(lock->read_event, 0);
+		if (dwret == WAIT_TIMEOUT)
+			return -1;
+	}
 
-    return 0;
+	return 0;
 }
 
 int fcgi_rdwr_unlock(FcgiRWLock *lock, int type) {
 
-    if (type == WRITER) { 
-        SetEvent(lock->lock_mutex);
-        ReleaseMutex(lock->write_event);
-    }
-    else {
-        if (InterlockedDecrement(&lock->counter) < 0) {
-            ResetEvent(lock->read_event);
-            SetEvent(lock->lock_mutex);
-        }
-    }
+	if (type == WRITER) { 
+		SetEvent(lock->lock_mutex);
+	    ReleaseMutex(lock->write_event);
+	}
+	else {
+		if (InterlockedDecrement(&lock->counter) < 0) {
+			ResetEvent(lock->read_event);
+			SetEvent(lock->lock_mutex);
+		}
+	}
 
-    return 0;
+	return 0;
 }
 #endif

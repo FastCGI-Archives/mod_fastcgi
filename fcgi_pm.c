@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_pm.c,v 1.27 2000/04/28 13:47:48 robs Exp $
+ * $Id: fcgi_pm.c,v 1.28 2000/04/29 21:01:44 robs Exp $
  */
 
 
@@ -115,7 +115,7 @@ static void kill_fs_procs(pool *p, fcgi_server *s)
                 lockFileName, s->fs_path);
         }
 #else
-       fcgi_rdwr_destory(s->dynamic_lock);
+       fcgi_rdwr_destroy(s->dynamic_lock);
 #endif
     }
 
@@ -220,7 +220,7 @@ static void dynamic_blocking_kill(void *data)
     }
 	else {
        TerminateProcess(funcData->pid, 1);
-	   fcgi_rdwr_unlock(funcData->lock, WRITER);
+       fcgi_rdwr_unlock(funcData->lock, WRITER);
     }
     return;
 #endif
@@ -383,12 +383,13 @@ FailedSystemCallExit:
     /* avoid an irrelevant compiler warning */
     return(0);
 #else
-    int i;
-    int EnvBlockLen = 0;
+    int i = 0;
+    int EnvBlockLen = 1;
     int success =  0;
     char * EnvBlock = NULL;
     char * Next;
-	HANDLE child_process;
+    char * mutex = NULL;
+    HANDLE child_process;
 
     STARTUPINFO si;
     PROCESS_INFORMATION pi;
@@ -404,23 +405,30 @@ FailedSystemCallExit:
     si.hStdOutput = INVALID_HANDLE_VALUE;
     si.hStdError = INVALID_HANDLE_VALUE;
 
-    if (fs->envp && *fs->envp) {
-        i = 0;
-        EnvBlockLen = 1;
-        while (fs->envp[i]) {
-            EnvBlockLen += strlen(fs->envp[i]) + 1;
-            i++;
-        }
+    // There is always at least SystemRoot under Win32
+    while (fs->envp[i]) {
+        EnvBlockLen += strlen(fs->envp[i]) + 1;
+        i++;
+    }
 
-        EnvBlock = (char *) ap_pcalloc(tp, EnvBlockLen);
+    if (fs->socket_path) {
+        mutex = ap_psprintf(tp, "_FCGI_MUTEX_=%d", (int) fs->hPipeMutex);
+        EnvBlockLen += strlen(mutex) + 1;
+    }
 
-        i = 0;
-        Next = EnvBlock;
-        while (fs->envp[i]) {
-            strcpy(Next, fs->envp[i]);
-            Next = Next + strlen(Next) + 1;
-            i++;
-        }
+    EnvBlock = (char *) ap_pcalloc(tp, EnvBlockLen);
+
+    // These are supposed to be sorted, oh well
+    i = 0;
+    Next = EnvBlock;
+    while (fs->envp[i]) {
+        strcpy(Next, fs->envp[i]);
+        Next = Next + strlen(Next) + 1;
+        i++;
+    }
+
+    if (fs->socket_path) {
+        strcpy(Next, mutex);
     }
 
     success = SetHandleInformation(si.hStdInput, HANDLE_FLAG_INHERIT, TRUE);
@@ -550,7 +558,6 @@ static void dynamic_read_msgs(int read_ready)
     fcgi_pm_job *joblist = NULL;
     fcgi_pm_job *cjob = NULL;
     SECURITY_ATTRIBUTES sa;
-    HANDLE hPipeMutex;
 #endif
 
     pool *sp, *tp;
@@ -678,9 +685,7 @@ static void dynamic_read_msgs(int read_ready)
         if (s==NULL && cjob->id != REQ_COMPLETE)
 #endif
         {
-#ifdef WIN32
-            const char **envp;
-#else
+#ifndef WIN32
             int fd;
             const char *err, *lockPath;
 #endif
@@ -809,22 +814,16 @@ static void dynamic_read_msgs(int read_ready)
                 goto BagNewServer;
             }
 
-            hPipeMutex = ap_create_mutex(NULL);
+            s->hPipeMutex = ap_create_mutex(NULL);
 			
-            if (hPipeMutex == NULL) {
+            if (s->hPipeMutex == NULL) {
                 ap_log_error(FCGI_LOG_CRIT, fcgi_apache_main_server,
                 "FastCGI: can't create (dynamic) server \"%s\": ap_create_mutex() failed", cjob->fs_path);
                 CloseHandle((HANDLE)s->listenFd);
                 goto BagNewServer;
             }
 
-            SetHandleInformation(hPipeMutex, HANDLE_FLAG_INHERIT, TRUE);
-
-            envp = s->envp;
-            while (*envp != NULL) {
-                ++envp;
-            }
-            *envp = ap_psprintf(fcgi_config_pool, "_FCGI_MUTEX_=%d", (int)hPipeMutex);
+            SetHandleInformation(s->hPipeMutex, HANDLE_FLAG_INHERIT, TRUE);
 
             /* Create the application lock */
             if ((s->dynamic_lock = fcgi_rdwr_create()) == NULL) {
@@ -832,7 +831,7 @@ static void dynamic_read_msgs(int read_ready)
                              "FastCGI: can;t create (dynamic) server \"%s\": fcgi_rdwr_create() failed",
                              cjob->fs_path);
                 CloseHandle((HANDLE)s->listenFd);
-                CloseHandle(hPipeMutex);
+                CloseHandle(s->hPipeMutex);
                 goto BagNewServer;
             }
 #endif
@@ -1178,7 +1177,6 @@ static void dynamic_kill_idle_fs_procs(void)
                     ap_pclosef(tp, lockFd);
 #else
                     fcgi_kill((int)s->procs[i].pid, 1);
-                    fcgi_rdwr_unlock(s->dynamic_lock, WRITER);
 #endif
                 }
             }
@@ -1190,6 +1188,7 @@ static void dynamic_kill_idle_fs_procs(void)
 #ifdef WIN32
 
 // This is a little bogus, there's gotta be a better way to do this
+// Can we use WaitForMultipleObjects()
 #define FCGI_PROC_WAIT_TIME 100
 
 void child_wait_thread(void *dummy) {
@@ -1214,7 +1213,7 @@ void child_wait_thread(void *dummy) {
             }
 
             for (i=0; i < numChildren; i++) {
-                if (s->procs[i].pid != INVALID_HANDLE_VALUE) {
+                if (s->procs[i].pid != INVALID_HANDLE_VALUE && s->procs[i].pid != (HANDLE) 0) {
                     /* timeout is currently set for 100 miliecond */ 
                     /* it may need t longer or user customizable */
                     dwRet = WaitForSingleObject(s->procs[i].pid, FCGI_PROC_WAIT_TIME);
@@ -1224,6 +1223,7 @@ void child_wait_thread(void *dummy) {
                     if (dwRet != WAIT_TIMEOUT) {
                         /* a child fs has died */
                         /* mark the child as dead */
+
                         if (s->directive == APP_CLASS_STANDARD) {
                             /* restart static app */
                             s->procs[i].state = STATE_NEEDS_STARTING;
@@ -1249,6 +1249,11 @@ void child_wait_thread(void *dummy) {
                                 }
                             }
                         }
+
+                        ap_log_error(FCGI_LOG_WARN_NOERRNO, fcgi_apache_main_server,
+                            "FastCGI:%s server \"%s\" (pid %d) terminated",
+                            (s->directive == APP_CLASS_DYNAMIC) ? " (dynamic)" : "",
+                            s->fs_path, s->procs[i].pid);
 
                         CloseHandle(s->procs[i].pid);
                         s->procs[i].pid = INVALID_HANDLE_VALUE;
@@ -1316,9 +1321,6 @@ void fcgi_pm_main(void *dummy)
     fcgi_server *s;
     unsigned int i;
 	int read_ready = 0;
-#ifndef WIN32
-    int callWaitPid, callDynamicProcs;
-#endif
     int alarmLeft = 0;
     pool *tp;
     const char *err;
@@ -1327,9 +1329,19 @@ void fcgi_pm_main(void *dummy)
     DWORD dwRet;
     int first_time = 1;
     HANDLE wait_thread = INVALID_HANDLE_VALUE;
+#else
+    int callWaitPid, callDynamicProcs;
 #endif
 
-#ifndef WIN32
+#ifdef WIN32
+    // Add SystemRoot to the dyanmic environment
+    char ** envp = dynamicEnvp;
+    for (i = 0; *envp; ++i) {
+        ++envp;
+    }
+    fcgi_config_set_env_var(fcgi_config_pool, dynamicEnvp, &i, "SystemRoot");
+
+#else
     reduce_priveleges();
 
     close(fcgi_pm_pipe[1]);
@@ -1351,8 +1363,6 @@ void fcgi_pm_main(void *dummy)
 #ifdef WIN32
         if (s->socket_path) {
             SECURITY_ATTRIBUTES sa;
-            HANDLE hPipeMutex;
-            const char **envp;
 
             sa.nLength = sizeof(sa);
             sa.lpSecurityDescriptor = NULL;
@@ -1367,9 +1377,9 @@ void fcgi_pm_main(void *dummy)
                 continue;
             }
 
-            hPipeMutex = ap_create_mutex(NULL);
+            s->hPipeMutex = ap_create_mutex(NULL);
 
-            if (hPipeMutex == NULL) {
+            if (s->hPipeMutex == NULL) {
                 ap_log_error(FCGI_LOG_CRIT, fcgi_apache_main_server,
                              "FastCGI: server \"%s\" disabled, ap_create_mutex() failed", s->fs_path);
                 CloseHandle((HANDLE)s->listenFd);
@@ -1377,13 +1387,7 @@ void fcgi_pm_main(void *dummy)
                 continue;
             }
 
-            SetHandleInformation(hPipeMutex, HANDLE_FLAG_INHERIT, TRUE);
-
-            envp = s->envp;
-            while (*envp != NULL) {
-                ++envp;
-            }
-            *envp = ap_psprintf(fcgi_config_pool, "_FCGI_MUTEX_=%d", (int)hPipeMutex);
+            SetHandleInformation(s->hPipeMutex, HANDLE_FLAG_INHERIT, TRUE);
         }
         else
 #endif
@@ -1474,7 +1478,11 @@ void fcgi_pm_main(void *dummy)
                     }
 
                     if(restartTime <= now) {
+#ifdef WIN32
+                        int restart = (s->procs[i].pid == INVALID_HANDLE_VALUE);
+#else
                         int restart = (s->procs[i].pid < 0);
+#endif
 
                         s->restartTime = now;
 
