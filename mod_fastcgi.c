@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.41 1998/07/28 16:16:37 roberts Exp $
+ *  $Id: mod_fastcgi.c,v 1.42 1998/08/04 17:04:04 roberts Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -3158,7 +3158,7 @@ void FastCgiProcMgr(void *data)
     int i;
     int status, callWaitPid, callDynamicProcs;
     sigset_t sigMask;
-    int alarmLeft;
+    int alarmLeft = 0;
 
     /*
      * Create mbox file now, so we won't have to check for
