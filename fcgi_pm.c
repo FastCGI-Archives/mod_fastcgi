@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_pm.c,v 1.14 1999/09/14 15:25:07 roberts Exp $
+ * $Id: fcgi_pm.c,v 1.15 1999/09/16 01:45:55 roberts Exp $
  */
 
 #include "fcgi.h"
@@ -568,6 +568,8 @@ NothingToDo:
             s->initStartDelay = dynamicInitStartDelay;
             s->envp = dynamicEnvp;
             s->fs_path = ap_pstrdup(sp, execName);
+            ap_getparents(s->fs_path);
+            ap_no2slash(s->fs_path);
             s->procs = fcgi_util_fs_create_procs(sp, dynamicMaxClassProcs);
 
             /* Create socket file's path */

@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_util.c,v 1.6 1999/09/10 02:05:21 roberts Exp $
+ * $Id: fcgi_util.c,v 1.7 1999/09/16 01:45:56 roberts Exp $
  */
 
 #include "fcgi.h"
@@ -208,10 +208,14 @@ fcgi_util_check_access(pool *tp,
 fcgi_server *
 fcgi_util_fs_get_by_id(const char *ePath, uid_t uid, gid_t gid)
 {
+    char path[FCGI_MAXPATH];
     fcgi_server *s;
 
+    ap_cpystrn(path, ePath, FCGI_MAXPATH);
+    ap_no2slash(path);
+
     for (s = fcgi_servers; s != NULL; s = s->next) {
-        if (strcmp(s->fs_path, ePath) == 0) {
+        if (strcmp(s->fs_path, path) == 0) {
             if (fcgi_suexec == NULL || (uid == s->uid && gid == s->gid))
                 return s;
         }
@@ -226,10 +230,14 @@ fcgi_util_fs_get_by_id(const char *ePath, uid_t uid, gid_t gid)
 fcgi_server *
 fcgi_util_fs_get(const char *ePath, const char *user, const char *group)
 {
+    char path[FCGI_MAXPATH];
     fcgi_server *s;
 
+    ap_cpystrn(path, ePath, FCGI_MAXPATH);
+    ap_no2slash(path);
+    
     for (s = fcgi_servers; s != NULL; s = s->next) {
-        if (strcmp(s->fs_path, ePath) == 0) {
+        if (strcmp(s->fs_path, path) == 0) {
             if (fcgi_suexec == NULL)
                 return s;
 

@@ -1,5 +1,5 @@
 /*
- * $Id: mod_fastcgi.h,v 1.16 1999/09/03 19:04:44 roberts Exp $
+ * $Id: mod_fastcgi.h,v 1.17 1999/09/16 01:45:57 roberts Exp $
  */
 
 #ifndef MOD_FASTCGI_H
@@ -80,11 +80,15 @@
 
 #define FCGI_MAGIC_TYPE "application/x-httpd-fcgi"
 
-#ifndef PATH_MAX
-#define PATH_MAX (1024)
+#if defined(PATH_MAX)
+#define FCGI_MAXPATH  PATH_MAX
+#elif defined(MAXPATHLEN)
+#define FCGI_MAXPATH  MAXPATHLEN
+#else
+#define FCGI_MAXPATH  1024
 #endif
 
-#define MAX_PROCMGR_RECORD_LEN (PATH_MAX)
+#define MAX_PROCMGR_RECORD_LEN  FCGI_MAXPATH
 
 #ifdef OPEN_MAX
 #define MAX_OPEN_FDS OPEN_MAX

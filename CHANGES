@@ -1,5 +1,7 @@
 Changes with mod_fastcgi 2.2.3
 
+ *) Clean up FastCGI application pathnames (e.g. remove duplicate slashes). 
+ 
  *) Fix bugs that prevented dynamic processes from being shutdown when
     the load subsided.  Lars Heete [heete@do.isst.fhg.de]
 

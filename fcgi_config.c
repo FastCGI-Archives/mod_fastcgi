@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_config.c,v 1.14 1999/09/10 04:37:39 roberts Exp $
+ * $Id: fcgi_config.c,v 1.15 1999/09/16 01:45:54 roberts Exp $
  */
 
 #include "fcgi.h"
@@ -426,6 +426,9 @@ const char *fcgi_config_new_static_server(cmd_parms *cmd, void *dummy, const cha
     if (!ap_os_is_path_absolute(fs_path))
         fs_path = ap_make_full_path(p, ap_server_root, fs_path);
 
+    ap_getparents(fs_path);
+    ap_no2slash(fs_path);
+
     /* See if we've already got one of these configured */
     s = fcgi_util_fs_get_by_id(fs_path, cmd->server->server_uid,
                        cmd->server->server_gid);
@@ -592,6 +595,9 @@ const char *fcgi_config_new_external_server(cmd_parms *cmd, void *dummy, const c
 
     if (!ap_os_is_path_absolute(fs_path))
         fs_path = ap_make_full_path(p, ap_server_root, fs_path);
+
+    ap_getparents(fs_path);
+    ap_no2slash(fs_path);
 
     /* See if we've already got one of these bettys configured */
     s = fcgi_util_fs_get_by_id(fs_path, cmd->server->server_uid,
