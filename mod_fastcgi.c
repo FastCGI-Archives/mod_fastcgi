@@ -3062,7 +3062,7 @@ static int CaughtSigTerm(void)
 
 void FastCgiProcMgr(void *data)
 {
-    FastCgiServerInfo *s, *tmp, *prev;
+    FastCgiServerInfo *s, *tmp;
     int i;
     int status, callWaitPid, callDynamicProcs;
     sigset_t sigMask;
@@ -3344,7 +3344,7 @@ void FastCgiProcMgr(void *data)
 	    }
             fflush(errorLogFile);
         } /* for (;;) */
-	prev = fastCgiServers;
+
 	for(s=fastCgiServers;s!=NULL;) {
 	    if(s->directive == APP_CLASS_DYNAMIC && s->numProcesses == 0) {
 	        numChildren = 0;
@@ -3355,16 +3355,10 @@ void FastCgiProcMgr(void *data)
 	        if(numChildren == 0) {
 		    tmp=s->next;
 		    FreeFcgiServerInfo(s);
-		    if (s == fastCgiServers) {
-		      fastCgiServers = s->next;
-		    } else {
-		      prev->next = tmp;
-		    }
 		    s=tmp;
 		    continue;
 		}
 	    }
-	    prev = s;
 	    s=s->next;
 	}
     } /* for (;;) */
