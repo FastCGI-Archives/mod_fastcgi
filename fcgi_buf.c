@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_buf.c,v 1.1 1999/02/09 03:07:59 roberts Exp $
+ * $Id: fcgi_buf.c,v 1.2 1999/02/11 02:15:33 roberts Exp $
  */
 
 #include "fcgi.h"
@@ -460,22 +460,20 @@ void fcgi_buf_get_to_buf(Buffer *dest, Buffer *src, int len)
     }
 }
 
-
 static void array_grow(array_header *arr, int n)
 {
     if (n <= 0)
         return;
+
     if (arr->nelts + n > arr->nalloc) {
-        char *new_data;
-        int new_size = (arr->nalloc <= 0) ? : arr->nalloc * 2;
+        char *new_elts;
+        int new_nalloc = (arr->nalloc <= 0) ? n : arr->nelts + n;
 
-        while (arr->nelts + n > new_size)
-            new_size *= 2;
+        new_elts = ap_pcalloc(arr->pool, arr->elt_size * new_nalloc);
+        memcpy(new_elts, arr->elts, arr->nelts * arr->elt_size);
 
-        new_data = ap_pcalloc(arr->pool, arr->elt_size * new_size);
-        memcpy(new_data, arr->elts, arr->nelts * arr->elt_size);
-        arr->elts = new_data;
-        arr->nalloc = new_size;
+        arr->elts = new_elts;
+        arr->nalloc = new_nalloc;
     }
 }
 
