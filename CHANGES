@@ -1,5 +1,8 @@
 Changes with mod_fastcgi 2.2.2
 
+ *) Fix -listen-queue-depth arg on FastCgiConfig (dynamic).  Previously it
+    was ignored and the default was always used.
+
  *) Allow the -initial-env argument to be used to pass variables from the 
     Apache process environment to the FastCGI server (by specifying a 
     variable name without the "=" or a value).  [suggested by 

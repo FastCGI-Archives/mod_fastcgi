@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_pm.c,v 1.3 1999/02/21 01:19:55 roberts Exp $
+ * $Id: fcgi_pm.c,v 1.4 1999/04/24 03:37:20 roberts Exp $
  */
 
 #include "fcgi.h"
@@ -509,6 +509,7 @@ NothingToDo:
             s = fcgi_util_fs_new(sp);
             s->directive = APP_CLASS_DYNAMIC;
             s->restartDelay = dynamicRestartDelay;
+            s->listenQueueDepth = dynamicListenQueueDepth;
             s->initStartDelay = dynamicInitStartDelay;
             s->envp = dynamicEnvp;
             s->fs_path = ap_pstrdup(sp, execName);
