@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.98 2000/09/19 14:51:35 robs Exp $
+ *  $Id: mod_fastcgi.c,v 1.99 2000/09/19 16:26:52 robs Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -105,7 +105,7 @@ do {                                                        \
 pool *fcgi_config_pool;            	 /* the config pool */
 server_rec *fcgi_apache_main_server;
 
-const char *fcgi_suexec = NULL;           /* suexec_bin path */
+const char *fcgi_wrapper = NULL;          /* wrapper path */
 uid_t fcgi_user_id;                       /* the run uid of Apache & PM */
 gid_t fcgi_group_id;                      /* the run gid of Apache & PM */
 
@@ -706,12 +706,12 @@ static int write_to_client(fcgi_request *fr)
 }
 
 /*******************************************************************************
- * Determine the user and group suexec should be called with.
+ * Determine the user and group the wrapper should be called with.
  * Based on code in Apache's create_argv_cmd() (util_script.c).
  */
 static void set_uid_n_gid(request_rec *r, const char **user, const char **group)
 {
-    if (fcgi_suexec == NULL) {
+    if (fcgi_wrapper == NULL) {
         *user = "-";
         *group = "-";
         return;
@@ -1899,7 +1899,8 @@ command_rec fastcgi_cmds[] = {
 
     { "FastCgiIpcDir", fcgi_config_set_socket_dir, NULL, RSRC_CONF, TAKE1, NULL },
 
-    { "FastCgiSuexec", fcgi_config_set_suexec, NULL, RSRC_CONF, TAKE1, NULL },
+    { "FastCgiSuexec",  fcgi_config_set_wrapper, NULL, RSRC_CONF, TAKE1, NULL },
+    { "FastCgiWrapper", fcgi_config_set_wrapper, NULL, RSRC_CONF, TAKE1, NULL },
 
     { "FCGIConfig",    fcgi_config_set_config, NULL, RSRC_CONF, RAW_ARGS, NULL },
     { "FastCgiConfig", fcgi_config_set_config, NULL, RSRC_CONF, RAW_ARGS, NULL },

@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_config.c,v 1.22 2000/04/29 21:24:31 robs Exp $
+ * $Id: fcgi_config.c,v 1.23 2000/09/19 16:26:51 robs Exp $
  */
 
 #include "fcgi.h"
@@ -210,7 +210,7 @@ void fcgi_config_reset_globals(void* dummy)
     fcgi_config_pool = NULL;
     fcgi_servers = NULL;
     fcgi_config_set_fcgi_uid_n_gid(0);
-    fcgi_suexec = NULL;
+    fcgi_wrapper = NULL;
     fcgi_socket_dir = DEFAULT_SOCK_DIR;
     
     fcgi_dynamic_total_proc_count = 0;
@@ -400,19 +400,18 @@ const char *fcgi_config_set_socket_dir(cmd_parms *cmd, void *dummy, char *arg)
 }
 
 /*******************************************************************************
- * Enable, disable, or specify the path to the suexec program.
+ * Enable, disable, or specify the path to a wrapper used to invoke all
+ * FastCGI applications.
  */
-const char *fcgi_config_set_suexec(cmd_parms *cmd, void *dummy, const char *arg)
+const char *fcgi_config_set_wrapper(cmd_parms *cmd, void *dummy, const char *arg)
 {
     const char *err = NULL;
     const char * const name = cmd->cmd->name;
     pool * const tp = cmd->temp_pool;
-    char * suexec;
+    char * wrapper;
 
-    if (!ap_suexec_enabled) {
-        if (strcasecmp(arg, "Off") != 0) {
-	        fprintf(stderr, "Warning: %s requires SUEXEC wrapper be enabled in Apache\n", name);
-	    }
+    if (!ap_suexec_enabled && strcasecmp(arg, "On") == 0) {
+	    fprintf(stderr, "Warning: \"%s On\" requires SUEXEC be enabled in Apache", name);
 	    return NULL;
     }
 
@@ -426,28 +425,28 @@ const char *fcgi_config_set_suexec(cmd_parms *cmd, void *dummy, const char *arg)
     }
 
     if (strcasecmp(arg, "On") == 0) {
-        fcgi_suexec = SUEXEC_BIN;
+        fcgi_wrapper = SUEXEC_BIN;
     }
     else if (strcasecmp(arg, "Off") == 0) {
-        fcgi_suexec = NULL;
+        fcgi_wrapper = NULL;
     }
     else {
-        suexec = (char *) ap_os_canonical_filename(cmd->pool, arg);
-        suexec = ap_server_root_relative(cmd->pool, suexec);
+        wrapper = (char *) ap_os_canonical_filename(cmd->pool, arg);
+        wrapper = ap_server_root_relative(cmd->pool, wrapper);
 
 #ifdef WIN32
-        err = fcgi_util_check_access(tp, suexec, NULL, _S_IEXEC, fcgi_user_id, fcgi_group_id);
+        err = fcgi_util_check_access(tp, wrapper, NULL, _S_IEXEC, fcgi_user_id, fcgi_group_id);
 #else
-        err = fcgi_util_check_access(tp, suexec, NULL, X_OK, fcgi_user_id, fcgi_group_id);
+        err = fcgi_util_check_access(tp, wrapper, NULL, X_OK, fcgi_user_id, fcgi_group_id);
 #endif
 
         if (err != NULL) {
             return ap_psprintf(tp,
                 "%s: \"%s\" access for server (uid %ld, gid %ld) failed: %s",
-                name, suexec, (long)fcgi_user_id, (long)fcgi_group_id, err);
+                name, wrapper, (long)fcgi_user_id, (long)fcgi_group_id, err);
         }
 
-        fcgi_suexec = suexec;
+        fcgi_wrapper = wrapper;
     }
     return NULL;
 }
@@ -483,7 +482,7 @@ const char *fcgi_config_new_static_server(cmd_parms *cmd, void *dummy, const cha
     s = fcgi_util_fs_get_by_id(fs_path, cmd->server->server_uid,
                        cmd->server->server_gid);
     if (s != NULL) {
-        if (fcgi_suexec) {
+        if (fcgi_wrapper) {
             return ap_psprintf(tp,
                 "%s: redefinition of a previously defined FastCGI server \"%s\" with uid=%ld and gid=%ld",
                 name, fs_path, (long)cmd->server->server_uid,
@@ -513,7 +512,7 @@ const char *fcgi_config_new_static_server(cmd_parms *cmd, void *dummy, const cha
     // Put it in both for consistency to the application
     fcgi_config_set_env_var(tp, envp, &envc, "SystemRoot");
 #else
-    if (fcgi_suexec) {
+    if (fcgi_wrapper) {
         struct passwd *pw;
         struct group  *gr;
 
@@ -666,7 +665,7 @@ const char *fcgi_config_new_external_server(cmd_parms *cmd, void *dummy, const c
     s = fcgi_util_fs_get_by_id(fs_path, cmd->server->server_uid,
                        cmd->server->server_gid);
     if (s != NULL) {
-        if (fcgi_suexec != NULL) {
+        if (fcgi_wrapper) {
             return ap_psprintf(tp,
                 "%s: redefinition of a previously defined class \"%s\" with uid=%ld and gid=%ld",
                 name, fs_path, (long)cmd->server->server_uid,

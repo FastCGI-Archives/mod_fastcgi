@@ -1,5 +1,10 @@
 2.2.9
 
+ *) Support generic wrappers such as cgiwrap by eliminating dependencies
+    on Apache's SUEXEC, renaming the FastCgiSuexec directive 
+    FastCgiWrapper and eliminating any checks regarding the target 
+    application (this is the repsonibility of the wrapper).
+
  *) Fix a nasty bug that occurred when a client aborted a request 
     before the connection to a dynamic FastCGI application was opened.
     The application's lock file descriptor wasn't setup but was being 

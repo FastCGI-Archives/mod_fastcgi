@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_util.c,v 1.14 2000/07/19 17:58:37 robs Exp $
+ * $Id: fcgi_util.c,v 1.15 2000/09/19 16:26:52 robs Exp $
  */
 
 #include "fcgi.h"
@@ -219,7 +219,7 @@ fcgi_util_check_access(pool *tp,
 
 
 /*******************************************************************************
- * Find a FastCGI server with a matching fs_path, and if fcgi_suexec is
+ * Find a FastCGI server with a matching fs_path, and if fcgi_wrapper is
  * enabled with matching uid and gid.
  */
 fcgi_server *
@@ -244,7 +244,7 @@ fcgi_util_fs_get_by_id(const char *ePath, uid_t uid, gid_t gid)
             continue;
         }
         if (path[i] == '\0' || path[i] == '/') {
-        if (fcgi_suexec == NULL || (uid == s->uid && gid == s->gid))
+        if (fcgi_wrapper == NULL || (uid == s->uid && gid == s->gid))
             return s;
         }
     }
@@ -252,7 +252,7 @@ fcgi_util_fs_get_by_id(const char *ePath, uid_t uid, gid_t gid)
 }
 
 /*******************************************************************************
- * Find a FastCGI server with a matching fs_path, and if fcgi_suexec is
+ * Find a FastCGI server with a matching fs_path, and if fcgi_wrapper is
  * enabled with matching user and group.
  */
 fcgi_server *
@@ -266,7 +266,7 @@ fcgi_util_fs_get(const char *ePath, const char *user, const char *group)
     
     for (s = fcgi_servers; s != NULL; s = s->next) {
         if (strcmp(s->fs_path, path) == 0) {
-            if (fcgi_suexec == NULL)
+            if (fcgi_wrapper == NULL)
                 return s;
 
             if (strcmp(user, s->user) == 0 
@@ -284,6 +284,11 @@ fcgi_util_fs_is_path_ok(pool * const p, const char * const fs_path,
         struct stat *finfo, const uid_t uid, const gid_t gid)
 {
     const char *err;
+
+    /* If a wrapper is in use, let the wrapper determine what it can
+     * and can't execute */
+    if (fcgi_wrapper)
+        return NULL;
     
     if (finfo == NULL) {
         finfo = (struct stat *)ap_palloc(p, sizeof(struct stat));	        
@@ -302,27 +307,15 @@ fcgi_util_fs_is_path_ok(pool * const p, const char * const fs_path,
     if (S_ISDIR(finfo->st_mode)) 
         return ap_psprintf(p, "script is a directory!");
     
-    if (fcgi_suexec != NULL) {
-#ifndef WIN32
-        err = fcgi_util_check_access(p, fs_path, finfo, X_OK, uid, gid);
-        if (err) {
-            return ap_psprintf(p,
-                "access for fcgi_suexec (uid %ld, gid %ld) not allowed: %s",
-                (long)uid, (long)gid, err);
-        }
-#endif
-    }
-    else {
 #ifdef WIN32
-        err = fcgi_util_check_access(p, fs_path, finfo, _S_IEXEC, fcgi_user_id, fcgi_group_id);
+    err = fcgi_util_check_access(p, fs_path, finfo, _S_IEXEC, fcgi_user_id, fcgi_group_id);
 #else
-        err = fcgi_util_check_access(p, fs_path, finfo, X_OK, fcgi_user_id, fcgi_group_id);
+    err = fcgi_util_check_access(p, fs_path, finfo, X_OK, fcgi_user_id, fcgi_group_id);
 #endif
-        if (err) {
-            return ap_psprintf(p,
-                "access for server (uid %ld, gid %ld) not allowed: %s",
-                (long)fcgi_user_id, (long)fcgi_group_id, err);
-        }
+    if (err) {
+        return ap_psprintf(p,
+            "access for server (uid %ld, gid %ld) not allowed: %s",
+            (long)fcgi_user_id, (long)fcgi_group_id, err);
     }
 
     return NULL;
@@ -368,7 +361,7 @@ fcgi_util_fs_add(fcgi_server *s)
 }
 
 /*******************************************************************************
- * Configure uid, gid, user, group, username for suexec.
+ * Configure uid, gid, user, group, username for wrapper.
  */
 const char *
 fcgi_util_fs_set_uid_n_gid(pool *p, fcgi_server *s, uid_t uid, gid_t gid)
@@ -378,7 +371,7 @@ fcgi_util_fs_set_uid_n_gid(pool *p, fcgi_server *s, uid_t uid, gid_t gid)
     struct group  *gr;
 #endif
 
-    if (fcgi_suexec == NULL)
+    if (fcgi_wrapper == NULL)
         return NULL;
 
 #ifndef WIN32

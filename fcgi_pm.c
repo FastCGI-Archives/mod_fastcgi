@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_pm.c,v 1.40 2000/08/22 16:10:39 robs Exp $
+ * $Id: fcgi_pm.c,v 1.41 2000/09/19 16:26:51 robs Exp $
  */
 
 
@@ -62,13 +62,13 @@ static int fcgi_kill(ServerProcess *process, int sig)
     FCGIDBG2("fcgi_kill(%ld)", process->pid);
 
 #ifndef WIN32
-    if (fcgi_suexec) {
+    if (fcgi_wrapper) {
         seteuid_root();
     }
 
     rc = kill(process->pid, sig);
 
-    if (fcgi_suexec) {
+    if (fcgi_wrapper) {
         seteuid_user();
     }
 
@@ -399,7 +399,7 @@ static pid_t spawn_fs_process(fcgi_server *fs, ServerProcess *process)
      * install its own handler. */
     signal(SIGPIPE, SIG_IGN);
 
-    if (fcgi_suexec != NULL) {
+    if (fcgi_wrapper) {
         char *shortName = strrchr(fs->fs_path, '/') + 1;
 
         /* Relinquish our root real uid powers */
@@ -407,7 +407,7 @@ static pid_t spawn_fs_process(fcgi_server *fs, ServerProcess *process)
         setuid(ap_user_id);
 
         do {
-            execle(fcgi_suexec, fcgi_suexec, fs->username, fs->group, shortName, NULL, fs->envp);
+            execle(fcgi_wrapper, fcgi_wrapper, fs->username, fs->group, shortName, NULL, fs->envp);
         } while (errno == EINTR);
     }
     else {
@@ -650,7 +650,7 @@ static void reduce_priveleges(void)
 #endif /* __EMX__ */
 
     /* Change User */
-    if (fcgi_suexec) {
+    if (fcgi_wrapper) {
         if (seteuid_user() == -1) {
             ap_log_error(FCGI_LOG_ALERT_NOERRNO, fcgi_apache_main_server,
                 "FastCGI: process manager exiting, failed to reduce priveleges");
@@ -913,15 +913,15 @@ static void dynamic_read_msgs(int read_ready)
             }
             ap_pclosef(tp, fd);
 
-            /* If suexec is being used, config user/group info */
-            if (fcgi_suexec) {
+            /* If a wrapper is being used, config user/group info */
+            if (fcgi_wrapper) {
                 if (user[0] == '~') {
                     /* its a user dir uri, the rest is a username, not a uid */
                     struct passwd *pw = getpwnam(&user[1]);
 
                     if (!pw) {
                         ap_log_error(FCGI_LOG_CRIT, fcgi_apache_main_server,
-                            "FastCGI: can't create (dynamic) server \"%s\": can't get uid/gid for suexec: getpwnam(%s) failed",
+                            "FastCGI: can't create (dynamic) server \"%s\": can't get uid/gid for wrapper: getpwnam(%s) failed",
                             execName, &user[1]);
                         goto BagNewServer;
                     }
@@ -939,7 +939,7 @@ static void dynamic_read_msgs(int read_ready)
                     pw = getpwuid(s->uid);
                     if (!pw) {
                         ap_log_error(FCGI_LOG_CRIT, fcgi_apache_main_server,
-                            "FastCGI: can't create (dynamic) server \"%s\": can't get uid/gid for suexec: getwpuid(%ld) failed",
+                            "FastCGI: can't create (dynamic) server \"%s\": can't get uid/gid for wrapper: getwpuid(%ld) failed",
                             execName, (long)s->uid);
                         goto BagNewServer;
                     }
@@ -1460,9 +1460,9 @@ void fcgi_pm_main(void *dummy)
     change_process_name("fcgi-pm");
     setup_signals();
 
-    if (fcgi_suexec) {
+    if (fcgi_wrapper) {
         ap_log_error(FCGI_LOG_NOTICE_NOERRNO, fcgi_apache_main_server,
-            "FastCGI: suEXEC mechanism enabled (wrapper: %s)", fcgi_suexec);
+            "FastCGI: wrapper mechanism enabled (wrapper: %s)", fcgi_wrapper);
     }
 #endif
 
@@ -1582,7 +1582,7 @@ void fcgi_pm_main(void *dummy)
                         if (restart)
                             s->numRestarts++;
 
-                        if (fcgi_suexec != NULL) {
+                        if (fcgi_wrapper) {
                             ap_log_error(FCGI_LOG_WARN_NOERRNO, fcgi_apache_main_server,
                                 "FastCGI:%s server \"%s\" (uid %ld, gid %ld) %sstarted (pid %ld)",
                                 (s->directive == APP_CLASS_DYNAMIC) ? " (dynamic)" : "",

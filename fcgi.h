@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi.h,v 1.26 2000/08/22 16:10:39 robs Exp $
+ * $Id: fcgi.h,v 1.27 2000/09/19 16:26:51 robs Exp $
  */
 
 #ifndef FCGI_H
@@ -318,7 +318,7 @@ const char *fcgi_config_new_auth_server(cmd_parms * const cmd,
 const char *fcgi_config_set_authoritative_slot(const cmd_parms * const cmd,
     fcgi_dir_config * const dir_config, int arg);
 const char *fcgi_config_set_socket_dir(cmd_parms *cmd, void *dummy, char *arg);
-const char *fcgi_config_set_suexec(cmd_parms *cmd, void *dummy, const char *arg);
+const char *fcgi_config_set_wrapper(cmd_parms *cmd, void *dummy, const char *arg);
 void fcgi_config_reset_globals(void* dummy);
 const char *fcgi_config_set_env_var(pool *p, char **envp, unsigned int *envc, char * var);
 
@@ -439,7 +439,7 @@ extern pool *fcgi_config_pool;
 
 extern server_rec *fcgi_apache_main_server;
 
-extern const char *fcgi_suexec;           /* suexec_bin path */
+extern const char *fcgi_wrapper;                 /* wrapper path */
 extern uid_t fcgi_user_id;                       /* the run uid of Apache & PM */
 extern gid_t fcgi_group_id;                      /* the run gid of Apache & PM */
 

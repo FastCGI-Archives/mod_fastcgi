@@ -1,6 +1,6 @@
 <!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">
 <html>
-<!-- $Id: mod_fastcgi.html,v 1.19 2000/09/18 17:09:56 robs Exp $ -->
+<!-- $Id: mod_fastcgi.html,v 1.20 2000/09/19 16:26:52 robs Exp $ -->
 
 <head>
 <title>Apache module mod_fastcgi</title>
@@ -165,7 +165,7 @@ the specified extension(s) as FastCGI applications:</p>
   typically available to CGI/FastCGI request handlers including some explicitly precluded by
   the FastCGI specification; I didn't see the point to leaving them out.&nbsp; All headers
   returned by a FastCGI authentication application in a successful response (Status: 200)
-  are passed to subprocesses (CGI/FastCGI invocations) as environment variables rather than
+  are passed to sub-processes (CGI/FastCGI invocations) as environment variables rather than
   just those prefixed by "<code>Variable-</code>" as the FastCGI specification
   calls for; I didn't see the point in leaving them out either.&nbsp; FastCGI specification
   compliant authorizer behavior can be obtained by using the "<code>-compat</code>"
@@ -180,7 +180,7 @@ the specified extension(s) as FastCGI applications:</p>
     <li><code><A href="#FastCgiConfig">FastCgiConfig</a></code>
     <li><A href="#FastCgiExternalServer"><code>FastCgiExternalServer</code></a>
     <li><code><A href="#FastCgiIpcDir">FastCgiIpcDir</a></code>
-    <li><A href="#FastCgiSuexec"><code>FastCgiSuexec</code></a>
+    <li><a href="#FastCgiWrapper"><code>FastCgiWrapper</code></a>
     <li><A href="#FastCgiAuthenticator"><code>FastCgiAuthenticator</code></a>
     <li><A href="#FastCgiAuthenticatorAuthoritative"><code>FastCgiAuthenticatorAuthoritative</code></a>
     <li><A href="#FastCgiAuthorizer"><code>FastCgiAuthorizer</code></a>
@@ -503,7 +503,7 @@ mutually exclusive.</DD>
     web server.&nbsp; The filename is relative to the <code>FastCgiIpcDir</code>.&nbsp; The <code>-socket</code>
     and <code>-port</code> options are mutually exclusive. 
   <dd> <b>Windows NT:&nbsp;</b> The name of the named pipe the application uses
-for communitcating with the web server. the name is relative to the <TT><A href="#FastCgiIpcDir">
+for communicating with the web server. the name is relative to the <TT><A href="#FastCgiIpcDir">
 FastCgiIpcDir</A></TT>.&nbsp;
 The -<TT>socket </TT>and&nbsp;<TT> -port </TT>options are mutually exclusive. 
   <dt>&nbsp; 
@@ -543,42 +543,54 @@ The -<TT>socket </TT>and&nbsp;<TT> -port </TT>options are mutually exclusive.
   <p><b>Windows NT: </b>The <tt>FastCgiIpcDir </tt>directive specifies <i>name
   </i>as the root for the named pipes used for communication between the
   application and the web server.&nbsp; The <i>name</i> must be in the form
-  of <b>\\.\pipe\</b><i>pipname. </i>The <i>pipename </i>part can contain
-  any charater other than a backslash,/p&gt;
+  of <b>\\.\pipe\</b><i>pipename. </i>The <i>pipename </i>part can contain
+  any character other than a backslash,/p&gt;
   <p>The <code>FastCgiIpcDir</code> directive must precede any <A href="#FastCgiServer"><code>FastCgiServer</code></a>
   or <A href="#FastCgiExternalServer"><code>FastCgiExternalServer</code></a> directives
   (which make use of Unix sockets). The directory must be readable, writeable, and
   executable (searchable) by the web server, but otherwise should not be accessible to
   anyone.</p>
   <hr>
-  <h2><a name="FastCgiSuexec">FastCgiSuexec</a></h2><!-- %plaintext &lt;?INDEX {\tt FastCgiConfig} directive&gt; -->
+  <h2><a name="FastCgiWrapper">FastCgiWrapper</a></h2><!-- %plaintext &lt;?INDEX {\tt FastCgiConfig} directive&gt; -->
   <table border="0">
     <tr>
       <td><a HREF="http://www.apache.org/docs/mod/directive-dict.html#Syntax" REL="Help"><strong>Syntax:</strong></a></td>
-      <td><code>FastCgiSuexec <em>On | Off | filename</em></code></td>
+      <td><code>FastCgiWrapper <em>On | Off | filename</em></code></td>
     </tr>
     <tr>
       <td><a href="http://www.apache.org/docs/mod/directive-dict.html#Default"><strong>Default:</strong></a></td>
-      <td><code>FastCgiSuexec Off<em> </em></code></td>
+      <td><code>FastCgiWrapper Off<em> </em></code></td>
     </tr>
     <tr>
       <td><a HREF="http://www.apache.org/docs/mod/directive-dict.html#Context" REL="Help"><strong>Context:</strong></a></td>
       <td>server config</td>
     </tr>
   </table>
-  <p>The <code>FastCgiSuexec</code> directive is used to enable support for an
-  suexec-wrapper.&nbsp; <code>FastCgiSuexec</code> requires suexec be enabled in Apache (for
-  CGI).&nbsp; To use the same suexec-wrapper used by Apache, set <code>FastCgiSuexec</code>
-  to <em>On</em> (NOTE - mod_fastcgi cannot reliably determine the suexec-wrapper
-  used by Apache when built as a DSO).&nbsp; To use a specific suexec-wrapper, specify
+  <p>The <code>FastCgiWrapper</code> directive is used to enable support for a
+  wrapper such as suexec or cgiwrap.&nbsp; To use the same wrapper used by Apache, set <code>FastCgiWrapper</code>
+  to <em>On</em> (NOTE - mod_fastcgi cannot reliably determine the wrapper
+  used by Apache when built as a DSO).&nbsp;&nbsp; The <i>On</i> argument requires suexec be enabled in Apache (for
+  CGI).&nbsp; To use a specific wrapper, specify
   a <em>filename</em>.&nbsp; If the filename does not begin with a slash (/) then it is
   assumed to be relative to the <a
   
   href="http://www.apache.org/docs/mod/core.html#serverroot" 
- >ServerRoot</a>.</p>
-  <p>When <code>FastCgiSuexec</code> is enabled, the location of static or external FastCGI
-  application definitions is important.&nbsp; They inherit their user and group from the <code>User</code>
-  and <code>Group</code> directives in the virtual server in which they were defined.&nbsp; <code>User</code>
+ >ServerRoot</a>.&nbsp; The wrapper is used to invoke all FastCGI applications
+  (in the future this directive will have directory context).</p>
+  <p>When <code>FastCgiWrapper</code> is enabled, no assumptions are made about
+  the target application and thus presence and permissions checks cannot be
+  made.&nbsp; This is the responsibility of the wrapper.</p>
+  <p>The wrapper is invoked with the following arguments: username, group,
+  application.&nbsp; The username and group are determined as described
+  below.&nbsp; The application is the &quot;filename&quot; Apache resolves the
+  requested URI to (dynamic) or the filename provided as an argument to another
+  FastCGI (server or authorizer) directive.&nbsp; These arguments may or may not
+  be used by the wrapper (e.g. suexec uses them, cgiwrap parses the URI and
+  ignores them).&nbsp; The environment passed to the wrapper is identical to the
+  environment passed when a wrapper is not in use.</p>
+  <p>When <code>FastCgiWrapper</code> is enabled, the location of static or external FastCGI
+  application directives can be important.&nbsp; They inherit their user and group from the <code>User</code>
+  and <code>Group</code> of the virtual server in which they were defined.&nbsp; <code>User</code>
   and <code>Group</code> directives should precede FastCGI application definitions. &nbsp;
   Note that this does <em>not</em> limit the FastCGI application to the virtual server in
   which they were defined, the application is allowed to service requests from any virtual
@@ -639,7 +651,7 @@ The -<TT>socket </TT>and&nbsp;<TT> -port </TT>options are mutually exclusive.
 <p><code>mod_fastcgi</code> sends nearly all of the standard environment variables
 typically available to CGI/FastCGI request handlers.&nbsp; All headers returned by a
 FastCGI authentication application in a successful response (Status: 200) are passed to
-subprocesses (CGI/FastCGI invocations) as environment variables.&nbsp; All headers
+sub-processes (CGI/FastCGI invocations) as environment variables.&nbsp; All headers
 returned in an unsuccessful response are passed on to the client.&nbsp; FastCGI
 specification compliant behavior can be obtained by using the "<code>-compat</code>"
 option.</p>
@@ -739,7 +751,7 @@ Authorization Required reply.&nbsp; Disabling the default should be carefully co
 <p><code>mod_fastcgi</code> sends nearly all of the standard environment variables
 typically available to CGI/FastCGI request handlers.&nbsp; All headers returned by a
 FastCGI authorizer application in a successful response (Status: 200) are passed to
-subprocesses (CGI/FastCGI invocations) as environment variables.&nbsp; All headers
+sub-processes (CGI/FastCGI invocations) as environment variables.&nbsp; All headers
 returned in an unsuccessful response are passed on to the client.&nbsp; FastCGI
 specification compliant behavior can be obtained by using the "<code>-compat</code>"
 option.</p>
@@ -824,7 +836,7 @@ Authorization Required reply.&nbsp; Disabling the default should be carefully co
 <p><code>mod_fastcgi</code> sends nearly all of the standard environment variables
 typically available to CGI/FastCGI request handlers.&nbsp; All headers returned by a
 FastCGI access-checker application in a successful response (Status: 200) are passed to
-subprocesses (CGI/FastCGI invocations) as environment variables.&nbsp; All headers
+sub-processes (CGI/FastCGI invocations) as environment variables.&nbsp; All headers
 returned in an unsuccessful response are passed on to the client.&nbsp; FastCGI
 specification compliant behavior can be obtained by using the "<code>-compat</code>"
 option.</p>
