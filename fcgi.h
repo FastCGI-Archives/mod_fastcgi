@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi.h,v 1.36 2002/03/12 13:06:29 robs Exp $
+ * $Id: fcgi.h,v 1.37 2002/06/07 00:41:32 robs Exp $
  */
 
 #ifndef FCGI_H
@@ -370,7 +370,6 @@ int fcgi_protocol_dequeue(pool *p, fcgi_request *fr);
  */
 #define BufferLength(b)     ((b)->length)
 #define BufferFree(b)       ((b)->size - (b)->length)
-#define BufferSize(b)       ((b)->size)
 
 void fcgi_buf_check(Buffer *bufPtr);
 void fcgi_buf_reset(Buffer *bufPtr);
