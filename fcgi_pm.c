@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_pm.c,v 1.9 1999/09/08 03:57:58 roberts Exp $
+ * $Id: fcgi_pm.c,v 1.10 1999/09/10 03:04:42 roberts Exp $
  */
 
 #include "fcgi.h"
@@ -361,11 +361,20 @@ static void reduce_priveleges(void)
     }
 #endif /* __EMX__ */
 
-    /* Change real, effective, and saved UserId */
-    if (setuid(ap_user_id) == -1) {
-        ap_log_error(FCGI_LOG_ALERT, fcgi_apache_main_server, 
-            "FastCGI: process manager exiting, setuid(%u) failed", (unsigned)ap_user_id);
-        exit(1);
+    /* Change User */
+    if (fcgi_suexec) {
+        if (seteuid(ap_user_id) == -1) {
+            ap_log_error(FCGI_LOG_ALERT, fcgi_apache_main_server,
+                "FastCGI: process manager exiting, seteuid(%u) failed", (unsigned)ap_group_id);
+            exit(1);
+        }
+    }
+    else {
+        if (setuid(ap_user_id) == -1) {
+            ap_log_error(FCGI_LOG_ALERT, fcgi_apache_main_server, 
+                "FastCGI: process manager exiting, setuid(%u) failed", (unsigned)ap_user_id);
+            exit(1);
+        }
     }
 }
 
