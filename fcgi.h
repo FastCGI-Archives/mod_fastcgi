@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi.h,v 1.25 2000/07/19 17:58:37 robs Exp $
+ * $Id: fcgi.h,v 1.26 2000/08/22 16:10:39 robs Exp $
  */
 
 #ifndef FCGI_H
@@ -109,7 +109,7 @@ typedef struct _FastCgiServerInfo {
     time_t restartTime;             /* most recent time when the process
                                      * manager started a process in this
                                      * class. */
-    u_int initStartDelay;           /* min number of seconds to wait between
+    int initStartDelay;             /* min number of seconds to wait between
                                      * starting of AppClass processes at init */
     u_int restartDelay;             /* number of seconds to wait between
                                      * restarts after failure.  Can be zero. */

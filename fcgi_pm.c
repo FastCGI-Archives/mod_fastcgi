@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_pm.c,v 1.39 2000/08/22 15:05:45 robs Exp $
+ * $Id: fcgi_pm.c,v 1.40 2000/08/22 16:10:39 robs Exp $
  */
 
 
@@ -1540,8 +1540,12 @@ void fcgi_pm_main(void *dummy)
                     {
                         s->restartTime = now;
 
-                        if (s->listenFd < 0 && init_listen_sock(s))
+                        if (s->listenFd < 0 && init_listen_sock(s)) 
+                        {
+                            if (sleepSeconds > s->initStartDelay)
+                                sleepSeconds = s->initStartDelay;
                             break;
+                        }
 
 #ifndef WIN32
                         if (caughtSigTerm) {
