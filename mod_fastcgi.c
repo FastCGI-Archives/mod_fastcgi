@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.114 2001/05/03 22:11:57 robs Exp $
+ *  $Id: mod_fastcgi.c,v 1.115 2001/05/03 22:33:53 robs Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -267,7 +267,7 @@ static void init_module(server_rec *s, pool *p)
      * Under Unix, the -X switch causes two calls to init() but no detach
      * (but all subprocesses are wacked so the PM is toasted anyway)! */
 
-    if (ap_standalone && getppid() != 1)
+    if (ap_standalone && ap_restart_time == 0)
         return;
 
     /* Create the pipe for comm with the PM */

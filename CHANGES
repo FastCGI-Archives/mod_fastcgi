@@ -1,5 +1,8 @@
 2.2.11
 
+ *) Change the "which call to module_init() is this" check to a more
+    reliable approach.  Doru Petrescu [pdoru@kappa.ro]
+
  *) Close the old pipe file descriptor in apache main on USR1/HUP 
     (elimnates a small leak).  James E. Jurach Jr. jjurach@fundsxpress.com
 
