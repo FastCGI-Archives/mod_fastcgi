@@ -1,5 +1,7 @@
 Changes with mod_fastcgi 2.2.2
 
+ *) Minor tweaks for RUSSIAN_APACHE.  [Sergey Gershtein <sg@mplik.ru>]
+
  *) Dynamic updates: 
  
     Always restart a failed dynamic application if it is the last instance.

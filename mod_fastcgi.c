@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.69 1999/04/25 02:29:07 roberts Exp $
+ *  $Id: mod_fastcgi.c,v 1.70 1999/04/26 01:28:04 roberts Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -583,10 +583,17 @@ static int write_to_client(fcgi_request *fr)
      * to size the fcgi_bufs to hold all of the script output (within
      * reason) so the script can be released from having to wait around
      * for the transmission to the client to complete. */
+#ifdef RUSSIAN_APACHE
+    if (ap_rwrite(begin, count, fr->r) != count) {
+        ap_log_rerror(FCGI_LOG_INFO, fr->r, 
+            "FastCGI: comm with server \"%s\" aborted: rwrite() to client failed (client aborted?)",
+#else
     if (ap_bwrite(fr->r->connection->client, begin, count) != count) {
         ap_log_rerror(FCGI_LOG_INFO, fr->r, 
             "FastCGI: comm with server \"%s\" aborted: bwrite() to client failed (client aborted?)",
+#endif
             fr->fs_path);
+        
         return -1;
     }
 
@@ -599,9 +606,15 @@ static int write_to_client(fcgi_request *fr)
     /* The default behaviour used to be to flush with every write, but this
      * can tie up the FastCGI server longer than is necessary so its an option now */
     if (fr->fs && fr->fs->flush) {
-        if (ap_bflush(fr->r->connection->client)) {
+#ifdef RUSSIAN_APACHE
+       if (ap_rflush(fr->r)) {
+            ap_log_rerror(FCGI_LOG_INFO, fr->r, 
+                "FastCGI: comm with server \"%s\" aborted: rflush() failed (client aborted?)",
+#else
+       if (ap_bflush(fr->r->connection->client)) {
             ap_log_rerror(FCGI_LOG_INFO, fr->r, 
                 "FastCGI: comm with server \"%s\" aborted: bflush() failed (client aborted?)",
+#endif
                 fr->fs_path);
             return -1;
         }
@@ -1084,7 +1097,11 @@ static int do_work(request_rec *r, fcgi_request *fr)
     
         case SCAN_CGI_FINISHED:
             if (fr->role == FCGI_RESPONDER) {
+#ifdef RUSSIAN_APACHE
+                ap_rflush(r);
+#else
                 ap_bflush(r->connection->client);
+#endif
                 ap_bgetopt(r->connection->client, BO_BYTECT, &r->bytes_sent);
             }        
             break;
