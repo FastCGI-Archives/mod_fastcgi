@@ -1,6 +1,6 @@
 <!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">
 <HTML>
-    <!-- $Id: mod_fastcgi.html,v 1.31 2002/03/01 13:44:14 robs Exp $ -->
+    <!-- $Id: mod_fastcgi.html,v 1.32 2002/09/22 18:44:08 robs Exp $ -->
     <HEAD>
         <TITLE>
             Apache module mod_fastcgi
@@ -317,6 +317,14 @@
                 mod_fastcgi.h).
             </DD>
             <DT>
+                <CODE><STRONG>-group <EM>groupname|#gid</EM></STRONG> (none)</CODE>
+            </DT>
+            <DD>
+                <STRONG>Unix (only):</STRONG> When <A HREF="#FastCgiWrapper">FastCgiWrapper</A> is in use, the group is
+                used to invoke the wrapper. The <CODE>-group</CODE> option must be used together with
+                <CODE>-user</CODE>.
+            </DD>
+            <DT>
                 <CODE><STRONG>-idle-timeout <EM>n</EM></STRONG> (30 seconds)</CODE>
             </DT>
             <DD>
@@ -417,6 +425,14 @@
                 "#FastCgiExternalServer">FastCgiExternalServer</A></CODE>). If neither the <CODE>-socket</CODE> nor the
                 <CODE>-port</CODE> options are given, the module generates a name for the named pipe. The
                 <CODE>-socket</CODE> and <CODE>-port</CODE> options are mutually exclusive.
+            </DD>
+            <DT>
+                <CODE><STRONG>-user <EM>username|#uid</EM></STRONG> (none)</CODE>
+            </DT>
+            <DD>
+                <STRONG>Unix (only):</STRONG> When <A HREF="#FastCgiWrapper">FastCgiWrapper</A> is in use, the user is
+                used to invoke the wrapper. The <CODE>-user</CODE> option must be used together with
+                <CODE>-group</CODE>.
             </DD>
         </DL>
         <HR>
@@ -710,6 +726,14 @@
                 mod_fastcgi.h).
             </DD>
             <DT>
+                <CODE><STRONG>-group <EM>groupname|#gid</EM></STRONG> (none)</CODE>
+            </DT>
+            <DD>
+                <STRONG>Unix (only):</STRONG> When <A HREF="#FastCgiWrapper">FastCgiWrapper</A> is in use, the group is
+                used to invoke the wrapper. The <CODE>-group</CODE> option must be used together with
+                <CODE>-user</CODE>.
+            </DD>
+            <DT>
                 <CODE><STRONG>-idle-timeout <EM>n</EM></STRONG> (30 seconds)</CODE>
             </DT>
             <DD>
@@ -757,6 +781,14 @@
                 with the web server. the name is relative to the <CODE><A HREF=
                 "#FastCgiIpcDir">FastCgiIpcDir</A></CODE>. The <CODE>-socket</CODE> and <CODE>-port</CODE> options are
                 mutually exclusive.
+            </DD>
+            <DT>
+                <CODE><STRONG>-user <EM>username|#uid</EM></STRONG> (none)</CODE>
+            </DT>
+            <DD>
+                <STRONG>Unix (only):</STRONG> When <A HREF="#FastCgiWrapper">FastCgiWrapper</A> is in use, the user is
+                used to invoke the wrapper. The <CODE>-user</CODE> option must be used together with
+                <CODE>-group</CODE>.
             </DD>
         </DL>
         <HR>
@@ -818,8 +850,8 @@
             <CODE>mod_fastcgi</CODE> will break if your system periodically deletes files from <CODE>/tmp</CODE>.
         </P>
         <P>
-            <STRONG>Windows NT:&nbsp;</STRONG> The <CODE>FastCgiIpcDir</CODE> directive specifies <EM>name</EM> as
-            the root for the named pipes used for communication between the application and the web server. The
+            <STRONG>Windows NT:&nbsp;</STRONG> The <CODE>FastCgiIpcDir</CODE> directive specifies <EM>name</EM> as the
+            root for the named pipes used for communication between the application and the web server. The
             <EM>name</EM> must be in the form of <STRONG>\\\\.\\pipe\\</STRONG><EM>pipename</EM> (notice that the
             backslashes are escaped). The <EM>pipename</EM> can contain any character other than a backslash.
         </P>
@@ -869,13 +901,13 @@
             </TR>
         </TABLE>
         <P>
-            The <CODE>FastCgiWrapper</CODE> directive is used to enable support for a wrapper such as <A HREF=
-            "http://httpd.apache.org/docs/suexec.html">suexec</A> (included with Apache in the support directory) or <A
-            HREF="http://cgiwrap.sourceforge.net/">cgiwrap</A>. To use the same wrapper used by Apache, set
-            <CODE>FastCgiWrapper</CODE> to <EM>On</EM> (NOTE - mod_fastcgi cannot reliably determine the wrapper used
-            by Apache when built as a DSO). The <EM>On</EM> argument requires suexec be enabled in Apache (for CGI). To
-            use a specific wrapper, specify a <EM>filename</EM>. If the filename does not begin with a slash (/) then
-            it is assumed to be relative to the <A HREF=
+            <STRONG>Unix (only):</STRONG> The <CODE>FastCgiWrapper</CODE> directive is used to enable support for a
+            wrapper such as <A HREF="http://httpd.apache.org/docs/suexec.html">suexec</A> (included with Apache in the
+            support directory) or <A HREF="http://cgiwrap.sourceforge.net/">cgiwrap</A>. To use the same wrapper used
+            by Apache, set <CODE>FastCgiWrapper</CODE> to <EM>On</EM> (NOTE - mod_fastcgi cannot reliably determine the
+            wrapper used by Apache when built as a DSO). The <EM>On</EM> argument requires suexec be enabled in Apache
+            (for CGI). To use a specific wrapper, specify a <EM>filename</EM>. If the filename does not begin with a
+            slash (/) then it is assumed to be relative to the <A HREF=
             "http://httpd.apache.org/docs/mod/core.html#serverroot">ServerRoot</A>. The wrapper is used to invoke all
             FastCGI applications (in the future this directive will have directory context).
         </P>

@@ -1,5 +1,9 @@
 2.2.13
 
+ *) Add -user & -group args to FastCgiServer and FastCgiExternalServer
+    for use with wrappers (in lieu of finding the user/group associated
+    with a virtual host - under Apache2 this isn't accomodated).
+
  *) [WIN32] Under Apache2, require v2.0.41 or later in order to pickup my 
     apr_proc_create() changes.
 
