@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_pm.c,v 1.44 2001/02/19 06:00:09 robs Exp $
+ * $Id: fcgi_pm.c,v 1.45 2001/02/19 06:03:01 robs Exp $
  */
 
 
@@ -607,7 +607,7 @@ FailedSystemCallExit:
 }
 
 #ifndef WIN32
-static void reduce_priveleges(void)
+static void reduce_privileges(void)
 {
     char *name;
 
@@ -653,7 +653,7 @@ static void reduce_priveleges(void)
     if (fcgi_wrapper) {
         if (seteuid_user() == -1) {
             ap_log_error(FCGI_LOG_ALERT_NOERRNO, fcgi_apache_main_server,
-                "FastCGI: process manager exiting, failed to reduce priveleges");
+                "FastCGI: process manager exiting, failed to reduce privileges");
             exit(1);
         }
     }
@@ -1454,7 +1454,7 @@ void fcgi_pm_main(void *dummy)
     fcgi_config_set_env_var(fcgi_config_pool, dynamicEnvp, &i, "SystemRoot");
 
 #else
-    reduce_priveleges();
+    reduce_privileges();
 
     close(fcgi_pm_pipe[1]);
     change_process_name("fcgi-pm");
