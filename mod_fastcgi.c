@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.131 2002/03/13 23:32:19 robs Exp $
+ *  $Id: mod_fastcgi.c,v 1.132 2002/06/07 00:54:13 robs Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -1497,7 +1497,13 @@ SERVER_SEND:
 
         case STATE_SERVER_RECV:
 
-            if (! recv_pending && BufferFree(fr->serverInputBuffer))
+            /* 
+             * Only get more data when the serverInputBuffer is empty.
+             * Otherwise we may already have the END_REQUEST buffered 
+             * (but not processed) and a read on a closed named pipe 
+             * results in an error that is normally abnormal.
+             */
+            if (! recv_pending && BufferLength(fr->serverInputBuffer) == 0)
             {
                 Buffer * b = fr->serverInputBuffer;
                 DWORD rcvd, len;

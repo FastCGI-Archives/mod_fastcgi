@@ -1,5 +1,8 @@
 2.2.13
 
+ *) [WIN32] Don't read from a potentially closed named pipe. 
+    Philip Gladstone [philip@okena.com]
+
  *) Require the Apache version 1.3.6 or later to eliminate some signal
     handling funk.
 
