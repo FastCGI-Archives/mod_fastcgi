@@ -1,0 +1,53 @@
+# 
+# Makefile.tmpl for the mod_fastcgi module
+#
+#   Apache v1.3's Configure uses this to create a Makefile 
+# 
+# $Id: Makefile.tmpl,v 1.1 1998/05/27 12:56:20 roberts Exp $
+
+LIB=libfastcgi.$(LIBEXT)
+
+OBJS=mod_fastcgi.o fcgibuf.o fcgitcl.o fcgios.o
+
+# Build commands
+
+all:  lib
+lib: $(LIB)
+
+$(LIB): $(OBJS)
+	rm -f $@
+	ar cr $@ $(OBJS)
+	$(RANLIB) $@
+ 
+.c.o:
+	$(CC) -c $(INCLUDES) $(CFLAGS) $<
+
+clean:
+	rm -f $(LIB) $(OBJS)
+
+distclean: clean
+	rm -f Makefile
+
+#   NOT FOR END USERS!
+depend:
+	cp Makefile.tmpl Makefile.tmpl.bak \
+	    && sed -ne '1,/^# DO NOT REMOVE/p' Makefile.tmpl > Makefile.new \
+	    && gcc -MM $(INCLUDES) $(CFLAGS) *.c >> Makefile.new \
+	    && sed -e '1,$$s: $(INCDIR)/: $$(INCDIR)/:g' \
+	           -e '1,$$s: $(OSDIR)/: $$(OSDIR)/:g' Makefile.new \
+		> Makefile.tmpl \
+	    && rm Makefile.new
+
+# Dependencies
+
+$(OBJS): mod_fastcgi.h  fcgivers.h 
+mod_fastcgi.o: fastcgi.h  fcgitcl.h fcgibuf.h fcgios.h              \
+         $(INCDIR)/httpd.h  $(INCDIR)/http_config.h                 \
+         $(INCDIR)/http_protocol.h  $(INCDIR)/http_core.h           \
+         $(INCDIR)/http_log.h  $(INCDIR)/http_protocol.h            \
+         $(INCDIR)/http_main.h 
+fcgitcl.o: fcgitcl.h
+fcgibuf.o: fcgibuf.h fcgitcl.h fcgios.h
+fcgios.o:  fcgios.h
+
+
