@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.49 1998/10/25 03:37:18 roberts Exp $
+ *  $Id: mod_fastcgi.c,v 1.50 1998/10/25 03:43:10 roberts Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -837,8 +837,6 @@ typedef struct _FastCgiServerInfo {
     time_t restartTime;             /* most recent time when the process
                                      * manager started a process in this
                                      * class. */
-	int startDelay;					/* number of seconds to wait between
-									 * starting of AppClass processes at init */
     int restartDelay;               /* number of seconds to wait between
                                      * restarts after failure.  Can be zero.
                                      */
@@ -1317,9 +1315,7 @@ static FastCgiServerInfo *CreateFcgiServerInfo(int numInstances, char *ePath)
     serverInfoPtr->group = "-";
     serverInfoPtr->envp = NULL;
     serverInfoPtr->listenQueueDepth = FCGI_DEFAULT_LISTEN_Q;
-    serverInfoPtr->appConnectTimeout = FCGI_DEFAULT_APP_CONN_TIMEOUT;
     serverInfoPtr->numProcesses = numInstances;
-	serverInfoPtr->startDelay = 0;
     serverInfoPtr->restartDelay = FCGI_DEFAULT_RESTART_DELAY;
     serverInfoPtr->restartOnExit = FALSE;
     serverInfoPtr->numRestarts = 0;
@@ -1768,7 +1764,6 @@ const char *AppClassCmd(cmd_parms *cmd, void *dummy, char *arg)
     char *namePtr;
     char *valuePtr;
     int numProcesses = 1;
-	int startDelay = 0;
     int restartDelay = FCGI_DEFAULT_RESTART_DELAY;
     int processPriority = FCGI_DEFAULT_PRIORITY;
     int listenQueueDepth = FCGI_DEFAULT_LISTEN_Q;
@@ -1852,17 +1847,6 @@ const char *AppClassCmd(cmd_parms *cmd, void *dummy, char *arg)
                 goto BadValueReturn;
             }
             restartDelay = n;
-            continue;
-        } else if((strcmp(argv[i], "-start-delay") == 0)) {
-            if((i + 1) == argc) {
-                goto MissingValueReturn;
-            }
-            i++;
-            n = strtol(argv[i], &cvtPtr, 10);
-            if(*cvtPtr != '\0' || n < 0) {
-                goto BadValueReturn;
-            }
-            startDelay = n;
             continue;
         } else if((strcmp(argv[i], "-priority") == 0)) {
             if((i + 1) == argc) {
@@ -1950,7 +1934,6 @@ const char *AppClassCmd(cmd_parms *cmd, void *dummy, char *arg)
     if (suexec_enabled) {
         struct passwd *pw;
         struct group  *gr;
-		char 		  *result;
         
         pw = getpwuid(cmd->server->server_uid);
         if (pw == NULL) {
@@ -1971,18 +1954,9 @@ const char *AppClassCmd(cmd_parms *cmd, void *dummy, char *arg)
             goto ErrorReturn;
         }
         serverInfoPtr->group = strdup(gr->gr_name);
-
-        result = SuexecCheck(NULL, execPath, serverInfoPtr->user, serverInfoPtr->group);
-        if (result) {
-            sprintf(errMsg,
-                    "[%s] mod_fastcgi: suexec of '%s' would fail: %s\n",
-                    get_time(), execPath, result);
-            goto ErrorReturn;
-        }
     }
     DStringAppend(&serverInfoPtr->execPath, execPath, -1);
     serverInfoPtr->restartOnExit = TRUE;
-	serverInfoPtr->startDelay = startDelay;
     serverInfoPtr->restartDelay = restartDelay;
     serverInfoPtr->processPriority = processPriority;
     serverInfoPtr->listenQueueDepth = listenQueueDepth;
@@ -2663,15 +2637,6 @@ NothingToDo:
         }
         s = LookupFcgiServerInfo(execName);
         if(s==NULL && opcode != REQ_COMPLETE) {
-			if (suexec_enabled) {
-		        char *result = SuexecCheck(NULL, execName, user, group);
-		        if (result) {
-		            fprintf(errorLog,
-		                    "[%s] mod_fastcgi: suexec of '%s' will fail: %s\n",
-		                    get_time(), execPath, result);
-		            continue;
-		        }
-			}
             s = CreateFcgiServerInfo(maxClassProcs, execName);
             DStringAppend(&s->execPath, execName, -1);
             s->user = strdup(user);
@@ -3132,7 +3097,7 @@ static int CaughtSigTerm(void)
  *----------------------------------------------------------------------
  */
 
-static char * SuexecCheck(struct stat *statBuf, char *file, char *user, char *group);
+static char * SuexecCheck(char *file, char *user, char *group);
 
 
 static int OS_ExecFcgiProgram(
@@ -3214,7 +3179,7 @@ static int OS_ExecFcgiProgram(
         /* It would be better to check this in AppClass for static apps and in 
          * RemoveRecords() for dynamic - before commiting the FcgiServerInfo.
          */
-        char *result = SuexecCheck(NULL, shortName, user, group);
+        char *result = SuexecCheck(shortName, user, group);
         if (result) {
             fprintf(FastCgiProcMgrGetErrLog(),
                     "[%s] mod_fastcgi: can't suexec '%s': %s\n",
@@ -3354,21 +3319,14 @@ void FastCgiProcMgr(void *data)
             }
             for(i = 0; i < numChildren; i++) {
                 if((s->procInfo[i].pid <= 0) &&
-                    	(s->procInfo[i].state == STATE_NEEDS_STARTING)) {
-                    time_t restartTime;
+                    (s->procInfo[i].state == STATE_NEEDS_STARTING)) {
+                    time_t restartTime = s->restartTime + s->restartDelay;
                     time_t now = time(NULL);
-
                     /* start dynamic apps immediately */
                     if(s->directive == APP_CLASS_DYNAMIC) {
                         restartTime = now;
-                    } else {
-                    	if (s->procInfo[i].pid == 0) {
-                    		restartTime = s->restartTime + s->startDelay;
-						} else {
-                    		restartTime = s->restartTime + s->restartDelay;
-						}	
-					}
-                    if(restartTime <= now) {
+                    }
+                    if(s->procInfo[i].pid == 0 || restartTime <= now) {
                         int restart = (s->procInfo[i].pid < 0);
                         if(restart) {
                             s->numRestarts++;
@@ -4758,11 +4716,11 @@ static int GetUserGroup(FastCgiInfo *infoPtr, char **user, char **group)
 #endif
 
 static char *
-SuexecCheck(struct stat *statBuf, char *file, char *user, char *group)
+SuexecCheck(char *file, char *user, char *group)
 {
     static char   resultBuf[PATH_MAX + 50];
 
-    struct stat   myStatBuf;
+    struct stat   statBuf;
     struct passwd *pw;
     struct group  *gr;
     gid_t         gid;
@@ -4773,14 +4731,10 @@ SuexecCheck(struct stat *statBuf, char *file, char *user, char *group)
      * user.  See suexec.c.
      */
 
-	if (statBuf == NULL) {
-		ASSERT(file);
-	    if (lstat(file, &myStatBuf) != 0) {
-	        sprintf(resultBuf, "mod_fastcgi: lstat(%.*s) failed", PATH_MAX, file);
-	        return (resultBuf);
-	    }
-		statBuf = &myStatBuf;
-	}
+    if (lstat(file, &statBuf) != 0) {
+        sprintf(resultBuf, "mod_fastcgi: lstat(%.*s) failed", PATH_MAX, file);
+        return (resultBuf);
+    }
 
     if (user[0] == '~')
         userName = user + 1;
@@ -4790,10 +4744,10 @@ SuexecCheck(struct stat *statBuf, char *file, char *user, char *group)
         sprintf(resultBuf, "mod_fastcgi: getpwnam(%s) failed", userName);
         return (resultBuf);
     }
-    if (pw->pw_uid != statBuf->st_uid) {
+    if (pw->pw_uid != statBuf.st_uid) {
         sprintf(resultBuf,
             "mod_fastcgi: the fastcgi-script's uid (%ld) is not the same as exec'ing user (%ld)",
-            (long) statBuf->st_uid, (long) pw->pw_uid);
+            (long) statBuf.st_uid, (long) pw->pw_uid);
         return (resultBuf);
     }
 
@@ -4811,10 +4765,10 @@ SuexecCheck(struct stat *statBuf, char *file, char *user, char *group)
         gid = gr->gr_gid;
     }  
           
-    if (gid != statBuf->st_gid) {
+    if (gid != statBuf.st_gid) {
         sprintf(resultBuf,
             "mod_fastcgi: the fastcgi-script's gid (%ld) is not the same as exec'ing group (%ld)",
-            (long) statBuf->st_gid, (long) gid);
+            (long) statBuf.st_gid, (long) gid);
         return (resultBuf);
     }
     return (NULL);
@@ -4860,7 +4814,7 @@ static int ConnectToFcgiApp(WS_Request *reqPtr, FastCgiInfo *infoPtr)
          * for static apps and to use the uid/gid in the generation
          * of the socket file for dynamic apps.
          */
-        char *result = SuexecCheck(&reqPtr->finfo, NULL, user, group);
+        char *result = SuexecCheck(reqPtr->filename, user, group);
         if (result) {
             sprintf(infoPtr->errorMsg, "%s", result);
             goto Error;
