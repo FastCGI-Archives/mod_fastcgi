@@ -2659,139 +2659,137 @@ NothingToDo:
     }
 
     /* Update data structures for processing */
-    ptr1 = buf;
-    while(ptr1!=NULL) {
+    for (ptr1 = buf; ptr1 != NULL; ptr1 = ptr2) {
         if((ptr2 = strchr(ptr1, '\n'))!=NULL) {
 	    *(ptr2) = '\0';
 	    ptr2++;
-	    opcode = *ptr1;
-	    switch (opcode) {
-	        case PLEASE_START:
-	            sscanf(ptr1, "%c %s\n", &opcode, execName);
-	            break;
-	        case CONN_TIMEOUT:
-	            sscanf(ptr1, "%c %s %lu\n", &opcode, execName, &qsec);
-		    break;
-		case REQ_COMPLETE:
-	            sscanf(ptr1, "%c %s %lu %lu %lu\n", &opcode, execName,
-		            &qsec, &ctime, &now);
-		    break;
-	        default:
-		    goto CleanupReturn;
-		    break;
-	    }
-	    s = LookupFcgiServerInfo(execName);
-	    if(s==NULL) {
-	        s = CreateFcgiServerInfo(maxClassProcs, execName);
-		DStringAppend(&s->execPath, execName, -1);
-		s->numProcesses = 0;
-		s->restartTime = 0;            
-		s->directive = APP_CLASS_DYNAMIC;
-		/* create a socket file for the app */
-		ipcAddrPtr = (OS_IpcAddr *) OS_InitIpcAddr();
-		listenFd = OS_CreateLocalIpcFd((OS_IpcAddress *)ipcAddrPtr, 
-			FCGI_DEFAULT_LISTEN_Q, 
-	                (user_id == (uid_t) -1)  ? geteuid() : user_id,
+	}
+	opcode = *ptr1;
+	switch (opcode) {
+	    case PLEASE_START:
+		sscanf(ptr1, "%c %s\n", &opcode, execName);
+		break;
+	    case CONN_TIMEOUT:
+		sscanf(ptr1, "%c %s %lu\n", &opcode, execName, &qsec);
+		break;
+	    case REQ_COMPLETE:
+		sscanf(ptr1, "%c %s %lu %lu %lu\n", &opcode, execName,
+			&qsec, &ctime, &now);
+		break;
+	    default:
+		goto CleanupReturn;
+		break;
+	}
+	s = LookupFcgiServerInfo(execName);
+ 	if(s==NULL) {
+	    s = CreateFcgiServerInfo(maxClassProcs, execName);
+	    DStringAppend(&s->execPath, execName, -1);
+	    s->numProcesses = 0;
+	    s->restartTime = 0;            
+	    s->directive = APP_CLASS_DYNAMIC;
+	    /* create a socket file for the app */
+	    ipcAddrPtr = (OS_IpcAddr *) OS_InitIpcAddr();
+	    listenFd = OS_CreateLocalIpcFd((OS_IpcAddress *)ipcAddrPtr, 
+		    FCGI_DEFAULT_LISTEN_Q, 
+		    (user_id == (uid_t) -1)  ? geteuid() : user_id,
 #ifndef __EMX__
-                        (group_id == (gid_t) -1) ? getegid() : group_id,
+		    (group_id == (gid_t) -1) ? getegid() : group_id,
 #else
-                        (gid_t)-1,
+		    (gid_t)-1,
 #endif
-                        MakeSocketName, execName, 
-		        NULL, -1, 1);
-		if(listenFd<0) {
-		    fprintf(errorLogFile, "Unable to create a socket for %s\n",
-		            execName);
-		} else {
-		    s->listenFd = listenFd;
-		    for(i=0;i<maxClassProcs;i++) {
-		        s->procInfo[i].listenFd = listenFd;
-		    }
-		}
-		OS_FreeIpcAddr(ipcAddrPtr);
-		/* don't forget to create a lock file for this app */
-		lockFileName = MakeLockFileName(execName);
-		fd = open(lockFileName, O_WRONLY | O_CREAT | O_TRUNC, 
-		        S_IRUSR | S_IWUSR);
-		ASSERT(fd>0);
-		close(fd);
-		free(lockFileName);
+		    MakeSocketName, execName, 
+		    NULL, -1, 1);
+	    if(listenFd<0) {
+		fprintf(errorLogFile, "Unable to create a socket for %s\n",
+			execName);
 	    } else {
-	        if(opcode==PLEASE_START) {
-		  if (autoUpdate) {
-		      /* Check to see if the binary has changed.  If so,
-		       * kill the FCGI application processes, and 
-		       * restart them.
-		       */
-		      struct stat stbuf;
-		      int i;
-		      if ((stat(execName, &stbuf)>=0) &&
-			  (stbuf.st_mtime > s->restartTime)) {
-			/* kill old server(s) */
-			for (i = 0; i < s->numProcesses; i++) {
-			  kill(s->procInfo[i].pid, SIGTERM);
-			}
-			fprintf(errorLogFile,
-				"mod_fastcgi: binary %s modified, restarting FCGI app server\n",
-				execName);
-		      }
-		      if (restartDynamic) {
-			/* don't worry about restarting the processes after
-			 * killing them.  We'll restart them after getting
-			 * the SIGCHLD because we're restarting dynamic
-			 * proceses automatically.
-			 */
-			continue;
-		      } else {
-			/* we need to restart this process now.  Don't do a
-			 * continue here, and we'll restart it below.
-			 */
-		      }
-		    } else {
-		      continue;
-		    }
+		s->listenFd = listenFd;
+		for(i=0;i<maxClassProcs;i++) {
+		    s->procInfo[i].listenFd = listenFd;
 		}
 	    }
-	    switch (opcode) {
- 	        case PLEASE_START:
-	        case CONN_TIMEOUT:
-	            if((s->numProcesses+1)>maxClassProcs) {
-		        /* Can't do anything here, log error */
-		        fprintf(errorLogFile,
-			        "[%s] mod_fastcgi: Exceeded maxClassProcs\n", 
-				get_time());
-			continue;
+	    OS_FreeIpcAddr(ipcAddrPtr);
+	    /* don't forget to create a lock file for this app */
+	    lockFileName = MakeLockFileName(execName);
+	    fd = open(lockFileName, O_WRONLY | O_CREAT | O_TRUNC, 
+		    S_IRUSR | S_IWUSR);
+	    ASSERT(fd>0);
+	    close(fd);
+	    free(lockFileName);
+	} else {
+	    if(opcode==PLEASE_START) {
+	      if (autoUpdate) {
+		  /* Check to see if the binary has changed.  If so,
+		   * kill the FCGI application processes, and 
+		   * restart them.
+		   */
+		  struct stat stbuf;
+		  int i;
+		  if ((stat(execName, &stbuf)>=0) &&
+		      (stbuf.st_mtime > s->restartTime)) {
+		    /* kill old server(s) */
+		    for (i = 0; i < s->numProcesses; i++) {
+		      kill(s->procInfo[i].pid, SIGTERM);
 		    }
-		    if((globalNumInstances+1)>maxProcs) {
-		        /* 
-			 * Extra instances should have been 
-			 * terminated beforehand, probably need 
-			 * to increase ProcessSlack parameter 
-			 */
-		        fprintf(errorLogFile,
-			        "[%s] mod_fastcgi: Exceeded maxProcs\n", 
-				get_time());
-			continue;
-		    }
-		    /* find next free slot */
-		    for(i=0;i<maxClassProcs;i++) {
-		        if((s->procInfo[i].pid == -1) &&
-			       ((s->procInfo[i].state == STATE_READY) ||
-				(s->procInfo[i].state == STATE_NEEDS_STARTING) ||
-				(s->procInfo[i].state == STATE_KILLED)))
-			  break;
-		    }
-		    ASSERT(i<maxClassProcs);
-	            s->procInfo[i].state = 
-		            STATE_NEEDS_STARTING;
-		    break;
-	       case REQ_COMPLETE:
-		    s->totalConnTime += ctime;
-		    s->totalQueueTime += qsec;
-		    break;
+		    fprintf(errorLogFile,
+			    "mod_fastcgi: binary %s modified, restarting FCGI app server\n",
+			    execName);
+		  }
+		  if (restartDynamic) {
+		    /* don't worry about restarting the processes after
+		     * killing them.  We'll restart them after getting
+		     * the SIGCHLD because we're restarting dynamic
+		     * proceses automatically.
+		     */
+		    continue;
+		  } else {
+		    /* we need to restart this process now.  Don't do a
+		     * continue here, and we'll restart it below.
+		     */
+		  }
+		} else {
+		  continue;
+		}
 	    }
 	}
-	ptr1 = ptr2;
+	switch (opcode) {
+	    case PLEASE_START:
+	    case CONN_TIMEOUT:
+		if((s->numProcesses+1)>maxClassProcs) {
+		    /* Can't do anything here, log error */
+		    fprintf(errorLogFile,
+			    "[%s] mod_fastcgi: Exceeded maxClassProcs\n", 
+			    get_time());
+		    continue;
+		}
+		if((globalNumInstances+1)>maxProcs) {
+		    /* 
+		     * Extra instances should have been 
+		     * terminated beforehand, probably need 
+		     * to increase ProcessSlack parameter 
+		     */
+		    fprintf(errorLogFile,
+			    "[%s] mod_fastcgi: Exceeded maxProcs\n", 
+			    get_time());
+		    continue;
+		}
+		/* find next free slot */
+		for(i=0;i<maxClassProcs;i++) {
+		    if((s->procInfo[i].pid == -1) &&
+			   ((s->procInfo[i].state == STATE_READY) ||
+			    (s->procInfo[i].state == STATE_NEEDS_STARTING) ||
+			    (s->procInfo[i].state == STATE_KILLED)))
+		      break;
+		}
+		ASSERT(i<maxClassProcs);
+		s->procInfo[i].state = 
+			STATE_NEEDS_STARTING;
+		break;
+	   case REQ_COMPLETE:
+		s->totalConnTime += ctime;
+		s->totalQueueTime += qsec;
+		break;
+	}
     }
     
 CleanupReturn:
