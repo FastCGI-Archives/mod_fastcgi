@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_util.c,v 1.12 2000/05/12 13:52:29 robs Exp $
+ * $Id: fcgi_util.c,v 1.13 2000/05/24 01:51:52 robs Exp $
  */
 
 #include "fcgi.h"
@@ -417,10 +417,9 @@ fcgi_util_fs_create_procs(pool *p, int num)
 
     for (i = 0; i < num; i++) {
 #ifdef WIN32
-        proc[i].pid = (HANDLE) 0;
-#else
-        proc[i].pid = 0;
+        proc[i].handle = INVALID_HANDLE_VALUE;
 #endif
+        proc[i].pid = 0;
         proc[i].state = STATE_READY;
     }
     return proc;

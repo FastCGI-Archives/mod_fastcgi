@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi.h,v 1.23 2000/04/29 21:01:43 robs Exp $
+ * $Id: fcgi.h,v 1.24 2000/05/24 01:51:52 robs Exp $
  */
 
 #ifndef FCGI_H
@@ -76,10 +76,9 @@ typedef struct _fcgi_pm_job {
  */
 typedef struct _FcgiProcessInfo {
 #ifdef WIN32
-    HANDLE pid;                      /* handle of associated process */
-#else
-    pid_t pid;                       /* pid of associated process */
+    HANDLE handle;            /* handle of associated process */
 #endif
+    pid_t pid;                       /* pid of associated process */
     enum {STATE_STARTED,             /* currently running */
           STATE_NEEDS_STARTING,      /* needs to be started by PM */
           STATE_KILL,                /* kill() is needed */

@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_pm.c,v 1.29 2000/05/10 05:15:48 robs Exp $
+ * $Id: fcgi_pm.c,v 1.30 2000/05/24 01:51:52 robs Exp $
  */
 
 
@@ -22,16 +22,29 @@ static time_t now = 0;
 struct FuncData {
 #ifndef WIN32
     const char *lockFileName;    /* name of the lock file to lock */
-    pid_t pid;                   /* process to issue SIGTERM to   */
 #else
     FcgiRWLock *lock;    /* reader/writer lock for dynamic app */
-    HANDLE pid;                  /* process to issue SIGTERM to   */
 #endif
+    ServerProcess *process;                  /* process to issue SIGTERM to   */
 };
 
 #ifdef WIN32
 static BOOL bTimeToDie = FALSE;  /* process termination flag */
 HANDLE fcgi_event_handles[3];
+
+static void append_mutex_to_env(char ** envp, HANDLE pipe_mutex) {
+    int i;
+    char * mutex;
+    char ** env = envp;
+
+    for (i = 0; *envp; ++i) {
+        ++envp;
+    }
+
+    mutex = ap_psprintf(fcgi_config_pool, "_FCGI_MUTEX_=%d", (int) pipe_mutex);
+    fcgi_config_set_env_var(fcgi_config_pool, env, &i, mutex);
+}
+
 #endif
 
 
@@ -57,20 +70,25 @@ static int seteuid_user(void)
 }
 #endif
 
-static int fcgi_kill(pid_t pid, int sig)
+static int fcgi_kill(ServerProcess *process, int sig)
 {
     int rc;
+
 #ifndef WIN32
     if (fcgi_suexec) {
         seteuid_root();
     }
-    rc = kill(pid, sig);
+
+    rc = kill(process->pid, sig);
+
     if (fcgi_suexec) {
         seteuid_user();
     }
+
 #else
-    rc = TerminateProcess((HANDLE) pid, sig);
+    rc = TerminateProcess(process->handle, sig);
 #endif
+
     return rc;
 }
 
@@ -92,14 +110,15 @@ static void kill_fs_procs(pool *p, fcgi_server *s)
     for (i = 0; i < numChildren; i++, proc++) {
 #ifndef WIN32
         if (proc->pid > 0) {
-            fcgi_kill(proc->pid, SIGTERM);
+            fcgi_kill(proc, SIGTERM);
             proc->pid = -1;
         }
 #else
-        if (proc->pid != INVALID_HANDLE_VALUE) {
-            fcgi_kill((int) proc->pid, 1);
-            CloseHandle((HANDLE) proc->pid);
-            proc->pid = INVALID_HANDLE_VALUE;
+        if (proc->handle != INVALID_HANDLE_VALUE) {
+            fcgi_kill(proc, 1);
+            CloseHandle(proc->handle);
+            proc->handle = INVALID_HANDLE_VALUE;
+            proc->pid = -1;
         }
 #endif
     }
@@ -208,7 +227,7 @@ static void dynamic_blocking_kill(void *data)
         if (fcgi_wait_for_shared_write_lock(lockFd) < 0) {
             /* This is a major problem */
         } else {
-            fcgi_kill(funcData->pid, SIGTERM);
+            fcgi_kill(funcData->process, SIGTERM);
         }
     }
     /* exit() may flush stdio buffers inherited from the parent. */
@@ -219,7 +238,7 @@ static void dynamic_blocking_kill(void *data)
        // This is a major problem 
     }
 	else {
-       TerminateProcess(funcData->pid, 1);
+       fcgi_kill(funcData->process, 1);
        fcgi_rdwr_unlock(funcData->lock, WRITER);
     }
     return;
@@ -294,11 +313,7 @@ static void signal_handler(int signo)
  *----------------------------------------------------------------------
  */
 
-#ifndef WIN32
-static pid_t spawn_fs_process(const fcgi_server *fs)
-#else
-static HANDLE spawn_fs_process(fcgi_server *fs)
-#endif
+static pid_t spawn_fs_process(fcgi_server *fs, ServerProcess *process)
 {
 #ifndef WIN32
     pid_t child_pid;
@@ -382,71 +397,125 @@ FailedSystemCallExit:
 
     /* avoid an irrelevant compiler warning */
     return(0);
+
 #else
-    int i = 0;
-    int EnvBlockLen = 1;
-    int success =  0;
-    char * EnvBlock = NULL;
-    char * Next;
-    char * mutex = NULL;
-    HANDLE child_process;
+
+    /* Adapted from Apache's util_script.c ap_call_exec() */
+    char *interpreter = NULL;
+    char *ext = NULL;
+    char *exename = NULL;
+    char *s = NULL;
+    char *quoted_filename;
+    char *pCommand;
+    char *pEnvBlock, *pNext;
+
+    int i;
+    int iEnvBlockLen;
+
+    file_type_e fileType;
 
     STARTUPINFO si;
     PROCESS_INFORMATION pi;
-    pool * tp =ap_make_sub_pool(fcgi_config_pool);
+
+    request_rec r;
+    pid_t pid = -1;
+
+    pool * tp = ap_make_sub_pool(fcgi_config_pool);
 
     memset(&si, 0, sizeof(si));
     memset(&pi, 0, sizeof(pi));
+    memset(&r,  0, sizeof(r));
 
+    // Can up a fake request to pass to ap_get_win32_interpreter()
+    r.per_dir_config = fcgi_apache_main_server->lookup_defaults;
+    r.server = fcgi_apache_main_server;
+    r.filename = (char *) fs->fs_path;
+    r.pool = tp;
+
+    fileType = ap_get_win32_interpreter(&r, &interpreter);
+
+    if (fileType == eFileTypeUNKNOWN) {
+        ap_log_error(APLOG_MARK, APLOG_ERR|APLOG_NOERRNO, fcgi_apache_main_server,
+                      "FastCGI: %s is not executable; ensure interpreted scripts have "
+                      "\"#!\" as their first line", 
+                      fs->fs_path);
+        ap_destroy_pool(tp);
+        return (pid);
+    }
+
+    /*
+     * We have the interpreter (if there is one) and we have 
+     * the arguments (if there are any).
+     * Build the command string to pass to CreateProcess. 
+     */
+    quoted_filename = ap_pstrcat(tp, "\"", fs->fs_path, "\"", NULL);
+    if (interpreter && *interpreter) {
+        pCommand = ap_pstrcat(tp, interpreter, " ", quoted_filename, NULL);
+    }
+    else {
+        pCommand = quoted_filename;
+    }
+
+    /*
+     * Make child process use hPipeOutputWrite as standard out,
+     * and make sure it does not show on screen.
+     */
     si.cb = sizeof(si);
-    si.dwFlags = STARTF_USESHOWWINDOW | STARTF_USESTDHANDLES;
+    si.dwFlags     = STARTF_USESHOWWINDOW | STARTF_USESTDHANDLES;
     si.wShowWindow = SW_HIDE;
-    si.hStdInput = (HANDLE) fs->listenFd;
-    si.hStdOutput = INVALID_HANDLE_VALUE;
-    si.hStdError = INVALID_HANDLE_VALUE;
+    si.hStdInput   = (HANDLE) fs->listenFd;
 
-    // There is always at least SystemRoot under Win32
-    while (fs->envp[i]) {
-        EnvBlockLen += strlen(fs->envp[i]) + 1;
-        i++;
-    }
+    // XXX These should be open to the error_log
+    si.hStdOutput  = INVALID_HANDLE_VALUE;
+    si.hStdError   = INVALID_HANDLE_VALUE;
 
-    if (fs->socket_path) {
-        mutex = ap_psprintf(tp, "_FCGI_MUTEX_=%d", (int) fs->hPipeMutex);
-        EnvBlockLen += strlen(mutex) + 1;
-    }
-
-    EnvBlock = (char *) ap_pcalloc(tp, EnvBlockLen);
-
-    // These are supposed to be sorted, oh well
+    /*
+     * Win32's CreateProcess call requires that the environment
+     * be passed in an environment block, a null terminated block of
+     * null terminated strings.
+     */  
     i = 0;
-    Next = EnvBlock;
+    iEnvBlockLen = 1;
     while (fs->envp[i]) {
-        strcpy(Next, fs->envp[i]);
-        Next = Next + strlen(Next) + 1;
+        iEnvBlockLen += strlen(fs->envp[i]) + 1;
         i++;
     }
 
-    if (fs->socket_path) {
-        strcpy(Next, mutex);
+    pEnvBlock = (char *)ap_pcalloc(tp,iEnvBlockLen);
+
+    i = 0;
+    pNext = pEnvBlock;
+    while (fs->envp[i]) {
+        strcpy(pNext, fs->envp[i]);
+        pNext = pNext + strlen(pNext) + 1;
+        i++;
     }
 
-    success = SetHandleInformation(si.hStdInput, HANDLE_FLAG_INHERIT, TRUE);
-
-    success = CreateProcess(NULL, (char *)fs->fs_path, NULL, NULL, TRUE, 0, EnvBlock,
-                            ap_make_dirstr_parent(tp, fs->fs_path), &si, &pi);
+    if (CreateProcess(NULL, pCommand, NULL, NULL, TRUE, 
+                      0,
+                      pEnvBlock,
+                      ap_make_dirstr_parent(tp, fs->fs_path),
+                      &si, &pi)) {
+        if (fileType == eFileTypeEXE16) {
+            /* Hack to get 16-bit CGI's working. It works for all the 
+             * standard modules shipped with Apache. pi.dwProcessId is 0 
+             * for 16-bit CGIs and all the Unix specific code that calls 
+             * ap_call_exec interprets this as a failure case. And we can't 
+             * use -1 either because it is mapped to 0 by the caller.
+             */
+            pid = -2;
+        }
+        else {
+            pid = pi.dwProcessId;
+            process->handle = pi.hProcess;
+            CloseHandle(pi.hThread);
+        }
+    }
 
     ap_destroy_pool(tp);
 
-    if (success) {
-        child_process = pi.hProcess;
-        CloseHandle(pi.hThread);
+    return pid;
 
-        return(child_process);
-    }
-    else {
-        return INVALID_HANDLE_VALUE;
-    }
 #endif
 }
 
@@ -665,7 +734,7 @@ static void dynamic_read_msgs(int read_ready)
         if (scan_failed) {
             ap_log_error(FCGI_LOG_ERR_NOERRNO, fcgi_apache_main_server,
                 "FastCGI: bogus message, sscanf() failed: \"%s\"", ptr1);
-            continue;
+            goto NextJob;
         }
 #else
     /* Update data structures for processing */
@@ -685,7 +754,10 @@ static void dynamic_read_msgs(int read_ready)
         if (s==NULL && cjob->id != REQ_COMPLETE)
 #endif
         {
-#ifndef WIN32
+#ifdef WIN32
+            char ** envp;
+            int i;
+#else
             int fd;
             const char *err, *lockPath;
 #endif
@@ -700,12 +772,20 @@ static void dynamic_read_msgs(int read_ready)
             s->restartDelay = dynamicRestartDelay;
             s->listenQueueDepth = dynamicListenQueueDepth;
             s->initStartDelay = dynamicInitStartDelay;
-            s->envp = dynamicEnvp;
 #ifndef WIN32
+            s->envp = dynamicEnvp;
             ap_getparents(execName);
             ap_no2slash(execName);
             s->fs_path = ap_pstrdup(sp, execName);
 #else
+            // Create our own copy of the env so we can _FCGI_MUTEX_
+            envp = dynamicEnvp;
+            for (i = 0; *envp; ++i) {
+                ++envp;
+            }
+            s->envp = ap_pcalloc(sp, sizeof(char *) * (i + 2));
+            memcpy(s->envp, dynamicEnvp, sizeof(char *) * i);
+
             ap_getparents(cjob->fs_path);
             ap_no2slash(cjob->fs_path);
             s->fs_path = ap_pstrdup(sp, cjob->fs_path);
@@ -825,6 +905,8 @@ static void dynamic_read_msgs(int read_ready)
 
             SetHandleInformation(s->hPipeMutex, HANDLE_FLAG_INHERIT, TRUE);
 
+            append_mutex_to_env(s->envp, s->hPipeMutex);
+
             /* Create the application lock */
             if ((s->dynamic_lock = fcgi_rdwr_create()) == NULL) {
                 ap_log_error(FCGI_LOG_CRIT, fcgi_apache_main_server,
@@ -860,15 +942,9 @@ static void dynamic_read_msgs(int read_ready)
                             (stbuf.st_mtime > s->restartTime)) {
                         /* kill old server(s) */
                         for (i = 0; i < dynamicMaxClassProcs; i++) {
-#ifndef WIN32
                             if (s->procs[i].pid > 0) {
-                                fcgi_kill(s->procs[i].pid, SIGTERM);
+                                fcgi_kill(&s->procs[i], SIGTERM);
                             }
-#else
-                            if (s->procs[i].pid != INVALID_HANDLE_VALUE) {
-                                fcgi_kill((int) s->procs[i].pid, 1);
-                            }
-#endif
                         }
 
                         ap_log_error(FCGI_LOG_WARN_NOERRNO, fcgi_apache_main_server,
@@ -886,7 +962,7 @@ static void dynamic_read_msgs(int read_ready)
                      * will be restarting all of those we just killed.
                      */
                     if (dynamicAutoRestart)
-                        continue;
+                        goto NextJob;
                 } else {
                     /* we've been asked to start a process--only start
                     * it if we're not already running at least one
@@ -900,7 +976,7 @@ static void dynamic_read_msgs(int read_ready)
                     }
                     /* if already running, don't start another one */
                     if (i < dynamicMaxClassProcs) {
-                        continue;
+                        goto NextJob;
                     }
                 }
             }
@@ -922,7 +998,7 @@ static void dynamic_read_msgs(int read_ready)
                 if (time_passed < (int) s->initStartDelay
                      && time_passed < (int) s->restartDelay)
                 {
-                    continue;
+                    goto NextJob;
                 }
 
                 if ((fcgi_dynamic_total_proc_count + 1) > (int) dynamicMaxProcs) {
@@ -934,7 +1010,7 @@ static void dynamic_read_msgs(int read_ready)
                     ap_log_error(FCGI_LOG_WARN_NOERRNO, fcgi_apache_main_server,
                         "FastCGI: can't schedule the start of another (dynamic) server \"%s\" process: "
                         "exceeded dynamicMaxProcs (%d)", s->fs_path, dynamicMaxProcs);
-                    continue;
+                    goto NextJob;
                 }
                 /* find next free slot */
                 for (i = 0; i < dynamicMaxClassProcs; i++) {
@@ -942,24 +1018,17 @@ static void dynamic_read_msgs(int read_ready)
                         && s->procs[i].state != STATE_NEEDS_STARTING
                         && s->procs[i].state != STATE_KILLED)
                     {
-                        continue;
+                        goto NextJob;
                     }
-#ifndef WIN32
+
                     if (s->procs[i].pid < 0)
-#else
-                    if (s->procs[i].pid == INVALID_HANDLE_VALUE)
-#endif
                     {
                         if (time_passed > (int)s->restartDelay) {
                             schedule_start(s, i);
                         }
                         break;
                     }
-#ifndef WIN32
                     else if (s->procs[i].pid == 0)
-#else
-                    else if (s->procs[i].pid == (HANDLE) 0)
-#endif
                     {
                         if (time_passed > (int)s->initStartDelay) {
                             schedule_start(s, i);
@@ -982,6 +1051,8 @@ static void dynamic_read_msgs(int read_ready)
                 }
                 break;
         }
+
+NextJob:
 
 #ifdef WIN32
         /* Cleanup job data */
@@ -1145,7 +1216,7 @@ static void dynamic_kill_idle_fs_procs(void)
 #else
                     funcData->lock = s->dynamic_lock;
 #endif
-                    funcData->pid = s->procs[i].pid;
+                    funcData->process = &s->procs[i];
                     
 #ifndef WIN32
                     if((pid=fork())<0) {
@@ -1173,10 +1244,10 @@ static void dynamic_kill_idle_fs_procs(void)
                 else {
                     s->procs[i].state = STATE_VICTIM;
 #ifndef WIN32
-                    fcgi_kill(s->procs[i].pid, SIGTERM);
+                    fcgi_kill(&s->procs[i], SIGTERM);
                     ap_pclosef(tp, lockFd);
 #else
-                    fcgi_kill((int)s->procs[i].pid, 1);
+                    fcgi_kill(&s->procs[i], 1);
 #endif
                 }
             }
@@ -1213,10 +1284,10 @@ void child_wait_thread(void *dummy) {
             }
 
             for (i=0; i < numChildren; i++) {
-                if (s->procs[i].pid != INVALID_HANDLE_VALUE && s->procs[i].pid != (HANDLE) 0) {
+                if (s->procs[i].handle != INVALID_HANDLE_VALUE) {
                     /* timeout is currently set for 100 miliecond */ 
                     /* it may need t longer or user customizable */
-                    dwRet = WaitForSingleObject(s->procs[i].pid, FCGI_PROC_WAIT_TIME);
+                    dwRet = WaitForSingleObject(s->procs[i].handle, FCGI_PROC_WAIT_TIME);
 
                     waited = 1;
 
@@ -1255,8 +1326,9 @@ void child_wait_thread(void *dummy) {
                             (s->directive == APP_CLASS_DYNAMIC) ? " (dynamic)" : "",
                             s->fs_path, s->procs[i].pid);
 
-                        CloseHandle(s->procs[i].pid);
-                        s->procs[i].pid = INVALID_HANDLE_VALUE;
+                        CloseHandle(s->procs[i].handle);
+                        s->procs[i].handle = INVALID_HANDLE_VALUE;
+                        s->procs[i].pid = -1;
 
                         /* wake up the main thread */
                         SetEvent(fcgi_event_handles[WAKE_EVENT]);
@@ -1388,6 +1460,8 @@ void fcgi_pm_main(void *dummy)
             }
 
             SetHandleInformation(s->hPipeMutex, HANDLE_FLAG_INHERIT, TRUE);
+
+            append_mutex_to_env(s->envp, s->hPipeMutex);
         }
         else
 #endif
@@ -1419,8 +1493,13 @@ void fcgi_pm_main(void *dummy)
 
     ap_destroy_pool(tp);
 
+#ifdef WIN32
+    ap_log_error(FCGI_LOG_NOTICE_NOERRNO, fcgi_apache_main_server,
+        "FastCGI: process manager initialized");
+#else
     ap_log_error(FCGI_LOG_NOTICE_NOERRNO, fcgi_apache_main_server,
         "FastCGI: process manager initialized (pid %ld)", (long)getpid());
+#endif
 
     now = time(NULL);
 
@@ -1462,11 +1541,7 @@ void fcgi_pm_main(void *dummy)
             }
 
             for (i = 0; i < numChildren; i++) {
-#ifndef WIN32
                 if ((s->procs[i].pid <= 0) &&
-#else
-                if (((s->procs[i].pid <= (HANDLE) 0) || (s->procs[i].pid == INVALID_HANDLE_VALUE)) &&
-#endif
                     (s->procs[i].state == STATE_NEEDS_STARTING))
                 {
                     time_t restartTime;
@@ -1477,12 +1552,8 @@ void fcgi_pm_main(void *dummy)
                         restartTime = s->restartTime + s->restartDelay;
                     }
 
-                    if(restartTime <= now) {
-#ifdef WIN32
-                        int restart = (s->procs[i].pid == INVALID_HANDLE_VALUE);
-#else
+                    if (restartTime <= now) {
                         int restart = (s->procs[i].pid < 0);
-#endif
 
                         s->restartTime = now;
 
@@ -1491,7 +1562,7 @@ void fcgi_pm_main(void *dummy)
                             goto ProcessSigTerm;
                         }
 #endif
-                        s->procs[i].pid = spawn_fs_process(s);
+                        s->procs[i].pid = spawn_fs_process(s, &s->procs[i]);
                         if (s->procs[i].pid <= 0) {
                             ap_log_error(FCGI_LOG_CRIT, fcgi_apache_main_server,
                                 "FastCGI: can't start%s server \"%s\": spawn_fs_process() failed",

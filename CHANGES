@@ -1,6 +1,8 @@
 Changes with mod_fastcgi 2.2.5
+ 
+ *) (Win32) Add support for interpretter scripts.
 
- *) Fix Win32 named pipe handling (problems with large responses).
+ *) (Win32) Fix named pipe handling (problems with large responses).
 
  *) (Win32) Remove the "can exec" check.
 
