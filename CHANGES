@@ -1,5 +1,10 @@
 2.2.13
 
+ *) Limit PM requests to start a dynamic application
+    to 5sec to prevent endless spinning (this is a drop-dead
+    limit that should only occur if the socket/named_pipe directory
+    is removed out from under a running server).
+
  *) [*nix] Change the default socket directory from /tmp/fcgi to:
     Apache  - logs/fastcgi
     Apache2 - RUNTIMEDIR/fastcgi

@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.140 2002/10/04 04:33:20 robs Exp $
+ *  $Id: mod_fastcgi.c,v 1.141 2002/10/12 00:23:27 robs Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -1007,8 +1007,8 @@ static int open_connection_to_fs(fcgi_request *fr)
         err = fcgi_util_socket_make_domain_addr(rp, (struct sockaddr_un **)&socket_addr,
                                       &socket_addr_len, socket_path);
         if (err) {
-		    ap_log_rerror(FCGI_LOG_ERR, r,
-                "FastCGI: failed to connect to server \"%s\": "
+            ap_log_rerror(FCGI_LOG_ERR, r,
+                "FastCGI: failed to connect to (dynamic) server \"%s\": "
                 "%s", fr->fs_path, err);
             return FCGI_FAILED;
         }
@@ -1077,20 +1077,25 @@ static int open_connection_to_fs(fcgi_request *fr)
         }
         else
         {
+            int i;
+
             send_to_pm(FCGI_SERVER_START_JOB, fr->fs_path, fr->user, fr->group, 0, 0);
         
-            /* Wait until it looks like its running */
+            /* wait until it looks like its running - this shouldn't take
+             * very long at all - the exception is when the sockets are 
+             * removed out from under a running application - the loop 
+             * limit addresses this (preventing spinning) */
 
-            for (;;)
+            for (i = 10; i > 0; i--)
             {
 #ifdef WIN32
-                Sleep(1000);
+                Sleep(500);
 
                 fr->fs = fcgi_util_fs_get_by_id(fr->fs_path, 0, 0);
 
                 if (fr->fs && fr->fs->restartTime)
 #else
-                struct timeval tv = {1, 0};
+                struct timeval tv = {0, 500000};
                 
                 /* Avoid sleep/alarm interactions */
                 ap_select(0, NULL, NULL, NULL, &tv);
@@ -1100,6 +1105,16 @@ static int open_connection_to_fs(fcgi_request *fr)
                 {
                     break;
                 }
+            }
+
+            if (i <= 0)
+            {
+                ap_log_rerror(FCGI_LOG_ALERT, r,
+                    "FastCGI: failed to connect to (dynamic) server \"%s\": "
+                    "something is seriously wrong, any chance the "
+                    "socket/named_pipe directory was removed?, see the "
+                    "FastCgiIpcDir directive", fr->fs_path);
+                return FCGI_FAILED;
             }
         }
     }
