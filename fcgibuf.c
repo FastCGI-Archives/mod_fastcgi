@@ -3,7 +3,7 @@
  * 
  * Ring buffer library.
  *
- * $Id: fcgibuf.c,v 1.2 1998/02/24 17:11:40 roy Exp $
+ * $Id: fcgibuf.c,v 1.3 1998/05/22 15:55:41 roberts Exp $
  */
 
 #include "conf.h"                       /* apache code */
@@ -11,6 +11,11 @@
 #include "fcgitcl.h"
 #include "fcgios.h"
 #include "fcgibuf.h"
+
+#ifndef NO_WRITEV
+#include <sys/uio.h>
+#endif
+
 
 /*
  *----------------------------------------------------------------------
@@ -122,9 +127,12 @@ void BufferDelete(Buffer *bufPtr)
  * BufferRead --
  *
  *      Read bytes from an open file descriptor into a buffer.
+ *      Assumes the file descriptor is NON_BLOCKING.
  *
  * Results:
- *      Returns number of bytes read.
+ *      <0 error, errno is set
+ *      =0 EOF reached
+ *      >0 successful read, note it it is NOT the number of bytes read.
  *
  * Side effects:
  *      Data stored in buffer.
@@ -137,21 +145,90 @@ int BufferRead(Buffer *bufPtr, int fd)
     int len;
 
     BufferCheck(bufPtr);
+
+    if (bufPtr->length == bufPtr->size) {
+        /* there's no room in the buffer, return "success" */
+        return 1;
+    }
+    if (bufPtr->length == 0) {
+        bufPtr->begin = bufPtr->end = bufPtr->data;
+    }
+
     len = min(bufPtr->size - bufPtr->length, 
             bufPtr->data + bufPtr->size - bufPtr->end);
+#ifndef NO_WRITEV
+    /* assume there is a readv() if there is a writev() */
+    if (len <= bufPtr->size - bufPtr->length) {
+        /* its not wrapped, use read() instead of readv() */
+#endif
+    len = OS_Read(fd, bufPtr->end, len);
+    if (len == 0) {
+        return 0;
+    }
+    if (len < 0) {
+        if (errno == EWOULDBLOCK) {
+            /* this shouldn't happen if BufferRead is called only after
+               select(), but return "success" (zero implies EOF) */
+            return 1;
+        }
+        return len;
+    }
+    bufPtr->end += len;
+    bufPtr->length += len;
 
-    if (len > 0) {
-        OS_Signal(SIGPIPE, SIG_IGN);
-        len = OS_Read(fd, bufPtr->end, len);
-        if(len > 0) {
-            bufPtr->end += len;
-            if(bufPtr->end >= (bufPtr->data + bufPtr->size)) {
-                bufPtr->end -= bufPtr->size;
+    if (bufPtr->end == (bufPtr->data + bufPtr->size)) {
+        /* the buffer needs to be wrapped */
+        bufPtr->end = bufPtr->data;
+#ifndef NO_WRITEV
+    }
+    } else {
+        /* the buffer is wrapped, use readv() */
+        struct iovec vec[2];
+
+        vec[0].iov_base = bufPtr->end;
+        vec[0].iov_len = len;
+        vec[1].iov_base = bufPtr->data;
+        vec[1].iov_len = bufPtr->size - bufPtr->length - len;
+
+	    /* I don't see a reason, at this point, to defining OS_Readv() */
+	    do {
+	        len = readv(fd, vec, 2);
+	    } while ((len < 0) && (errno == EINTR));
+    	if (len == 0) {
+            return 0;
+    	}
+        if (len < 0) {
+            if (errno == EWOULDBLOCK) {
+                return 1;           /* return "success" */
+            }
+            return len;
+        }
+        bufPtr->end += len;
+        if (bufPtr->end >= (bufPtr->data + bufPtr->size)) {
+            bufPtr->end -= bufPtr->size;
 	    }
+        bufPtr->length += len;
+    }
+#else
+        if (bufPtr->length < bufPtr->size) {
+            /* There's still more buffer space to read into. */
+            len = OS_Read(fd, bufPtr->end, bufPtr->size - bufPtr->length);
+            if (len == 0) {
+                return 0;   /* were done (EOF) */
+            }
+            if (len < 0) {
+                if (errno == EWOULDBLOCK) {
+                    /* return the count from the first read() */
+                    return 1;
+                }
+                return len;
+            }
+            bufPtr->end += len;
             bufPtr->length += len;
         }
     }
-    return len;
+#endif
+    return 1;
 }
 
 /*
@@ -163,32 +240,116 @@ int BufferRead(Buffer *bufPtr, int fd)
  *      writing.
  *
  * Results:
- *      Returns number of bytes written.
+ *      <0 if an error occured (bytes may or may not have been written)
+ *      =0 if no bytes were written
+ *      >0 number of bytes written
  *
  * Side effects:
  *      Data "removed" from buffer.
  *
  *----------------------------------------------------------------------
  */
-
 int BufferWrite(Buffer *bufPtr, int fd)
 {
     int len;
+    void (*origSigPipeHandler)();
 
-    ASSERT(fd >= 0);
     BufferCheck(bufPtr);
+
+    if (bufPtr->length == 0) {
+        return 0;
+    }
+    
+    /* Ignore SIGPIPE so we don't exit if the socket was closed by
+       the app (we reinstate the old handler before returning).  If 
+       the socket is closed for writing, write() will fail with EPIPE.
+       We don't want to catch this because its effectively an
+       abort on the part of the server.  BufferWrite() callers,
+       i.e. FastCgiDoWork(), should abort the whole request as a 
+       SERVER_ERROR. */
+    origSigPipeHandler = OS_Signal(SIGPIPE, SIG_IGN);
+
     len = min(bufPtr->length, bufPtr->data + bufPtr->size - bufPtr->begin);
 
-    if(len > 0) {
-        len = OS_Write(fd, bufPtr->begin, len);
-        if(len > 0) {
-            bufPtr->begin += len;
-            if(bufPtr->begin >= (bufPtr->data + bufPtr->size)) {
-                bufPtr->begin -= bufPtr->size;
+#ifndef NO_WRITEV
+    if (len <= bufPtr->length) {
+        /* the buffer is not wrapped, we don't need to use writev() */
+#endif
+    len = OS_Write(fd, bufPtr->begin, len);
+    if (len == 0) {
+        goto Return;
+    }
+    if (len < 0) {
+        if (errno == EWOULDBLOCK) {
+            /* pretend we wrote 0 bytes */
+            len = 0;
+        }
+        goto Return;
+    }
+    bufPtr->begin += len;
+    bufPtr->length -= len;
+
+    if (bufPtr->begin == (bufPtr->data + bufPtr->size)) {
+        /* the buffer needs to be wrapped */
+        bufPtr->begin = bufPtr->data;
+
+#ifndef NO_WRITEV
+    }
+    } else {
+        /* the buffer is wrapped, use writev() */
+        struct iovec vec[2];
+
+        vec[0].iov_base = bufPtr->begin;
+        vec[0].iov_len = len;
+        vec[1].iov_base = bufPtr->data;
+        vec[1].iov_len = bufPtr->length - len;
+
+	    /* I don't see a reason, at this point, to defining OS_Writev() */
+	    do {
+	        len = writev(fd, vec, 2);
+	    } while ((len < 0) && (errno == EINTR));
+    	if (len == 0) {
+            goto Return;
+    	}
+        if (len < 0) {
+            if (errno == EWOULDBLOCK) {
+                /* give the impression we wrote 0 bytes */
+                len = 0;
+            }
+            goto Return;
+        }
+        bufPtr->begin += len;
+        if (bufPtr->begin >= (bufPtr->data + bufPtr->size)) {
+            bufPtr->begin -= bufPtr->size;
 	    }
-            bufPtr->length -= len;
+        bufPtr->length -= len;
+    }
+#else
+        if (bufPtr->length > 0) {
+            /* there's more data to write */
+            int len2 = OS_Write(fd, bufPtr->begin, bufPtr->length);
+            if (len2 == 0) {
+                goto Return;
+            }
+            if (len2 < 0) {
+                if (errno != EWOULDBLOCK) {
+                    /* return the error, otherwise return len from above */
+                    len = len2;
+                }
+                goto Return;
+            }
+            bufPtr->begin += len2;
+            bufPtr->length -= len2;
+            len += len2;
         }
     }
+#endif
+    if (bufPtr->length == 0) {
+        bufPtr->begin = bufPtr->end = bufPtr->data;
+    }
+
+Return:
+    OS_Signal(SIGPIPE, origSigPipeHandler);
     return len;
 }
 
