@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_config.c,v 1.34 2002/07/26 03:14:08 robs Exp $
+ * $Id: fcgi_config.c,v 1.35 2002/07/29 00:05:06 robs Exp $
  */
 
 #include "fcgi.h"
@@ -219,7 +219,7 @@ const char *fcgi_config_set_fcgi_uid_n_gid(int set)
 {
     static int isSet = 0;
 
-#if !defined(WIN32) && !defined(APACHE2)
+#ifndef WIN32
 
     uid_t uid = geteuid();
     gid_t gid = getegid();
@@ -231,8 +231,17 @@ const char *fcgi_config_set_fcgi_uid_n_gid(int set)
         return NULL;
     }
 
-    uid = uid ? uid : ap_user_id;
-    gid = gid ? gid : ap_group_id;
+#ifndef APACHE2
+
+    if (uid == 0) {
+        uid = ap_user_id;
+    }
+
+    if (gid == 0) {
+        gid = ap_group_id;
+    }
+
+#endif /* !APACHE2 */
 
     if (isSet && (uid != fcgi_user_id || gid != fcgi_group_id)) {
         return "User/Group commands must preceed FastCGI server definitions";
@@ -242,7 +251,7 @@ const char *fcgi_config_set_fcgi_uid_n_gid(int set)
     fcgi_user_id = uid;
     fcgi_group_id = gid;
 
-#endif
+#endif /* !WIN32 */
 
     return NULL;
 }
