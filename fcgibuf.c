@@ -3,15 +3,13 @@
  * 
  * Ring buffer library.
  *
- * $Id: fcgibuf.c,v 1.6 1998/08/06 04:12:51 roberts Exp $
+ * $Id: fcgibuf.c,v 1.7 1998/08/24 03:24:12 roberts Exp $
  */
 
 #include "httpd.h"
 #include "http_config.h"
 #if MODULE_MAGIC_NUMBER >= 19980713
 #include "ap_config.h"
-#else
-#include "conf.h"                       /* apache code */
 #endif
 #include "mod_fastcgi.h"
 #include "fcgitcl.h"
