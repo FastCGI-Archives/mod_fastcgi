@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_config.c,v 1.21 2000/04/29 21:01:44 robs Exp $
+ * $Id: fcgi_config.c,v 1.22 2000/04/29 21:24:31 robs Exp $
  */
 
 #include "fcgi.h"
@@ -377,8 +377,8 @@ const char *fcgi_config_set_socket_dir(cmd_parms *cmd, void *dummy, char *arg)
     }
 
 #ifndef WIN32
-    arg = ap_os_canonical_filename(p, arg);
-    arg = ap_server_root_relative(p, arg);
+    arg = ap_os_canonical_filename(cmd->pool, arg);
+    arg = ap_server_root_relative(cmd->pool, arg);
 #else
 	if (strncmp(arg, "\\\\.\\pipe\\", 9) != 0)
 		return ap_psprintf(tp, "%s %s is invalid format",name, arg);
@@ -432,7 +432,7 @@ const char *fcgi_config_set_suexec(cmd_parms *cmd, void *dummy, const char *arg)
         fcgi_suexec = NULL;
     }
     else {
-        suexec = ap_os_canonical_filename(cmd->pool, arg);
+        suexec = (char *) ap_os_canonical_filename(cmd->pool, arg);
         suexec = ap_server_root_relative(cmd->pool, suexec);
 
 #ifdef WIN32
@@ -886,7 +886,7 @@ const char *fcgi_config_new_auth_server(cmd_parms * const cmd,
     const gid_t gid = cmd->server->server_gid;
     char * auth_server;
 
-    auth_server = ap_os_canonical_filename(cmd->pool, fs_path);
+    auth_server = (char *) ap_os_canonical_filename(cmd->pool, fs_path);
     auth_server = ap_server_root_relative(cmd->pool, auth_server);
 
     /* Make sure its already configured or at least a candidate for dynamic */
