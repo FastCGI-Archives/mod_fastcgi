@@ -1,5 +1,9 @@
 2.4.3
 
+ *) [*nix] Don't use suexec when there is no user/group in effect.
+    This change is consistent with Apache2 handling.  Identified
+    by ["Florian Effenberger" <floeff arcor.de>].
+
  *) Add a -min-server-life option to the FastCgiConfig and 
     FastCgiServer directives to provide better control of the 
     restart backoff feature.  Benjamin Osheroff [ben@gimbo.net]

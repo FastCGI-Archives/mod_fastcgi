@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_pm.c,v 1.90 2004/01/07 01:56:00 robs Exp $
+ * $Id: fcgi_pm.c,v 1.91 2004/04/15 00:32:56 robs Exp $
  */
 
 
@@ -404,7 +404,10 @@ static pid_t spawn_fs_process(fcgi_server *fs, ServerProcess *process)
      * install its own handler. */
     signal(SIGPIPE, SIG_IGN);
 
-    if (fcgi_wrapper)
+    /* Apache (2 anyway) doesn't use suexec if there is no user/group in
+     * effect - this translates to a uid/gid of 0/0 (which should never
+     * be a valid uid/gid for a suexec invocation so it should be safe */
+    if (fcgi_wrapper && fs->uid && fs->gid)
     {
         char *shortName;
 
