@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_pm.c,v 1.26 2000/04/28 13:41:03 robs Exp $
+ * $Id: fcgi_pm.c,v 1.27 2000/04/28 13:47:48 robs Exp $
  */
 
 
@@ -678,11 +678,12 @@ static void dynamic_read_msgs(int read_ready)
         if (s==NULL && cjob->id != REQ_COMPLETE)
 #endif
         {
-#ifndef WIN32
+#ifdef WIN32
+            const char **envp;
+#else
             int fd;
             const char *err, *lockPath;
 #endif
-            const char **envp;
 
             /* Create a perm subpool to hold the new server data,
              * we can destroy it if something doesn't pan out */
