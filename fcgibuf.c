@@ -3,17 +3,22 @@
  * 
  * Ring buffer library.
  *
- * $Id: fcgibuf.c,v 1.7 1998/08/24 03:24:12 roberts Exp $
+ * $Id: fcgibuf.c,v 1.8 1998/11/24 04:46:27 roberts Exp $
  */
 
 #include "httpd.h"
 #include "http_config.h"
+#if APACHE_RELEASE >= 1030000
 #if MODULE_MAGIC_NUMBER >= 19980713
+#include "ap_compat.h"
 #include "ap_config.h"
+#else
+#include "compat.h"
 #endif
+#endif
+#include "alloc.h"
+
 #include "mod_fastcgi.h"
-#include "fcgitcl.h"
-#include "fcgios.h"
 #include "fcgibuf.h"
 
 #ifndef NO_WRITEV
@@ -93,36 +98,14 @@ void BufferReset(Buffer *bufPtr)
  *----------------------------------------------------------------------
  */
 
-Buffer *BufferCreate(int size)
+Buffer *BufferCreate(pool *p, int size)
 {
     Buffer *bufPtr;
 
-    bufPtr = (Buffer *)fcgi_Malloc(sizeof(Buffer) + size);
+    bufPtr = (Buffer *)pcalloc(p, sizeof(Buffer) + size);
     bufPtr->size = size;
     BufferReset(bufPtr);
     return bufPtr;
-}
-
-/*
- *----------------------------------------------------------------------
- *
- * BufferDelete --
- *
- *      Delete a buffer, freeing up any associated storage.
- *
- * Results:
- *      None.
- *
- * Side effects:
- *      None.
- *
- *----------------------------------------------------------------------
- */
-
-void BufferDelete(Buffer *bufPtr)
-{
-    BufferCheck(bufPtr);
-    fcgi_Free(bufPtr);
 }
 
 /*
@@ -165,7 +148,11 @@ int BufferRead(Buffer *bufPtr, int fd)
     if (len == bufPtr->size - bufPtr->length) {
         /* its not wrapped, use read() instead of readv() */
 #endif
-    len = OS_Read(fd, bufPtr->end, len);
+
+    do
+	    len = read(fd, bufPtr->end, len);
+    while (len == -1 && errno == EINTR);
+    
     if (len <= 0) {
         return len;
     }
@@ -186,10 +173,9 @@ int BufferRead(Buffer *bufPtr, int fd)
         vec[1].iov_base = bufPtr->data;
         vec[1].iov_len = bufPtr->size - bufPtr->length - len;
 
-	    /* I don't see a reason to define OS_Readv(), and don't know
-	     * understand why we should ignore EINTR (as OS_Read() does)
-	     */
-	    len = readv(fd, vec, 2);
+        do
+	        len = readv(fd, vec, 2);
+        while (len == -1 && errno == EINTR);
 
     	if (len <= 0) {
             return len;
@@ -228,7 +214,10 @@ int BufferRead(Buffer *bufPtr, int fd)
             
             if (status > 0 && FD_ISSET(fd, &read_set)) {
             
-                len = OS_Read(fd, bufPtr->end, bufPtr->size - bufPtr->length);
+                do
+	                len = read(fd, bufPtr->end, bufPtr->size - bufPtr->length);
+                while (len == -1 && errno == EINTR);
+
                 if (len <= 0) {
                     return len;
                 }
@@ -277,7 +266,7 @@ int BufferWrite(Buffer *bufPtr, int fd)
        abort on the part of the server.  BufferWrite() callers,
        i.e. FastCgiDoWork(), should abort the whole request as a 
        SERVER_ERROR. */
-    origSigPipeHandler = OS_Signal(SIGPIPE, SIG_IGN);
+    origSigPipeHandler = signal(SIGPIPE, SIG_IGN);
 
     len = min(bufPtr->length, bufPtr->data + bufPtr->size - bufPtr->begin);
 
@@ -285,8 +274,11 @@ int BufferWrite(Buffer *bufPtr, int fd)
     if (len == bufPtr->length) {
         /* the buffer is not wrapped, we don't need to use writev() */
 #endif
+    
+    do
+	    len = write(fd, bufPtr->begin, len);
+    while (len == -1 && errno == EINTR);
 
-    len = OS_Write(fd, bufPtr->begin, len);
     if (len <= 0) {
         goto Return;
     }
@@ -309,9 +301,10 @@ int BufferWrite(Buffer *bufPtr, int fd)
         vec[1].iov_base = bufPtr->data;
         vec[1].iov_len = bufPtr->length - len;
 
-	    /* I don't see a reason to define OS_Writev(), and don't
-	     * understand why OS_Write() ignores EINTR */
-	    len = writev(fd, vec, 2);
+        do
+	        len = writev(fd, vec, 2);
+        while (len == -1 && errno == EINTR);
+
     	if (len <= 0) {
             goto Return;
     	}
@@ -352,7 +345,10 @@ int BufferWrite(Buffer *bufPtr, int fd)
             
             if (status > 0 && FD_ISSET(fd, &write_set)) {
 
-                int len2 = OS_Write(fd, bufPtr->begin, bufPtr->length);
+                do
+	                len2 = write(fd, bufPtr->begin, bufPtr->length);
+                while (len == -1 && errno == EINTR);
+
                 if (len2 < 0) {
                     len = len2;
                     goto Return;
@@ -373,7 +369,7 @@ Return:
         bufPtr->begin = bufPtr->end = bufPtr->data;
     }
 
-    OS_Signal(SIGPIPE, origSigPipeHandler);
+    signal(SIGPIPE, origSigPipeHandler);
     return len;
 }
 
@@ -687,10 +683,10 @@ void BufferMove(Buffer *toPtr, Buffer *fromPtr, int len)
 /*
  *----------------------------------------------------------------------
  *
- * BufferDStringAppend --
+ * BufferAppend --
  *
  *      Append the specified number of bytes from a buffer onto the 
- *      end of a DString.
+ *      end of a char * by reallocating the string in pool p.
  *
  * Results:
  *      None.
@@ -701,9 +697,10 @@ void BufferMove(Buffer *toPtr, Buffer *fromPtr, int len)
  *----------------------------------------------------------------------
  */
 
-void BufferDStringAppend(DString *strPtr, Buffer *bufPtr, int len)
+void BufferAppend(pool *p, char **strPtr, Buffer *bufPtr, int len)
 {
     int fromLen;
+    char *newStr;
 
     BufferCheck(bufPtr);
     ASSERT(len > 0);
@@ -713,7 +710,13 @@ void BufferDStringAppend(DString *strPtr, Buffer *bufPtr, int len)
         fromLen = min(len, bufPtr->data + bufPtr->size - bufPtr->begin);
 
         ASSERT(fromLen > 0);
-        DStringAppend(strPtr, bufPtr->begin, fromLen);
+        
+        /*@@@ This isn't very smart/efficient, but for now.. */
+        newStr = pcalloc(p, strlen(*strPtr) + fromLen + 1);
+        strcpy(newStr, *strPtr);
+        strncat(newStr, bufPtr->begin, fromLen);
+        *strPtr = newStr;
+        
         BufferToss(bufPtr, fromLen);
         len -= fromLen;
     }

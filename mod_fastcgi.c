@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.55 1998/11/23 03:48:13 roberts Exp $
+ *  $Id: mod_fastcgi.c,v 1.56 1998/11/24 04:46:31 roberts Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -18,6 +18,10 @@
  *  Patches for Linux provided by
  *  Scott Langley
  *  <langles@vote-smart.org>
+ *
+ *  Patches for suexec handling by
+ *  Brian Grossman <brian@SoftHome.net> and
+ *  Rob Saccoccio <robs@ipass.net>
  */
 
 /*
@@ -133,309 +137,89 @@ typedef gid_t long;
 
 #include "mod_fastcgi.h"
 #include "fastcgi.h"
-#include "fcgitcl.h"
-#include "fcgios.h"
 #include "fcgibuf.h"
+
+#define	FCGI_LOG_EMERG    __FILE__,__LINE__,APLOG_EMERG		/* system is unusable */
+#define	FCGI_LOG_ALERT    __FILE__,__LINE__,APLOG_ALERT		/* action must be taken immediately */
+#define	FCGI_LOG_CRIT     __FILE__,__LINE__,APLOG_CRIT		/* critical conditions */
+#define	FCGI_LOG_ERR      __FILE__,__LINE__,APLOG_ERR		/* error conditions */
+#define	FCGI_LOG_WARNING  __FILE__,__LINE__,APLOG_WARNING	/* warning conditions */
+#define	FCGI_LOG_NOTICE   __FILE__,__LINE__,APLOG_NOTICE	/* normal but significant condition */
+#define	FCGI_LOG_INFO     __FILE__,__LINE__,APLOG_INFO		/* informational */
+#define	FCGI_LOG_DEBUG    __FILE__,__LINE__,APLOG_DEBUG		/* debug-level messages */
 
 static FILE* errorLog = (FILE *)-1;
 
-void *fcgi_Malloc(size_t size)
-{
-    void *result;
-
-    ASSERT(size>0);
-    result = malloc(size);
-    ASSERT(result != NULL);
-    memset(result, 0, size);
-    return result;
-}
-
-static void *fcgi_Realloc(void *old_blk, size_t size)
-{
-    void *result;
-
-    ASSERT(size>0);
-    result = realloc(old_blk, size);
-    ASSERT(result != NULL);
-    return result;
-}
-
-void fcgi_Free(void *ptr)
-{
-    if(ptr != NULL) {
-        free(ptr);
-    }
-}
-
-/*
- * XXX: why is this defined as void * not OS_IpcAddr * ?
- */
-typedef void *OS_IpcAddress;
-
-typedef struct _OS_IpcAddr {
-    int addrType;                  /* one of TYPE_* below */
-    int port;                      /* port used for TCP connections */
-    DString bindPath;              /* Path used for the socket bind point */
-    struct sockaddr *serverAddr;   /* server address (for connect) */
-    int addrLen;                   /* length of server address (for connect) */
-} OS_IpcAddr;
-
-/*
- * Values of addrType field.
- */
-#define TYPE_UNKNOWN 0              /* Uninitialized address type */
-#define TYPE_LOCAL   1              /* Local IPC: UNIX domain stream socket */
-#define TYPE_TCP     2              /* TCP stream socket */
 
-/*
- *----------------------------------------------------------------------
- *
- * OS_InitIpcAddr --
- *
- *      Allocate and initialize an OS-specific IPC address structure.
- *
- * Results:
- *      IPC Address is initialized.
- *
- * Side effects:
- *      Memory allocated.
- *
- *----------------------------------------------------------------------
+/*******************************************************************************
+ * Build a Domain Socket Address structure, and calculate its size.
+ * The error message is allocated from the pool p. If you don't want the
+ * struct sockaddr_un also allocated from p, pass it preallocated (!=NULL).
  */
-
-OS_IpcAddress OS_InitIpcAddr(void)
+static const char *sock_makeDomainAddr(pool *p, struct sockaddr_un **sockAddr,
+        int *sockAddrLen, const char *sockPath)
 {
-    OS_IpcAddr *ipcAddrPtr = (OS_IpcAddr *)fcgi_Malloc(sizeof(OS_IpcAddr));
-    ipcAddrPtr->addrType = TYPE_UNKNOWN;
-    ipcAddrPtr->port = -1;
-    DStringInit(&ipcAddrPtr->bindPath);
-    ipcAddrPtr->serverAddr = NULL;
-    ipcAddrPtr->addrLen = 0;
-    return (OS_IpcAddress)ipcAddrPtr;
-}
-
-/*
- *----------------------------------------------------------------------
- *
- * OS_BuildSockAddrUn --
- *
- *      Using the pathname bindPath, fill in the sockaddr_un structure
- *      *servAddrPtr and the length of this structure *servAddrLen.
- *
- *      The format of the sockaddr_un structure changed incompatibly in
- *      4.3BSD Reno.
- *
- * Results:
- *      0 for normal return, -1 for failure (bindPath too long).
- *
- *----------------------------------------------------------------------
- */
+    int sockPathLen = strlen(sockPath);
 
-static int OS_BuildSockAddrUn(
-        char *bindPath,
-        struct sockaddr_un *servAddrPtr,
-        int *servAddrLen)
-{
-    int bindPathLen = strlen(bindPath);
-
-    if(bindPathLen >= sizeof(servAddrPtr->sun_path)) {
-        return -1;
+    if (sockPathLen >= sizeof((*sockAddr)->sun_path)) {
+        return pstrcat(p, "path \"", sockPath,
+                       "\" is too long for a Domain socket", NULL);
     }
 
-    memset((char *) servAddrPtr, 0, sizeof(*servAddrPtr));
-    servAddrPtr->sun_family = AF_UNIX;
-    strncpy(servAddrPtr->sun_path, bindPath, sizeof(servAddrPtr->sun_path) - 1);
+    if (*sockAddr == NULL)
+        *sockAddr = pcalloc(p, sizeof(struct sockaddr_un));
+    else
+        memset(*sockAddr, 0, sizeof(struct sockaddr_un));
+
+    (*sockAddr)->sun_family = AF_UNIX;
+    strcpy((*sockAddr)->sun_path, sockPath);
 
 #ifndef SUN_LEN
-#define SUN_LEN(su) \
-    (sizeof(*(su)) - sizeof((su)->sun_path) + strlen((su)->sun_path))
+#define SUN_LEN(sock) \
+    (sizeof(*(sock)) - sizeof((sock)->sun_path) + strlen((sock)->sun_path))
 #endif
-
-    *servAddrLen = SUN_LEN(servAddrPtr);
-    return 0;
+    *sockAddrLen = SUN_LEN(*sockAddr);
+    return NULL;
 }
 
-/*
- *----------------------------------------------------------------------
- *
- * OS_CreateLocalIpcFd --
- *
- *      This procedure is responsible for creating the listener socket
- *      on Unix for local process communication.  It will create a Unix
- *      domain socket, bind it, and return a file descriptor to it to the
- *      caller.
- *
- * Results:
- *      Valid file descriptor or -1 on error.
- *
- * Side effects:
- *      *ipcAddress initialized.
- *
- *----------------------------------------------------------------------
+/*******************************************************************************
+ * Bind an address to a socket and set it to listen for incoming connects.
+ * The error messages are allocated from the pool p, use temp storage.
+ * Don't forget to close the socket, if an error occurs.
  */
-typedef char *MakeSocketNameProc(char *execPath, char *bindPath,
-        int extension, Tcl_DString *dsPtr, int dynamic);
-
-int OS_CreateLocalIpcFd(
-        OS_IpcAddress ipcAddress,
-        int listenQueueDepth,
-        uid_t uid,
-        gid_t gid,
-        MakeSocketNameProc makeSocketName,
-        char *execPath,
-        char *bindPath,
-        int extension,
-        int dynamic)
+const char *sock_bindAndListen(pool *p, struct sockaddr *sockAddr,
+                           int sockAddrLen, int backlog, int sock)
 {
-    OS_IpcAddr *ipcAddrPtr = (OS_IpcAddr *)ipcAddress;
-    struct sockaddr_un *addrPtr = NULL;
-    int listenSock = -1;
-    ASSERT(ipcAddrPtr->addrType == TYPE_UNKNOWN);
-
-    /*
-     * Build the domain socket address.
-     */
-    addrPtr = (struct sockaddr_un *) fcgi_Malloc(sizeof(struct sockaddr_un));
-    ipcAddrPtr->serverAddr = (struct sockaddr *) addrPtr;
-    if (OS_BuildSockAddrUn(
-            makeSocketName(execPath, bindPath,
-                    extension, &ipcAddrPtr->bindPath, dynamic),
-            addrPtr, &ipcAddrPtr->addrLen)) {
-        goto GET_IPC_ERROR_EXIT;
-    }
-    ipcAddrPtr->addrType = TYPE_LOCAL;
-    unlink(DStringValue(&ipcAddrPtr->bindPath));
-
-    /*
-     * Create the listening socket to be used by the fcgi server.
-     */
-    if((listenSock = OS_Socket(ipcAddrPtr->serverAddr->sa_family,
-                               SOCK_STREAM, 0)) < 0) {
-        goto GET_IPC_ERROR_EXIT;
+    if (sockAddr->sa_family == AF_UNIX) {
+        /* Remove any existing socket file.. just in case */
+        unlink(((struct sockaddr_un *)sockAddr)->sun_path);
+    } else {
+        int flag = 1;
+        setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (char *)&flag, sizeof(flag));
     }
 
-    /*
-     * Bind the listening socket and set it to listen.
-     */
-    if(OS_Bind(listenSock, ipcAddrPtr->serverAddr, ipcAddrPtr->addrLen) < 0
-       || OS_Listen(listenSock, listenQueueDepth) < 0) {
-        goto GET_IPC_ERROR_EXIT;
-    }
+    /* Bind it to the sockAddr */
+    if (bind(sock, sockAddr, sockAddrLen))
+        return pstrcat(p, "bind() failed: ", strerror(errno), NULL);
+
+    /* Twiddle ownership and permissions */
+    if (sockAddr->sa_family == AF_UNIX) {
 #ifndef __EMX__
-     /* OS/2 doesn't support changing ownership. */
-    chown(DStringValue(&ipcAddrPtr->bindPath), uid, gid);
+        /* If we're root, we're gonna setuid/setgid, so we need to chown */
+        if (geteuid() == 0 &&
+            chown(((struct sockaddr_un *)sockAddr)->sun_path, user_id, group_id))
+            return pstrcat(p, "chown() of socket failed: ", strerror(errno), NULL);
 #endif
-
-    chmod(DStringValue(&ipcAddrPtr->bindPath), S_IRUSR | S_IWUSR);
-    return listenSock;
-
-GET_IPC_ERROR_EXIT:
-    if(listenSock != -1)
-        OS_Close(listenSock);
-    if(addrPtr != NULL) {
-        free(addrPtr);
-        ipcAddrPtr->serverAddr = NULL;
-        ipcAddrPtr->addrType = TYPE_UNKNOWN;
-        ipcAddrPtr->addrLen = 0;
-    }
-    return -1;
-}
-
-/*
- *----------------------------------------------------------------------
- *
- * OS_FreeIpcAddr --
- *
- *      Free up and clean up an OS IPC address.
- *
- * Results:
- *      IPC Address is freed.
- *
- * Side effects:
- *      More memory.
- *
- *----------------------------------------------------------------------
- */
-void OS_FreeIpcAddr(OS_IpcAddress ipcAddress)
-{
-    OS_IpcAddr *ipcAddrPtr = (OS_IpcAddr *)ipcAddress;
-
-    if (ipcAddress == NULL)
-        return;
-    DStringFree(&ipcAddrPtr->bindPath);
-    fcgi_Free(ipcAddrPtr->serverAddr);
-    fcgi_Free(ipcAddrPtr);
-}
-
-/*
- *----------------------------------------------------------------------
- *
- * OS_CreateRemoteIpcFd --
- *
- *      This procedure is responsible for creating a listener socket
- *      for remote process communication.  It will create a TCP socket,
- *      bind it, and return a file descriptor to the caller.
- *
- * Results:
- *      Valid file descriptor or -1 on error.
- *
- *----------------------------------------------------------------------
- */
-
-int OS_CreateRemoteIpcFd(
-        OS_IpcAddress ipcAddress,
-        int portIn,
-        int listenQueueDepth)
-{
-    OS_IpcAddr *ipcAddrPtr = (OS_IpcAddr *) ipcAddress;
-    struct sockaddr_in *addrPtr = (struct sockaddr_in *)
-                                  fcgi_Malloc(sizeof(struct sockaddr_in));
-    int resultSock = -1;
-    int flag = 1;
-
-    ASSERT(ipcAddrPtr->addrType == TYPE_UNKNOWN);
-    ipcAddrPtr->addrType = TYPE_TCP;
-    ipcAddrPtr->port = portIn;
-    ipcAddrPtr->addrLen = sizeof(struct sockaddr_in);
-
-    memset((char *) addrPtr, 0, sizeof(struct sockaddr_in));
-    addrPtr->sin_family = AF_INET;
-    addrPtr->sin_addr.s_addr = htonl(INADDR_ANY);
-    addrPtr->sin_port = htons(portIn);
-    ipcAddrPtr->serverAddr = (struct sockaddr *) addrPtr;
-
-    if((resultSock = OS_Socket(ipcAddrPtr->serverAddr->sa_family,
-                                SOCK_STREAM, 0)) < 0) {
-        goto GET_IPC_ERROR_EXIT;
+        if (chmod(((struct sockaddr_un *)sockAddr)->sun_path,
+                S_IRUSR | S_IWUSR))
+            return pstrcat(p, "chmod() of socket failed: ", strerror(errno), NULL);
     }
 
-    if(setsockopt(resultSock, SOL_SOCKET, SO_REUSEADDR,
-                  (char *) &flag, sizeof(flag)) < 0) {
-        goto GET_IPC_ERROR_EXIT;
-    }
+    /* Set to listen */
+    if (listen(sock, backlog))
+        return pstrcat(p, "listen() failed: ", strerror(errno), NULL);
 
-    /*
-     * Bind the listening socket and set it to listen
-     */
-    if(OS_Bind(resultSock, ipcAddrPtr->serverAddr, ipcAddrPtr->addrLen) < 0
-            || OS_Listen(resultSock, listenQueueDepth) < 0) {
-        goto GET_IPC_ERROR_EXIT;
-    }
-
-    return resultSock;
-
-GET_IPC_ERROR_EXIT:
-    if(resultSock != -1) {
-        OS_Close(resultSock);
-    }
-    if(addrPtr != NULL) {
-        fcgi_Free(addrPtr);
-        ipcAddrPtr->serverAddr = NULL;
-        ipcAddrPtr->port = -1;
-        ipcAddrPtr->addrType = TYPE_UNKNOWN;
-        ipcAddrPtr->addrLen = 0;
-    }
-    return -1;
+    return NULL;
 }
 
 /*
@@ -460,7 +244,7 @@ GET_IPC_ERROR_EXIT:
  *----------------------------------------------------------------------
  */
 
-int ResolveHostname(char *hostname, struct in_addr *addr)
+int ResolveHostname(const char *hostname, struct in_addr *addr)
 {
     struct hostent *hp;
     int count;
@@ -482,130 +266,36 @@ int ResolveHostname(char *hostname, struct in_addr *addr)
     return 1;
 }
 
-/*
- *----------------------------------------------------------------------
- *
- * OS_CreateLocalIpcAddr --
- *
- *      This procedure is responsible for creating a Unix domain address
- *      to be used to connect to a fcgi server not managed by the Web
- *      server.
- *
- * Results:
- *      Unix Domain socket is created.  This call returns 0 on success
- *      or -1 on error.
- *
- * Side effects:
- *      OS_IpcAddress structure is allocated and returned to the caller.
- *      'errno' will set on errors (-1 is returned).
- *
- *----------------------------------------------------------------------
+/*******************************************************************************
+ * Build an Inet Socket Address structure, and calculate its size.
+ * The error message is allocated from the pool p. If you don't want the
+ * struct sockaddr_in also allocated from p, pass it preallocated (!=NULL).
  */
-
-int OS_CreateLocalIpcAddr(
-        OS_IpcAddress ipcAddress,
-        MakeSocketNameProc makeSocketName,
-        char *execPath,
-        char *bindPath,
-        int extension,
-        int dynamic)
+static const char *sock_makeInetAddr(pool *p, struct sockaddr_in **sockAddr,
+        int *sockAddrLen, const char *host, int port)
 {
-    OS_IpcAddr *ipcAddrPtr = (OS_IpcAddr *) ipcAddress;
-    struct sockaddr_un* addrPtr = NULL;
-    ASSERT(ipcAddrPtr->addrType == TYPE_UNKNOWN);
+    if (*sockAddr == NULL)
+        *sockAddr = pcalloc(p, sizeof(struct sockaddr_in));
+    else
+        memset(*sockAddr, 0, sizeof(struct sockaddr_in));
 
-    /*
-     * Build the domain socket address.
-     */
-    addrPtr = (struct sockaddr_un *) fcgi_Malloc(sizeof(struct sockaddr_un));
-    ipcAddrPtr->serverAddr = (struct sockaddr *) addrPtr;
-    if(OS_BuildSockAddrUn(makeSocketName(execPath, bindPath,
-            extension, &ipcAddrPtr->bindPath, dynamic),
-            addrPtr, &ipcAddrPtr->addrLen)) {
-        goto GET_IPC_ADDR_ERROR;
+    (*sockAddr)->sin_family = AF_INET;
+    (*sockAddr)->sin_port = htons(port);
+
+    /* Get an in_addr represention of the host */
+    if (host != NULL) {
+        if (ResolveHostname(host, &(*sockAddr)->sin_addr) != 1) {
+            return pstrcat(p, "failed to resolve \"", host,
+                           "\" to exactly one IP address", NULL);
+        }
+    } else {
+      (*sockAddr)->sin_addr.s_addr = htonl(INADDR_ANY);
     }
-    ipcAddrPtr->addrType = TYPE_LOCAL;
-    return 0;
 
-GET_IPC_ADDR_ERROR:
-    if(addrPtr != NULL) {
-        free(addrPtr);
-        ipcAddrPtr->serverAddr = NULL;
-    }
-    return -1;
-}
-
-/*
- *----------------------------------------------------------------------
- *
- * OS_CreateInetIpc --
- *
- *      This procedure is responsible for creating an OS_IpcAddr version
- *      of hostname:port to be used for communications via TCP.
- *
- * Results:
- *      AF_INET socket created.
- *
- * Side effects:
- *      OS_IpcAddress structure is allocated and returned to the caller.
- *
- *----------------------------------------------------------------------
- */
-void OS_CreateInetIpc(
-        OS_IpcAddress ipcAddress,
-        struct in_addr *hostIn,
-        int portIn)
-{
-    OS_IpcAddr *ipcAddrPtr = (OS_IpcAddr *) ipcAddress;
-    struct sockaddr_in *addrPtr;
-
-    ASSERT(ipcAddrPtr->addrType == TYPE_UNKNOWN);
-    ipcAddrPtr->addrType = TYPE_TCP;
-    ipcAddrPtr->port = portIn;
-
-    addrPtr = (struct sockaddr_in *) fcgi_Malloc(sizeof(struct sockaddr_in));
-    memset(addrPtr, 0, sizeof(struct sockaddr_in));
-    ipcAddrPtr->addrLen = sizeof(struct sockaddr_in);
-    addrPtr->sin_family = AF_INET;
-    addrPtr->sin_port = htons(portIn);
-    memcpy(&addrPtr->sin_addr.s_addr, hostIn, sizeof(struct in_addr));
-    ipcAddrPtr->serverAddr = (struct sockaddr *) addrPtr;
+    *sockAddrLen = sizeof(struct sockaddr_in);
+    return NULL;
 }
 
-
-/*
- *----------------------------------------------------------------------
- * OS_Environ*
- *
- *      Allocate, fill in, and free a conventional environ structure
- *
- *----------------------------------------------------------------------
- */
-
-static char **OS_EnvironInit(int envCount)
-{
-    return fcgi_Malloc(sizeof(char *) * envCount);
-}
-
-static void OS_EnvString(char **envPtr, char *name, char *value)
-{
-    char *buf;
-    ASSERT(name != NULL && value != NULL);
-    buf = fcgi_Malloc(strlen(name) + strlen(value) + 2);
-    sprintf(buf, "%s=%s", name, value);
-    ASSERT(*envPtr == NULL);
-    *envPtr = buf;
-}
-
-static void OS_EnvironFree(char **envHead)
-{
-    char **envPtr = envHead;
-    while(*envPtr != NULL) {
-        fcgi_Free(*envPtr);
-        envPtr++;
-    }
-    fcgi_Free(envHead);
-}
 
 /*
  *----------------------------------------------------------------------
@@ -633,6 +323,7 @@ static void OS_EnvironFree(char **envHead)
  */
 #define WS_SET_errno(x) errno = x
 
+/* @@@ This should return const char * w/ info about the failure */
 int WS_Access(const char *path, struct stat *statBuf,
         int mode, uid_t uid, gid_t gid)
 {
@@ -729,8 +420,6 @@ no_access:
 /*
  * Done with the generic stuff.  Here starts the FastCGI stuff.
  */
-typedef request_rec WS_Request;
-
 #define FCGI_MAGIC_TYPE "application/x-httpd-fcgi"
 #define FCGI_DEFAULT_LISTEN_Q 5            /* listen queue size */
 #define FCGI_DEFAULT_RESTART_DELAY 5       /* delay between restarts */
@@ -739,7 +428,7 @@ typedef request_rec WS_Request;
 #define FCGI_ERRMSG_LEN 200                /* size of error buffer */
 #define FCGI_MIN_EXEC_RETRY_DELAY 10       /* minimum number of seconds to
                                               wait before restarting */
-
+#define MAX_INIT_ENV_VARS 64               /* max # of -initial-env options */
 
 /* Dynamic FastCGI applications */
 #define FCGI_DEFAULT_MAX_PROCS  50         /* maximum number of processes that
@@ -760,10 +449,10 @@ typedef request_rec WS_Request;
                                             * calculation of the exponentially
                                             * decayed connection times;
                                             * old values are scaled by
-                                            * (1-gain), so making it
+                                            * (1-dynamicGain), so making it
                                             * smaller weights them more heavily
                                             * compared to the current value,
-                                            * which is scaled by gain */
+                                            * which is scaled by dynamicGain */
 #define FCGI_DEFAULT_THRESHHOLD_1 10       /* if load falls below this value
                                             * and we have only one instance
                                             * running, it is killed off */
@@ -781,123 +470,95 @@ typedef request_rec WS_Request;
                                             * SERVER_ERROR message to client */
 #define FCGI_DEFAULT_PROCESS_SLACK 5       /* if this number combined with the
                                             * number of the currently running
-                                            * processes exceeds maxProcs, then
+                                            * processes exceeds dynamicMaxProcs, then
                                             * the KillDynamicProcs() is invoked */
 #define FCGI_DEFAULT_RESTART_DYNAMIC 0     /* Do not restart dynamic processes */
 #define FCGI_DEFAULT_AUTOUPDATE 0          /* do not automatically restart
                                             * fcgi apps when the binary on the
                                             * disk is changed. */
 
+#define DEFAULT_SOCK_DIR "/tmp/fcgi"       /* Default dir for Unix/Domain sockets */
+
 /*
- * FcgiProcessInfo holds info for each process specified in
- * an AppClass directive.  It is embedded in FastCgiServerInfo
- * below.
+ * ServerProcess holds data for each process associated with
+ * a class.  It is embedded in FastCgiServerInfo below.
  */
 typedef struct _FcgiProcessInfo {
     pid_t pid;                       /* pid of associated process */
-    int listenFd;                    /* Listener socket */
-    int fcgiFd;                      /* fcgi IPC file descriptor for
-                                      * persistent connections.
-                                      * Not used by Apache. */
-    int state;                       /* state of the current process */
-    OS_IpcAddress ipcAddr;           /* IPC Address of FCGI app server */
-    struct _FastCgiServerInfo *serverInfoPtr;   /* Pointer to class parent */
-} FcgiProcessInfo;
-
-/*
- * Possible values for the state field above.
- */
-#define STATE_STARTED        0     /* currently running */
-#define STATE_NEEDS_STARTING 1     /* needs to be started by procMgr */
-#define STATE_VICTIM         2     /* marked as a victim, was sent
-                                    * the SIGTERM signal by procMgr */
-#define STATE_KILLED         3     /* process is wait()ed on by the
-                                    * procMgr, so you can reuse this cell */
-#define STATE_READY          4     /* not started, empty cell, initial state */
+    enum {STATE_STARTED,             /* currently running */
+          STATE_NEEDS_STARTING,      /* needs to be started by PM */
+          STATE_VICTIM,              /* SIGTERM was sent by PM */
+          STATE_KILLED,              /* a wait() collected VICTIM */
+          STATE_READY}               /* empty cell, init state */
+          state;                     /* state of the process */
+} ServerProcess;
 
 /*
  * FastCgiServerInfo holds info for each AppClass specified in this
  * Web server's configuration.
  */
 typedef struct _FastCgiServerInfo {
-    DString execPath;               /* pathname of executable */
-    char      **envp;               /* if NOT NULL, this is the env to send
+    const char *execPath;           /* pathname of executable */
+    const char * const *envp;       /* if NOT NULL, this is the env to send
                                      * to the fcgi app when starting a server
-                                     * managed app.
-                                     */
-    int listenQueueDepth;           /* size of listen queue for IPC */
-    int appConnectTimeout;          /* timeout (sec) for connect() requests */
-    int numProcesses;               /* max allowed processes of this class,
+                                     * managed app. */
+    u_int listenQueueDepth;         /* size of listen queue for IPC */
+    u_int appConnectTimeout;        /* timeout (sec) for connect() requests */
+    u_int numProcesses;             /* max allowed processes of this class,
                                      * or for dynamic apps, the number of
                                      * processes actually running */
     time_t restartTime;             /* most recent time when the process
                                      * manager started a process in this
                                      * class. */
-    int initStartDelay;             /* min number of seconds to wait between
+    u_int initStartDelay;           /* min number of seconds to wait between
                                      * starting of AppClass processes at init */
-    int restartDelay;               /* number of seconds to wait between
-                                     * restarts after failure.  Can be zero.
-                                     */
-    int restartOnExit;              /* = TRUE = restart. else terminate/free.
-                                     * Always TRUE for Apache. */
-    int numRestarts;                /* Total number of restarts */
-    int numFailures;                /* num restarts due to exit failure */
-    OS_IpcAddress ipcAddr;          /* IPC Address of FCGI app server class.
-                                     * Used to connect to an app server. */
-    int directive;                  /* AppClass or ExternalAppClass */
-    DString bindName;               /* Name used to create a socket */
-    DString host;                   /* Hostname for externally managed
+    u_int restartDelay;             /* number of seconds to wait between
+                                     * restarts after failure.  Can be zero. */
+    int restartOnExit;              /* = TRUE = restart. else terminate/free */
+    u_int numRestarts;              /* Total number of restarts */
+    u_int numFailures;              /* num restarts due to exit failure */
+    struct sockaddr *sockAddr;      /* Socket Address of FCGI app server class */
+    int sockAddrLen;                /* Length of socket */
+    enum {APP_CLASS_UNKNOWN,
+          APP_CLASS_STANDARD,
+          APP_CLASS_EXTERNAL,
+          APP_CLASS_DYNAMIC}
+         directive;                 /* AppClass or ExternalAppClass */
+    const char *sockPath;           /* Name used to create a socket */
+    const char *host;               /* Hostname for externally managed
                                      * FastCGI application processes */
-    int port;                       /* Port number either for externally
+    u_int port;                     /* Port number either for externally
                                      * managed FastCGI applications or for
                                      * server managed FastCGI applications,
                                      * where server became application mngr. */
     int listenFd;                   /* Listener socket of FCGI app server
                                      * class.  Passed to app server process
                                      * at process creation. */
-    int processPriority;            /* If locally server managed process,
+    u_int processPriority;          /* If locally server managed process,
                                      * this is the priority to run the
                                      * processes in this class at. */
-    struct _FcgiProcessInfo *procInfo; /* Pointer to array of
+    struct _FcgiProcessInfo *procs; /* Pointer to array of
                                      * processes belonging to this class. */
-    int reqRefCount;                /* Number of requests active for this
-                                     * server class.  Not used by Apache,
-                                     * always zero. */
-    int freeOnZero;                 /* Deferred free; free this structure
-                                     * when refCount = 0.  Not used
-                                     * by Apache. */
-    int affinity;                   /* Session affinity.  Not used by
-                                     * Apache server. */
-    int restartTimerQueued;         /* = TRUE = restart timer queued.
-                                     * Not used by Apache. */
     int keepConnection;             /* = 1 = maintain connection to app. */
-    int fcgiFd;                     /* fcgi IPC file descriptor for
-                                     * persistent connections.  Not used
-                                     * by Apache. */
+    uid_t uid;                      /* uid this app should run as (suexec) */
+    gid_t gid;                      /* gid this app should run as (suexec) */
+    const char *username;           /* suexec user arg */
+    const char *group;              /* suexec group arg, AND used in comm
+                                     * between RH and PM */
+    const char *user;               /* used in comm between RH and PM */
     /* Dynamic FastCGI apps configuration parameters */
-    unsigned long totalConnTime;    /* microseconds spent by the web server
+    u_long totalConnTime;           /* microseconds spent by the web server
                                      * waiting while fastcgi app performs
                                      * request processing since the last
-                                     * updateInterval */
-    unsigned long smoothConnTime;   /* exponentially decayed values of the
+                                     * dynamicUpdateInterval */
+    u_long smoothConnTime;          /* exponentially decayed values of the
                                      * connection times. */
-    unsigned long totalQueueTime;   /* microseconds spent by the web server
+    u_long totalQueueTime;          /* microseconds spent by the web server
                                      * waiting to connect to the fastcgi app
-                                     * since the last updateInterval.
-                                     * Not used by Apache. */
-    unsigned long avgQueueTime;     /* exponentially decayed average of the
-                                     * time spent in queue.  Not used by
-                                     * Apache. */
+                                     * since the last dynamicUpdateInterval. */
     struct _FastCgiServerInfo *next;
 } FastCgiServerInfo;
 
-/*
- * Value of directive field.
- */
-#define APP_CLASS_UNKNOWN 0
-#define APP_CLASS_STANDARD 1
-#define APP_CLASS_EXTERNAL 2
-#define APP_CLASS_DYNAMIC 3
 
 /*
  * FastCgiInfo holds the state of a particular FastCGI request.
@@ -915,10 +576,10 @@ typedef struct {
     Buffer *reqOutbufPtr;           /* client output buffer */
     char *errorMsg;                 /* error message from failed request */
     int expectingClientContent;     /* >0 => more content, <=0 => no more */
-    DString *header;
-    DString *errorOut;
+    char *header;
+    char *errorOut;
     int parseHeader;                /* TRUE iff parsing response headers */
-    WS_Request *reqPtr;
+    request_rec *reqPtr;
     int readingEndRequestBody;
     FCGI_EndRequestBody endRequestBody;
     Buffer *erBufPtr;
@@ -932,6 +593,8 @@ typedef struct {
     struct timeval completeTime;    /* dynamic app's connection close() time */
     int lockFd;                     /* dynamic app's lockfile file descriptor */
     int keepReadingFromFcgiApp;     /* still more to read from fcgi app? */
+    const char *user;               /* user used to invoke app (suexec) */
+    const char *group;              /* group used to invoke app (suexec) */
 } FastCgiInfo;
 
 /*
@@ -949,1237 +612,907 @@ typedef struct {
  * A global that is really "own" to a single procedure
  * is declared with the procedure.
  */
-static int readingConfig = FALSE;                /* AppClass but not init */
+static pool *fcgiPool;                           /* the config pool */
+static uid_t fcgi_user_id;                       /* the run uid of Apache & PM */
+static gid_t fcgi_group_id;                      /* the run gid of Apache & PM */
+
 static FastCgiServerInfo *fastCgiServers = NULL; /* AppClasses */
-static char *ipcDir = "/tmp";                    /* default FastCgiIpcDir */
-static char *ipcDynamicDir = "/tmp/dynamic";     /* directory for the dynamic
+static const char *fcgi_suexec = NULL;           /* suexec_bin path */
+static char *ipcDir = DEFAULT_SOCK_DIR;          /* default FastCgiIpcDir */
+static char *ipcDynamicDir = NULL;               /* directory for the dynamic
                                                   * fastcgi apps' sockets */
 static int globalNumInstances = 0;               /* number of running apps */
 static time_t epoch = 0;                         /* last time kill_procs was
                                                   * invoked by process mgr */
 static time_t lastAnalyze = 0;                   /* last time calculation was
                                                   * made for the dynamic procs*/
-static char *mbox = "/tmp/mbox";                 /* file through which the fcgi
+static char *mbox = NULL;                        /* file through which the fcgi
                                                   * procs communicate with WS */
 
-static int maxProcs = FCGI_DEFAULT_MAX_PROCS;
-static int minProcs = FCGI_DEFAULT_MIN_PROCS;
-static int maxClassProcs = FCGI_DEFAULT_MAX_CLASS_PROCS;
-static int killInterval = FCGI_DEFAULT_KILL_INTERVAL;
-static int updateInterval = FCGI_DEFAULT_UPDATE_INTERVAL;
-static float gain = FCGI_DEFAULT_GAIN;
-static int threshhold1 = FCGI_DEFAULT_THRESHHOLD_1;
-static int threshholdN = FCGI_DEFAULT_THRESHHOLD_N;
-static int startProcessDelay = FCGI_DEFAULT_START_PROCESS_DELAY;
-static int dynamicAppConnectTimeout = FCGI_DEFAULT_APP_CONN_TIMEOUT;
-static char **dynamicEnvp = NULL;
-static int processSlack = FCGI_DEFAULT_PROCESS_SLACK;
-static int restartDynamic = FCGI_DEFAULT_RESTART_DYNAMIC;
-static int autoUpdate = FCGI_DEFAULT_AUTOUPDATE;
-static int dynamicListenQueueDepth = FCGI_DEFAULT_LISTEN_Q;
-static int dynamicInitStartDelay = DEFAULT_INIT_START_DELAY;
-static int dynamicRestartDelay = FCGI_DEFAULT_RESTART_DELAY;
+static u_int dynamicMaxProcs = FCGI_DEFAULT_MAX_PROCS;
+static u_int dynamicMinProcs = FCGI_DEFAULT_MIN_PROCS;
+static u_int dynamicMaxClassProcs = FCGI_DEFAULT_MAX_CLASS_PROCS;
+static u_int dynamicKillInterval = FCGI_DEFAULT_KILL_INTERVAL;
+static u_int dynamicUpdateInterval = FCGI_DEFAULT_UPDATE_INTERVAL;
+static float dynamicGain = FCGI_DEFAULT_GAIN;
+static u_int dynamicThreshhold1 = FCGI_DEFAULT_THRESHHOLD_1;
+static u_int dynamicThreshholdN = FCGI_DEFAULT_THRESHHOLD_N;
+static u_int dynamicPleaseStartDelay = FCGI_DEFAULT_START_PROCESS_DELAY;
+static u_int dynamicAppConnectTimeout = FCGI_DEFAULT_APP_CONN_TIMEOUT;
+static const char * const *dynamicEnvp = NULL;
+static u_int dynamicProcessSlack = FCGI_DEFAULT_PROCESS_SLACK;
+static int dynamicAutoRestart = FCGI_DEFAULT_RESTART_DYNAMIC;
+static int dynamicAutoUpdate = FCGI_DEFAULT_AUTOUPDATE;
+static u_int dynamicListenQueueDepth = FCGI_DEFAULT_LISTEN_Q;
+static u_int dynamicInitStartDelay = DEFAULT_INIT_START_DELAY;
+static u_int dynamicRestartDelay = FCGI_DEFAULT_RESTART_DELAY;
 
 
-/*
- *----------------------------------------------------------------------
- *
- * Code related to the FastCgiIpcDir and AppClass commands.
- *
- *----------------------------------------------------------------------
- */
 
-/*
- *----------------------------------------------------------------------
- *
- * CreateDynamicDirAndMbox --
- *
- *     Create a "dynamic" subdirectory in the directory specified by
- *     the FastCgiIpcDir.  The directory is created with the drwxr--r--
- *     permissions.  In the case the directory already exists, a check
- *     is made to assure the directory can be accessed by the current
- *     user/group.  Mbox file is created in the dynamic subdirectory to
- *     be used in the message passing between server and fastcgi app.
- *
- * Inputs:
- *     uid and gid of the current user.
- *
- * Returns:
- *     NULL or an error message
+/*******************************************************************************
+ * Compute printable MD5 hash. Pool p is used for scratch as well as for
+ * allocating the hash - use temp storage, and dup it if you need to keep it.
  */
-
-static char *CreateDynamicDirAndMbox(uid_t uid, gid_t gid)
+static char *sock_makeHash(pool *p, const char *path,
+                         const char *user, const char *group)
 {
-    DIR *dp = NULL;
-    struct dirent *dirp = NULL;
-    struct stat statbuf;
-    char *dpentry = NULL;
-    int len = strlen(ipcDir);
-    int fd;
+    char *buf = pstrcat(p, path, user, group, NULL);
 
-    ipcDynamicDir = fcgi_Malloc(len+9);
-    strcpy(ipcDynamicDir, ipcDir);
-    strcat(ipcDynamicDir, "/dynamic");
-    mbox = fcgi_Malloc(len+9+5);
-    strcpy(mbox, ipcDynamicDir);
-    strcat(mbox, "/mbox");
+    /* Canonicalize the path (remove "//", ".", "..") */
+    getparents(buf);
 
-    if(mkdir(ipcDynamicDir, S_IRWXU | S_IRGRP | S_IROTH)<0) {
-        if(errno==EEXIST) {
-            /* always chown it just to make sure */
-            chown(ipcDynamicDir, uid, gid);
-            /* directory exists, check permissions and stat */
-            if(WS_Access(ipcDynamicDir, NULL, R_OK | W_OK | X_OK, uid, gid)) {
-                return "Need read/write/exec permission for the \"dynamic\" dir";
-            }
-            /* stat is somewhat expensive */
-            if(lstat(ipcDynamicDir, &statbuf)<0) {
-                return "Unable to stat \"dynamic\" subdirectory";
-            }
-            if(!S_ISDIR(statbuf.st_mode)) {
-                return "\"dynamic\" is not a subdirectory";
-            }
-            goto DoMbox;
-        } else {
-            return "Unable to create \"dynamic\" subdirectory";
-        }
-    }
-    chown(ipcDynamicDir, uid, gid);
-DoMbox:
-    /* delete everything in the directory */
-    dpentry = fcgi_Malloc(strlen(ipcDynamicDir)+255);
-    strcpy(dpentry, ipcDynamicDir);
-    strcat(dpentry, "/");
-    if((dp=opendir(ipcDynamicDir)) == NULL) {
-        return "Unable to open dynamic directory for cleaning";
-    }
-    while((dirp=readdir(dp))!=NULL) {
-        if((strcmp(dirp->d_name, ".") == 0) ||
-                (strcmp(dirp->d_name, "..") == 0)) {
-            continue;
-        }
-        memset(dpentry+strlen(ipcDynamicDir)+1, 0, 254);
-        strcpy(dpentry+strlen(ipcDynamicDir)+1, dirp->d_name);
-        unlink(dpentry);
-    }
-    closedir(dp);
-
-    /* create mbox */
-    if((fd=creat(mbox, S_IRUSR | S_IWUSR))<0) {
-        return "Unable to create mbox file in dynamic subdirectory";
-    }
-    fchown(fd, uid, gid);
-    close(fd);
-    return NULL;
+    return ap_md5(p, (unsigned char *)buf);
 }
 
-/*
- *----------------------------------------------------------------------
- *
- * FastCgiIpcDirCmd --
- *
- *     Sets up the directory into which Unix domain sockets
- *     that are used for local communication will be deposited.
- *     Also create a subdirectory "dynamic" if one does not exist
- *     for the socket and lock files of dynamic FastCGI processes.
- *
- * Results:
- *     NULL or an error message
- *
- *----------------------------------------------------------------------
+/*******************************************************************************
+ * Return absolute path to file in either "regular" FCGI socket directory or
+ * the dynamic directory.  Result is allocated in pool p.
  */
-
-const char *FastCgiIpcDirCmd(cmd_parms *cmd, void *dummy, char *arg)
+static const char *sock_makePath(pool *p, const char *file, int dynamic)
 {
-    uid_t uid;
-    gid_t gid;
-    int len;
-
-    ASSERT(arg != NULL);
-    len = strlen(arg);
-    ASSERT(len > 0);
-    if(*arg != '/') {
-        return "FastCgiIpcDir: Directory path must be absolute\n";
-    }
-
-    uid = (user_id == (uid_t) -1)  ? geteuid() : user_id;
-#ifndef __EMX__
-    gid = (group_id == (gid_t) -1) ? getegid() : group_id;
-#else
-    gid = (gid_t)-1;
-#endif
-    if(WS_Access(arg, NULL, R_OK | W_OK | X_OK, uid, gid)) {
-        return "FastCgiIpcDir: Need read/write/exec permission on directory\n";
-    }
-
-    ipcDir = fcgi_Malloc(len + 1);
-    strcpy(ipcDir, arg);
-    while(len > 1 && ipcDir[len-1] == '/') {
-        ipcDir[len-1] = '\0';
-        len--;
-    }
-    return CreateDynamicDirAndMbox(uid,gid);
+    return (const char *)pstrcat(p, dynamic ? ipcDynamicDir : ipcDir,
+                                 "/", file, NULL);
 }
 
-/*
- *----------------------------------------------------------------------
- *
- * GetHashedPath --
- *
- *      Compute an MD5 hash of the "canonical" name of
- *      the executable.  The canonical pathname is the one with
- *      "//", ".", "..", and symlinks removed.
- *
- * Results:
- *      Printable string is computed.
- *
- * Side effects:
- *      None.
- *
- *----------------------------------------------------------------------
+/*******************************************************************************
+ * Allocate a new string from pool p with the name of a Unix/Domain socket's
+ * lock file (used by dynamic only).
  */
-#ifdef BUFSIZ
-#define TMP_BUFSIZ (min(BUFSIZ, 512))
-#else
-#define TMP_BUFSIZ (512)
-#endif
-
-static pool *fcgiPool = NULL;
-static char *GetHashedPath(char *bindName)
+const char *dynamic_makeLockPath(pool *p, const char *sockPath)
 {
-    char buffer[TMP_BUFSIZ];
-
-    /* Canonicalize the string */
-    getparents(bindName);
-    memset(buffer, 0, TMP_BUFSIZ);
-    if(readlink(bindName, buffer, TMP_BUFSIZ)<0) {
-        if (errno!=EINVAL) {
-            return NULL;
-        } else {
-            strncpy(buffer, bindName, TMP_BUFSIZ);
-        }
-    }
-
-    /* Allocate private module memory pool */
-    if(fcgiPool == NULL) {
-        fcgiPool = make_sub_pool(NULL);
-    }
-    ASSERT(fcgiPool!=NULL);
-
-    /* Hash the name - need to free memory on the SIGTERM */
-    return ((char *)ap_md5(fcgiPool,(unsigned char *)buffer));
-}
-#undef TMP_BUFSIZ
-
-/*
- *----------------------------------------------------------------------
- *
- * MakeSocketName --
- *
- *      Create a name for the Unix domain socket to be used
- *      for communication with local FastCGI applications.
- *      Last parameter specifies whether the socket filename
- *      should be created in the regular scoket directory,
- *      specified by the ipcDir or its dynamic subdirectory,
- *      specified via ipcDynamicDir.
- *
- * Results:
- *      The value of the socket path name.
- *
- * Side effects:
- *      Appends to the DString.
- *
- *----------------------------------------------------------------------
- */
-
-char *MakeSocketName(char *execPath, char *bindPath,
-        int extension, Tcl_DString *dsPtr, int dynamic)
-{
-    char pathExt[32];
-
-    ASSERT(DStringLength(dsPtr) == 0);
-    if(dynamic==1) {
-        DStringAppend(dsPtr, ipcDynamicDir, -1);
-        DStringAppend(dsPtr, "/", -1);
-    } else {
-        DStringAppend(dsPtr, ipcDir, -1);
-        DStringAppend(dsPtr, "/", -1);
-    }
-
-    /*
-     * If bindPath is NULL, then it means that the name of
-     * of the socket should be a canonical form of the execPath
-     */
-    if(bindPath==NULL) {
-        DStringAppend(dsPtr, GetHashedPath(execPath), -1);
-    } else {
-        DStringAppend(dsPtr, bindPath, -1);
-    }
-    if(extension != -1) {
-        sprintf(pathExt, ".%d", extension);
-        DStringAppend(dsPtr, pathExt, -1);
-    }
-    return DStringValue(dsPtr);
+    return pstrcat(p, sockPath, ".lock", NULL);
 }
 
-/*
- * MakeLockFileName
- *
- * Returns the lock file name for dynamic application execName.
- * Allocates memory for it.
+/*******************************************************************************
+ * Find a FastCGI server with a matching execPath, and if fcgi_suexec is
+ * enabled with matching uid and gid.
  */
-
-char *
-MakeLockFileName(char *execName)
+FastCgiServerInfo *server_getById(const char *ePath, uid_t uid, gid_t gid)
 {
-    char *hashedPath, *lockName;
+    FastCgiServerInfo *s;
 
-    hashedPath = GetHashedPath(execName);
-    lockName = fcgi_Malloc(strlen(ipcDynamicDir)+strlen(hashedPath)+7);
-    strcpy(lockName, ipcDynamicDir);
-    strcat(lockName, "/");
-    strcat(lockName, hashedPath);
-    strcat(lockName, ".lock");
-    return lockName;
-}
-
-/*
- *----------------------------------------------------------------------
- *
- * LookupFcgiServerInfo --
- *
- *      Looks up the FastCgiServerInfo structure with info->execPath
- *      equal to ePath.
- *
- * Results:
- *      Pointer to the structure, or NULL if no such structure exists.
- *
- * Side effects:
- *      None.
- *
- *----------------------------------------------------------------------
- */
-
-FastCgiServerInfo *LookupFcgiServerInfo(char *ePath)
-{
-    FastCgiServerInfo *info;
-
-    for(info = fastCgiServers; info != NULL; info = info->next) {
-        const char *execPath = DStringValue(&info->execPath);
-        if(execPath != NULL && strcmp(execPath, ePath) == 0) {
-            return info;
+    for (s = fastCgiServers; s != NULL; s = s->next) {
+        if (strcmp(s->execPath, ePath) == 0) {
+            if (fcgi_suexec == NULL || (uid == s->uid && gid == s->gid))
+                return s;
         }
     }
     return NULL;
 }
-
-/*
- *----------------------------------------------------------------------
- *
- * CreateFcgiServerInfo --
- *
- *      This routine allocates and initializes a fast cgi server info
- *      structure.  It's called from AppClass, ExternalAppClass and
- *      __SendFcgiScript.  This routine is responsible for adding the
- *      new entry to the appClassTable also.
- *
- * Results:
- *      NULL pointer is returned if the class has already been defined
- *      or a valid fast cgi server info pointer.
- *
- * Side effects:
- *      FastCGI server info structure is allocated and initialized.
- *      This includes allocation and initialization of the per
- *      connection information.
- *
- *----------------------------------------------------------------------
+
+/*******************************************************************************
+ * Find a FastCGI server with a matching execPath, and if fcgi_suexec is
+ * enabled with matching user and group.
  */
-
-static FastCgiServerInfo *CreateFcgiServerInfo(int numInstances, char *ePath)
+FastCgiServerInfo *server_get(const char *ePath, const char *user, const char *group)
 {
-    FastCgiServerInfo *serverInfoPtr = NULL;
-    FcgiProcessInfo *procInfoPtr;
-    int i;
+    FastCgiServerInfo *s;
 
-    serverInfoPtr = LookupFcgiServerInfo(ePath);
-    if(serverInfoPtr != NULL) {
+    for (s = fastCgiServers; s != NULL; s = s->next) {
+        if (strcmp(s->execPath, ePath) == 0) {
+            if (fcgi_suexec == NULL)
+                return s;
+
+            if (strcmp(user, s->user) == 0
+                && (user[0] == '~' || strcmp(group, s->group) == 0))
+                return s;
+        }
+    }
+    return NULL;
+}
+
+
+/*******************************************************************************
+ * Allocate a new FastCGI server record from pool p with default values.
+ */
+static FastCgiServerInfo *server_new(pool *p)
+{
+    FastCgiServerInfo *s =
+        (FastCgiServerInfo *) pcalloc(p, sizeof(FastCgiServerInfo));
+
+    /* Initialize anything who's init state is not zeroizzzzed */
+    s->listenQueueDepth = FCGI_DEFAULT_LISTEN_Q;
+    s->appConnectTimeout = FCGI_DEFAULT_APP_CONN_TIMEOUT;
+    s->initStartDelay = DEFAULT_INIT_START_DELAY;
+    s->restartDelay = FCGI_DEFAULT_RESTART_DELAY;
+    s->restartOnExit = FALSE;
+    s->directive = APP_CLASS_UNKNOWN;
+    s->processPriority = FCGI_DEFAULT_PRIORITY;
+    s->listenFd = -2;
+
+    return s;
+}
+
+/*******************************************************************************
+ * Add the server to the linked list of FastCGI servers.
+ */
+static void server_add(FastCgiServerInfo *s)
+{
+    s->next = fastCgiServers;
+    fastCgiServers = s;
+}
+
+/*******************************************************************************
+ * Configure uid, gid, user, group, username for suexec.
+ */
+static const char *server_setUidGid(pool *p, FastCgiServerInfo *s,
+                                    uid_t uid, gid_t gid)
+{
+    struct passwd *pw;
+    struct group  *gr;
+
+    if (fcgi_suexec == NULL)
         return NULL;
+
+    s->uid = uid;
+    pw = getpwuid(uid);
+    if (pw == NULL) {
+        return psprintf(p,
+            "getpwuid() couldn't determine the username for uid '%ld', "
+            "you probably need to modify the User directive: %s",
+            (long)uid, strerror(errno));
     }
-    /*
-     * Create an info structure for the FastCGI server
-     */
-    serverInfoPtr = (FastCgiServerInfo *) fcgi_Malloc(sizeof(FastCgiServerInfo));
-    DStringInit(&serverInfoPtr->execPath);
-    serverInfoPtr->envp = NULL;
-    serverInfoPtr->listenQueueDepth = FCGI_DEFAULT_LISTEN_Q;
-    serverInfoPtr->appConnectTimeout = FCGI_DEFAULT_APP_CONN_TIMEOUT;
-    serverInfoPtr->numProcesses = numInstances;
-    serverInfoPtr->initStartDelay = DEFAULT_INIT_START_DELAY;
-    serverInfoPtr->restartDelay = FCGI_DEFAULT_RESTART_DELAY;
-    serverInfoPtr->restartOnExit = FALSE;
-    serverInfoPtr->numRestarts = 0;
-    serverInfoPtr->numFailures = 0;
-    serverInfoPtr->ipcAddr = OS_InitIpcAddr();
-    serverInfoPtr->directive = APP_CLASS_UNKNOWN;
-    DStringInit(&serverInfoPtr->host);
-    DStringInit(&serverInfoPtr->bindName);
-    serverInfoPtr->port = -1;
-    serverInfoPtr->processPriority = FCGI_DEFAULT_PRIORITY;
-    serverInfoPtr->listenFd = -1;
-    serverInfoPtr->reqRefCount = 0;
-    serverInfoPtr->freeOnZero = FALSE;
-    serverInfoPtr->affinity = FALSE;
-    serverInfoPtr->restartTimerQueued = FALSE;
-    serverInfoPtr->keepConnection = FALSE;
-    serverInfoPtr->fcgiFd = -1;
+    s->user = pstrdup(p, pw->pw_name);
+    s->username = s->user;
 
-    /* Dynamic FastCGI applcations */
-    serverInfoPtr->totalConnTime = 0;
-    serverInfoPtr->smoothConnTime = 0;
-    serverInfoPtr->totalQueueTime = 0;
-    serverInfoPtr->avgQueueTime = 0;
-
-    serverInfoPtr->procInfo =
-      (FcgiProcessInfo *) fcgi_Malloc(sizeof(FcgiProcessInfo) * numInstances);
-
-    procInfoPtr = serverInfoPtr->procInfo;
-    for(i = 0; i < numInstances; i++) {
-        procInfoPtr->pid = 0;
-        procInfoPtr->listenFd = -1;
-        procInfoPtr->fcgiFd = -1;
-        procInfoPtr->state = STATE_READY;
-        procInfoPtr->ipcAddr = OS_InitIpcAddr();
-        procInfoPtr->serverInfoPtr = serverInfoPtr;
-        procInfoPtr++;
+    s->gid = gid;
+    gr = getgrgid(gid);
+    if (gr == NULL) {
+        return psprintf(p,
+            "getgrgid() couldn't determine the group name for gid '%ld', "
+            "you probably need to modify the Group directive: %s",
+            (long)gid, strerror(errno));
     }
-    serverInfoPtr->next = fastCgiServers;
-    fastCgiServers = serverInfoPtr;
-    return serverInfoPtr;
+    s->group = pstrdup(p, gr->gr_name);
+
+    return NULL;
+}
+
+/*******************************************************************************
+ * Allocate an array of ServerProcess records.
+ */
+static ServerProcess *server_createProcs(pool *p, int num)
+{
+    int i;
+    ServerProcess *proc = (ServerProcess *)pcalloc(p, sizeof(ServerProcess) * num);
+
+    for (i = 0; i < num; i++) {
+        proc[i].pid = 0;
+        proc[i].state = STATE_READY;
+    }
+    return proc;
 }
 
-/*
- *----------------------------------------------------------------------
- *
- * FreeFcgiServerInfo --
- *
- *      This routine frees up all resources associated with a FastCGI
- *      application server.  It's called on error cleanup and as a result
- *      of a shutdown or restart.
- *
- * Results:
- *      FastCgi server and process structures freed.
- *
- * Side effects:
- *      FastCGI info structure is deallocated and unavailable.
- *
- *----------------------------------------------------------------------
+/*******************************************************************************
+ * Send SIGTERM to each process in the server class, remove socket and lock
+ * file if appropriate.  Currently this is only called when the PM is shutting
+ * down and thus memory isn't freed and sockets and files aren't closed.
  */
-static void FreeFcgiServerInfo(FastCgiServerInfo *serverInfoPtr)
+static void server_shutdown(pool *p, FastCgiServerInfo *s)
 {
-    FcgiProcessInfo *processInfoPtr;
+    ServerProcess *proc = s->procs;
     int i, numChildren;
-    char *lockFileName;
-    OS_IpcAddr *ipcAddrPtr;
 
-    /*
-     * Free up process/connection info.
-     */
-    processInfoPtr = serverInfoPtr->procInfo;
-    if(serverInfoPtr->directive == APP_CLASS_DYNAMIC) {
-        numChildren = maxClassProcs;
-    } else {
-        numChildren = serverInfoPtr->numProcesses;
-    }
+    if (s->directive == APP_CLASS_DYNAMIC)
+        numChildren = dynamicMaxClassProcs;
+    else
+        numChildren = s->numProcesses;
 
-    for (i = 0; i < numChildren; i++, processInfoPtr++) {
-        if(processInfoPtr->pid != -1 && processInfoPtr->pid != 0) {
-            kill(processInfoPtr->pid, SIGTERM);
-            processInfoPtr->pid = -1;
+    for (i = 0; i < numChildren; i++, proc++) {
+        if (proc->pid > 0) {
+            kill(proc->pid, SIGTERM);
+            proc->pid = -1;
         }
-        OS_FreeIpcAddr(processInfoPtr->ipcAddr);
     }
 
-    if (serverInfoPtr->directive == APP_CLASS_DYNAMIC) {
-        /*
-         * Remove the dead lock file and socket.
-         */
-        lockFileName = MakeLockFileName(DStringValue(&serverInfoPtr->execPath));
+    /* Remove the dead lock file */
+    if (s->directive == APP_CLASS_DYNAMIC) {
+        const char *lockFileName = dynamic_makeLockPath(p, s->sockPath);
+
         if (unlink(lockFileName) != 0) {
             fprintf(errorLog, "[%s] mod_fastcgi: "
                 "unlink() failed to remove lock file '%s' for app '%s': %s\n",
-                get_time(), lockFileName, DStringValue(&serverInfoPtr->execPath),
+                get_time(), lockFileName, s->execPath,
                 strerror(errno));
-            fflush(errorLog);
         }
-        fcgi_Free(lockFileName);
+    }
 
-        ipcAddrPtr = (OS_IpcAddr *)serverInfoPtr->ipcAddr;
-        if (unlink(MakeSocketName(DStringValue(&serverInfoPtr->execPath),
-                  NULL, -1, &ipcAddrPtr->bindPath, 1)) != 0) {
+    /* Remove the socket file */
+    if (s->sockPath != NULL && s->directive != APP_CLASS_EXTERNAL) {
+        if (unlink(s->sockPath) != 0) {
             fprintf(errorLog, "[%s] mod_fastcgi: "
                 "unlink() failed to remove socket file '%s' for app '%s': %s\n",
-                get_time(), DStringValue(&ipcAddrPtr->bindPath), DStringValue(&serverInfoPtr->execPath),
+                get_time(), s->sockPath, s->execPath,
                 strerror(errno));
             fflush(errorLog);
         }
     }
-
-    /*
-     * Clean up server info structure resources.
-     */
-    OS_FreeIpcAddr(serverInfoPtr->ipcAddr);
-    DStringFree(&serverInfoPtr->execPath);
-    DStringFree(&serverInfoPtr->host);
-    DStringFree(&serverInfoPtr->bindName);
-    serverInfoPtr->port = -1;
-    serverInfoPtr->directive = APP_CLASS_UNKNOWN;
-    if(serverInfoPtr->listenFd != -1) {
-        OS_Close(serverInfoPtr->listenFd);
-        serverInfoPtr->listenFd = -1;
-    }
-    fcgi_Free(serverInfoPtr->procInfo);
-    serverInfoPtr->procInfo = NULL;
-    if(serverInfoPtr->envp != NULL) {
-        OS_EnvironFree(serverInfoPtr->envp);
-        serverInfoPtr->envp = NULL;
-    }
-
-    /* Dynamic FastCGI applications */
-    serverInfoPtr->totalConnTime = 0;
-    serverInfoPtr->smoothConnTime = 0;
-    serverInfoPtr->totalQueueTime = 0;
-    serverInfoPtr->avgQueueTime = 0;
-
-    /*
-     * If serverInfoPtr is part of fastCgiServers list, unlink it
-     */
-    if (serverInfoPtr == fastCgiServers) {
-        fastCgiServers = fastCgiServers->next;
-    } else {
-        FastCgiServerInfo *tmpPtr = fastCgiServers;
-        while(tmpPtr->next != NULL && tmpPtr->next != serverInfoPtr) {
-            tmpPtr = tmpPtr->next;
-        }
-        if(tmpPtr->next == serverInfoPtr) {
-            tmpPtr->next = serverInfoPtr->next;
-        }
-    }
-    fcgi_Free(serverInfoPtr);
+    fastCgiServers = s->next;
 }
 
-/*
- *----------------------------------------------------------------------
- *
- * CleanupPreviousConfig --
- *
- *      This routine is called by each directive in the module.
- *      If the directive is the first directive in the reading of
- *      a new configuration, the routine cleans up from any previous
- *      reading of a configuration by this process.
- *
- *----------------------------------------------------------------------
+/*******************************************************************************
+ * Get the next configuration directive argument, & return an in_addr and port.
+ * The arg must be in the form "host:port" where host can be an IP or hostname.
+ * The pool arg should be persistant storage.
  */
-
-static void CleanupPreviousConfig(void)
+static const char *conf_getHostPort(pool *p, const char **arg,
+        const char **host, u_int *port)
 {
-    if(!readingConfig) {
-        while(fastCgiServers != NULL) {
-            FreeFcgiServerInfo(fastCgiServers);
-        }
-        readingConfig = TRUE;
-    }
-}
-
-/*
- *----------------------------------------------------------------------
- *
- * ParseApacheRawArgs --
- *
- * Turns an Apache RAW_ARGS input into argc and argv.
- *
- * Input: rawArgs
- *      The RAW_ARGS input (everything but the command name.)
- *      Arguments are separated by whitespace (sequences of
- *      space or tab characters.)
- *
- * Results:
- *      Returns argv; assigns argc to *argcPtr.  argv[0]
- *      is NULL; argv[1] is the first argument.
- *
- * Side effects:
- *      If argc > 0 then Mallocs argv and argv[1], which the client
- *      is responsible for freeing.
- *
- *----------------------------------------------------------------------
- */
+    char *cvptr, *portStr;
 
-char **ParseApacheRawArgs(char *rawArgs, int *argcPtr)
-{
-    char *input, *p;
-    int i;
-    int argc = 0;
-    char **argv = NULL;
+    *host = getword_conf(p, arg);
+    portStr = strchr(*host, ':');
 
-    /*
-     * Apache doesn't specify that rawArgs starts with a
-     * non-whitespace, so be sure.
-     */
-    rawArgs += strspn(rawArgs, " \t");
-    if(*rawArgs == '\0') {
-        goto Done;
-    }
-    input = fcgi_Malloc(strlen(rawArgs) + 1);
-    strcpy(input, rawArgs);
+    if (!*host)
+        return "\"\"";
+    if (!portStr)
+        return "missing port specification";
 
-    /*
-     * Make one pass over the input, null-terminating each argument and
-     * computing argc.  Then allocate argv, with argc entries.  argc
-     * starts at 1 since Apache does not pass the command name with the input.
-     */
-    p = input;
-    argc = 1;
-    for(;;) {
-        /*
-         * *p is a non-whitespace character.  Look for a whitespace character.
-         */
-        p += strcspn(p, " \t");
-        argc++;
-        if(*p == '\0') {
-            break;
-        }
-        *p++ = '\0';
+    /* Split the host and port portions */
+    *portStr++ = '\0';
 
-        /*
-         * Look for a non-whitespace character.
-         */
-        p += strspn(p, " \t");
-        if(*p == '\0') {
-            break;
-        }
-    }
-    argv = fcgi_Malloc(sizeof(char *) * argc);
+    /* Convert port number */
+    *port = (u_int)strtol(portStr, &cvptr, 10);
+    if (*cvptr != '\0' || *port < 1 || *port > 65535)
+        return pstrcat(p, "bad port number \"", portStr, "\"", NULL);
 
-    /*
-     * Make a second pass over the input to fill in argv.
-     */
-    p = input;
-    i = 1;
-    for(;;) {
-        argv[i++] = p;
-        if(i == argc) {
-            break;
-        }
-        p += strlen(p) + 1;
-        p += strspn(p, " \t");
-    }
-  Done:
-    *argcPtr = argc;
-    return argv;
-}
-
-/*
- *----------------------------------------------------------------------
- *
- * ConfigureLocalServer --
- *
- *      Configure a FastCGI server for local communication using
- *      Unix domain sockets.  This is used by ExternalAppClass directive
- *      to configure connection point for "-socket" option.
- *
- * Results:
- *      0 on successful configure or -1 if there was an error
- *
- * Side effects:
- *      New FastCGI structure is allocated.
- *
- *----------------------------------------------------------------------
- */
-
-static int ConfigureLocalServer(
-        char *execPath,
-        char *bindPath,
-        int affinity,
-        int numInstances,
-        FastCgiServerInfo *serverInfoPtr)
-{
-    FcgiProcessInfo *processInfoPtr;
-    int i;
-
-    serverInfoPtr->affinity = affinity;
-    serverInfoPtr->numProcesses = numInstances;
-
-    if(serverInfoPtr->affinity == FALSE) {
-        if(OS_CreateLocalIpcAddr(serverInfoPtr->ipcAddr,
-                MakeSocketName, execPath,
-                bindPath, -1, 0) != 0) {
-            return -1;
-        }
-    } else {
-        processInfoPtr = serverInfoPtr->procInfo;
-        for(i = 0; i < numInstances; i++) {
-            if(OS_CreateLocalIpcAddr(processInfoPtr->ipcAddr,
-                    MakeSocketName, execPath,
-                    bindPath, i+1, 0) != 0) {
-                return -1;
-            }
-            processInfoPtr++;
-        }
-    }
-    return 0;
-}
-
-/*
- *----------------------------------------------------------------------
- *
- * ConfigureTCPServer --
- *
- *      Configure a FastCGI server for communication using TCP.  This is
- *      used by ExternalAppClass directive to configure connection point
- *      for "-host" option.   The remote host is specified as 'host:port',
- *      as in 'aegean.openmarket.com:666'.
- *
- * Results:
- *      0 on successful configure or -1 if there was an error
- *
- * Side effects:
- *      New FastCGI structure is allocated and modifies hostSpec.
- *
- *----------------------------------------------------------------------
- */
-
-static int ConfigureTCPServer(
-        char *hostSpec,
-        int affinity,
-        int numInstances,
-        FastCgiServerInfo *serverInfoPtr)
-{
-    FcgiProcessInfo *processInfoPtr;
-    struct in_addr host;
-    long port;
-    char *p, *cvptr;
-    int i, numHosts;
-
-    /*
-     * Parse the host specification string into host and port components.
-     */
-    p = strchr(hostSpec, ':');
-    if(p == NULL) {
-        return -1;
-    }
-    *p++ = '\0';
-
-    if((numHosts = ResolveHostname(hostSpec, &host)) < 0) {
-        return -1;
-    }
-
-    /*
-     * If the address lookup resolves to more than one host, this is
-     * an error.  The proper way to handle this is for the creator of
-     * the server configuration file to specify the IP address in dotted
-     * decimal notation.  This will insure the proper host routing (as
-     * long as someone doesn't have multiple machines with the same IP
-     * address which is not legal and we can't do anything about that).
-     */
-    if(numHosts > 1) {
-        return -1;
-    }
-
-    port = strtol(p, &cvptr, 10);
-    if(*cvptr != '\0' || port < 1 || port > 65535) {
-        return -1;
-    }
-
-    /*
-     * Create an info structure for the Fast CGI server (TCP type).
-     */
-    DStringAppend(&serverInfoPtr->host, hostSpec, -1);
-    serverInfoPtr->port = (int)port;
-    serverInfoPtr->affinity = affinity;
-    serverInfoPtr->numProcesses = numInstances;
-
-    if(serverInfoPtr->affinity == FALSE) {
-        OS_CreateInetIpc(serverInfoPtr->ipcAddr, &host, (int)port);
-    } else {
-        processInfoPtr = serverInfoPtr->procInfo;
-        for(i = 0; i < numInstances; i++) {
-            OS_CreateInetIpc(processInfoPtr->ipcAddr, &host, (int)(port + i));
-            processInfoPtr++;
-        }
-    }
-    return 0;
-}
-
-/*
- *----------------------------------------------------------------------
- *
- * AppClassCmd --
- *
- *      Implements the FastCGI AppClass configuration directive.  This
- *      command adds a fast cgi program class which will be used by the
- *      httpd parent to start/stop/maintain fast cgi server apps.
- *
- *      AppClass <exec-path> [-processes N] \
- *               [-restart-delay N] [-priority N] \
- *               [-port N] [-socket sock-name] \
- *               [-initial-env name1=value1] \
- *               [-initial-env name2=value2]
- *
- * Default values:
- *
- * o numProcesses will be set to 1
- * o restartDelay will be set to 5 which means the application will not
- *   be restarted any earlier than 5 seconds from when it was last
- *   invoked.  If the application has been up for longer than 5 seconds
- *   and it fails, a single copy will be restarted immediately.  Other
- *   restarts within that group will be inhibited until the restart-delay
- *   has elapsed.
- * o affinity will be set to FALSE (ie. no process affinity) if not
- *   specified.
- * o if both -socket and -port are omitted, server generates a name for the
- *   socket used in connection.
- *
- * Results:
- *      NULL or an error message.
- *
- * Side effects:
- *      Registers a new AppClass handler for FastCGI.
- *
- *----------------------------------------------------------------------
- */
-
-const char *AppClassCmd(cmd_parms *cmd, void *dummy, char *arg)
-{
-    int argc;
-    char **argv = NULL;
-    char *execPath;
-    FastCgiServerInfo *serverInfoPtr = NULL;
-    int i, n;
-    uid_t uid;
-    gid_t gid;
-    char *cvtPtr;
-    char **envHead = NULL;
-    char **envPtr;
-    char *namePtr;
-    char *valuePtr;
-    int numProcesses = 1;
-    int initStartDelay = 0;
-    int restartDelay = FCGI_DEFAULT_RESTART_DELAY;
-    int processPriority = FCGI_DEFAULT_PRIORITY;
-    int listenQueueDepth = FCGI_DEFAULT_LISTEN_Q;
-    int appConnectTimeout = FCGI_DEFAULT_APP_CONN_TIMEOUT;
-    char *bindname = NULL;
-    int portNumber = -1;
-    int affinity = FALSE;
-    char *errMsg = fcgi_Malloc(1024);
-
-    /*
-     * If this is the first call to AppClassCmd since a
-     * server restart, clean up structures created by the previous
-     * sequence of AppClassCmds.
-     */
-    CleanupPreviousConfig();
-
-    /*
-     * Parse the raw arguments into tokens.
-     * argv[0] is empty and argv[1] is the exec path.
-     * Validate the exec path.
-     */
-    argv = ParseApacheRawArgs(arg, &argc);
-    if(argc < 2) {
-        sprintf(errMsg, "AppClass: Too few args\n");
-        goto ErrorReturn;
-    }
-
-    execPath = argv[1];
-    serverInfoPtr = LookupFcgiServerInfo(execPath);
-    if(serverInfoPtr != NULL) {
-        sprintf(errMsg,
-                "AppClass: Redefinition of previously defined class %s\n",
-                execPath);
-        goto ErrorReturn;
-    }
-
-    /* @@@@ Why do we care if we're -1? geteuid() is generally root here!
-     * Big difference. This is used for the WS_Access() check, and 
-     * the creation of the socket file.  Its done this same way later to
-     * create the mbox file. */
-    uid = (user_id == (uid_t) -1)  ? geteuid() : user_id;
-#ifndef __EMX__
-    gid = (group_id == (gid_t) -1) ? getegid() : group_id;
-#else
-    gid = (gid_t)-1;
-#endif
-    if(WS_Access(execPath, NULL, X_OK, uid, gid)) {
-        sprintf(errMsg, "AppClass: Could not access file %s\n", execPath);
-        goto ErrorReturn;
-    }
-
-    /*
-     * You'd like to create the server info structure now, but
-     * you can't because you don't know numProcesses.  So
-     * parse the options now.  Make a conservative over-estimate
-     * of the number of -initial-env options so that an environment
-     * structure can be allocated now.
-     */
-    envHead = OS_EnvironInit(argc/2 + 1);
-    envPtr = envHead;
-
-    for(i = 2; i < argc; i++) {
-        if((strcmp(argv[i], "-processes") == 0)) {
-            if((i + 1) == argc) {
-                goto MissingValueReturn;
-            }
-            i++;
-            n = strtol(argv[i], &cvtPtr, 10);
-            if(*cvtPtr != '\0' || n < 1 || n > FCGI_DEFAULT_MAX_PROCS) {
-                goto BadValueReturn;
-            }
-            numProcesses = n;
-            continue;
-        } else if((strcmp(argv[i], "-restart-delay") == 0)) {
-            if((i + 1) == argc) {
-                goto MissingValueReturn;
-            }
-            i++;
-            n = strtol(argv[i], &cvtPtr, 10);
-            if(*cvtPtr != '\0' || n < 0) {
-                goto BadValueReturn;
-            }
-            restartDelay = n;
-            continue;
-        } else if((strcmp(argv[i], "-init-start-delay") == 0)) {
-            if((i + 1) == argc) {
-                goto MissingValueReturn;
-            }
-            i++;
-            n = strtol(argv[i], &cvtPtr, 10);
-            if(*cvtPtr != '\0' || n < 0) {
-                goto BadValueReturn;
-            }
-            initStartDelay = n;
-            continue;
-        } else if((strcmp(argv[i], "-priority") == 0)) {
-            if((i + 1) == argc) {
-                goto MissingValueReturn;
-            }
-            i++;
-            n = strtol(argv[i], &cvtPtr, 10);
-            if(*cvtPtr != '\0' || n < 0 || n > 20) {
-                goto BadValueReturn;
-            }
-            processPriority = n;
-            continue;
-        } else if((strcmp(argv[i], "-listen-queue-depth") == 0)) {
-            if((i + 1) == argc) {
-                goto MissingValueReturn;
-            }
-            i++;
-            n = strtol(argv[i], &cvtPtr, 10);
-            if(*cvtPtr != '\0' || n < 1) {
-                goto BadValueReturn;
-            }
-            listenQueueDepth = n;
-            continue;
-        } else if((strcmp(argv[i], "-appConnTimeout") == 0)) {
-            if((i + 1) == argc) {
-                goto MissingValueReturn;
-            }
-            i++;
-            n = strtol(argv[i], &cvtPtr, 10);
-            if(*cvtPtr != '\0' || n < 1) {
-                goto BadValueReturn;
-            }
-            appConnectTimeout = n;
-            continue;
-        } else if((strcmp(argv[i], "-port") == 0)) {
-            if((i + 1) == argc) {
-                goto MissingValueReturn;
-            }
-            i++;
-            n = strtol(argv[i], &cvtPtr, 10);
-            if(*cvtPtr != '\0' || n < 1) {
-                goto BadValueReturn;
-            }
-            portNumber = n;
-            continue;
-        } else if((strcmp(argv[i], "-socket") == 0)) {
-            if((i + 1) == argc) {
-                goto MissingValueReturn;
-            }
-            i++;
-            bindname = argv[i];
-            continue;
-        } else if((strcmp(argv[i], "-initial-env") == 0)) {
-            if((i + 1) == argc) {
-                goto MissingValueReturn;
-            }
-            i++;
-            namePtr = argv[i];
-            valuePtr = strchr(namePtr, '=');
-            if(valuePtr != NULL) {
-                *valuePtr = '\0';
-                valuePtr++;
-            } else {
-                goto BadValueReturn;
-            }
-            OS_EnvString(envPtr, namePtr, valuePtr);
-            envPtr++;
-            valuePtr--;
-            *valuePtr = '=';
-            continue;
-        } else {
-            sprintf(errMsg, "AppClass: Unknown option %s\n", argv[i]);
-            goto ErrorReturn;
-        }
-    } /* for */
-
-    if((bindname != NULL) && (portNumber != -1)) {
-        sprintf(errMsg,
-                "AppClass: -port and -socket options are mutually exclusive");
-        goto ErrorReturn;
-    }
-    serverInfoPtr = CreateFcgiServerInfo(numProcesses, execPath);
-    ASSERT(serverInfoPtr != NULL);
-    DStringAppend(&serverInfoPtr->execPath, execPath, -1);
-    serverInfoPtr->restartOnExit = TRUE;
-    serverInfoPtr->initStartDelay = initStartDelay;
-    serverInfoPtr->restartDelay = restartDelay;
-    serverInfoPtr->processPriority = processPriority;
-    serverInfoPtr->listenQueueDepth = listenQueueDepth;
-    serverInfoPtr->appConnectTimeout = appConnectTimeout;
-    if(bindname != NULL) {
-        DStringAppend(&serverInfoPtr->bindName, bindname, -1);
-    }
-    serverInfoPtr->port = portNumber;
-    serverInfoPtr->envp = envHead;
-    serverInfoPtr->directive = APP_CLASS_STANDARD;
-
-    /*
-     * Set envHead to NULL so that if there is an error below we don't
-     * free the environment structure twice.
-     */
-    envHead = NULL;
-
-    /*
-     * Create an IPC path for the AppClass.
-     */
-    if(affinity == FALSE) {
-        int listenFd;
-        if(serverInfoPtr->port == -1) {
-            /* local IPC */
-            listenFd = OS_CreateLocalIpcFd(serverInfoPtr->ipcAddr,
-                    serverInfoPtr->listenQueueDepth, uid, gid,
-                    MakeSocketName, execPath,
-                    bindname, -1, 0);
-        } else {
-            /* TCP/IP */
-            listenFd = OS_CreateRemoteIpcFd(serverInfoPtr->ipcAddr,
-                    serverInfoPtr->port, serverInfoPtr->listenQueueDepth);
-        }
-
-        if(listenFd < 0) {
-            sprintf(errMsg, "AppClass: could not create IPC socket\n");
-            goto ErrorReturn;
-        }
-        serverInfoPtr->listenFd = listenFd;
-        /*
-         * Propagate listenFd to each process so that process manager
-         * doesn't have to understand affinity.
-         */
-        for(i = 0; i < serverInfoPtr->numProcesses; i++) {
-            serverInfoPtr->procInfo[i].listenFd = listenFd;
-        }
-    }
-    fcgi_Free(argv[1]);
-    fcgi_Free(argv);
-    fcgi_Free(errMsg);
     return NULL;
-
-MissingValueReturn:
-    sprintf(errMsg, "AppClass: missing value for %s\n", argv[i]);
-    goto ErrorReturn;
-BadValueReturn:
-    sprintf(errMsg, "AppClass: bad value \"%s\" for %s\n", argv[i], argv[i-1]);
-    goto ErrorReturn;
-ErrorReturn:
-    if(serverInfoPtr != NULL) {
-        FreeFcgiServerInfo(serverInfoPtr);
-    }
-    if(envHead != NULL) {
-        OS_EnvironFree(envHead);
-    }
-    if(argv != NULL) {
-        fcgi_Free(argv[1]);
-        fcgi_Free(argv);
-    }
-    return errMsg;
 }
 
-/*
- *----------------------------------------------------------------------
- *
- * ExternalAppClassCmd --
- *
- *      Implements the FastCGI ExternalAppClass configuration directive.
- *      This command adds a fast cgi program class which will be used by the
- *      httpd parent to connect to the fastcgi process which is not managed
- *      by the web server and may be running on the local or remote machine.
- *
- *      ExternalAppClass <name> [-host hostname:port] \
- *                              [-socket socket_path]
- *
- *
- * Results:
- *      NULL or an error message.
- *
- * Side effects:
- *      Registers a new ExternalAppClass handler for FastCGI.
- *
- *----------------------------------------------------------------------
+/*******************************************************************************
+ * Get the next configuration directive argument, & return an u_int.
+ * The pool arg should be temporary storage.
  */
-
-const char *ExternalAppClassCmd(cmd_parms *cmd, void *dummy, char *arg)
+static const char *conf_getUInt(pool *p, const char **arg,
+        u_int *num, u_int min)
 {
-    int argc;
-    char **argv = NULL;
-    char *className = NULL;
-    char *hostPort = NULL;
-    char *localPath = NULL;
-    FastCgiServerInfo *serverInfoPtr = NULL;
-    int configResult = -1;
-    int i, n;
-    int appConnectTimeout = FCGI_DEFAULT_APP_CONN_TIMEOUT;
-    char *cvtPtr;
-    char *errMsg = fcgi_Malloc(1024);
+    char *ptr;
+    const char *val = getword_conf(p, arg);
 
-    /*
-     * If this is the first call to ExternalAppClassCmd since a
-     * server restart, clean up structures created by the previous
-     * sequence of ExternalAppClassCmds.
-     */
-    CleanupPreviousConfig();
+    if (!*val)
+        return "\"\"";
+    *num = (u_int)strtol(val, &ptr, 10);
 
-    /*
-     * Parse the raw arguments into tokens.
-     * argv[0] is empty and argv[1] is the symbolic
-     * name of the connection.   Note that this name
-     * is not used for anything but the lookup of the
-     * proper server.
-     */
-    argv = ParseApacheRawArgs(arg, &argc);
-    if(argc < 3) {
-        sprintf(errMsg, "ExternalAppClass: Too few args\n");
-        goto ErrorReturn;
-    }
-    className = argv[1];
-    serverInfoPtr = LookupFcgiServerInfo(className);
-    if(serverInfoPtr != NULL) {
-        sprintf(errMsg,
-                "ExternalAppClass: Redefinition of previously \
-                defined class %s\n",
-                className);
-        goto ErrorReturn;
-    }
+    if (*ptr)
+        return pstrcat(p, "\"", val, "\" must be a positive integer", NULL);
+    else if (*num < min)
+        return psprintf(p, "\"%u\" must be >= %u", *num, min);
+    return NULL;
+}
 
-    /*
-     * Parse out the command line arguments.
-     */
-    for(i = 2; i < argc; i++) {
-        if((strcmp(argv[i], "-host") == 0)) {
-            if((i + 1) == argc) {
-                goto MissingValueReturn;
-            }
-            i++;
-            hostPort = argv[i];
-            continue;
-        } else if((strcmp(argv[i], "-socket") == 0)) {
-            if((i+1) == argc) {
-                goto MissingValueReturn;
-            }
-            i++;
-            localPath = argv[i];
-            continue;
-        } else if((strcmp(argv[i], "-appConnTimeout") == 0)) {
-            if((i + 1) == argc) {
-                goto MissingValueReturn;
-            }
-            i++;
-            n = strtol(argv[i], &cvtPtr, 10);
-            if(*cvtPtr != '\0' || n < 0) {
-                goto BadValueReturn;
-            }
-            appConnectTimeout = n;
-            continue;
-        } else {
-            sprintf(errMsg, "ExternalAppClass: Unknown option %s\n", argv[i]);
-            goto ErrorReturn;
-        }
-      } /* for */
+/*******************************************************************************
+ * Get the next configuration directive argument, & return a float.
+ * The pool arg should be temporary storage.
+ */
+static const char *conf_getFloat(pool *p, const char **arg,
+        float *num, float min, float max)
+{
+    char *ptr;
+    const char *val = getword_conf(p, arg);
 
-    /*
-     * Check out that we do not have any conflicts
-     */
-    if(((hostPort != NULL) && (localPath != NULL)) ||
-        ((hostPort == NULL) && (localPath == NULL))) {
-        sprintf(errMsg, "ExternalAppClass: Conflict of arguments -port \
-                and -socket.\n");
-        goto ErrorReturn;
-    }
+    if (!*val)
+        return "\"\"";
+    *num = strtod(val, &ptr);
 
-    /*
-     * The following code will have to change when Apache will
-     * begin to support connections with affinity.  Note that the
-     * className becomes an execPath member of the serverInfo
-     * structure and it used just for lookups.  I also put in values
-     * for affinity and numInstances in order to keep most of the
-     * common code in sync.
-     */
-    serverInfoPtr = CreateFcgiServerInfo(1, className);
-    ASSERT(serverInfoPtr != NULL);
-    DStringAppend(&serverInfoPtr->execPath, className, -1);
-    serverInfoPtr->directive = APP_CLASS_EXTERNAL;
-    serverInfoPtr->appConnectTimeout = appConnectTimeout;
+    if (*ptr)
+        return pstrcat(p, "\"", val, "\" is not a floating point number", NULL);
+    if (*num < min || *num > max)
+        return psprintf(p, "\"%f\" is not between %f and %f", *num, min, max);
+    return NULL;
+}
 
-    if(hostPort != NULL) {
-        configResult = ConfigureTCPServer(hostPort, FALSE,
-                                          1, serverInfoPtr);
-    } else {
-        DStringAppend(&serverInfoPtr->bindName, localPath, -1);
-        configResult = ConfigureLocalServer(
-                className, localPath, FALSE, 1, serverInfoPtr);
-    }
+/*******************************************************************************
+ * Get the next configuration directive argument, & add it to an env array.
+ * The pool arg should be permanent storage.
+ */
+static const char *conf_getEnv(pool *p, const char **arg,
+        const char ***envp, int *envc)
+{
+    const char *val = getword_conf(p, arg);
 
-    if(configResult == 0) {
+    if (*val == '\0')
+        return "\"\"";
+    if (strchr(val, '=') == NULL)
+        return pstrcat(p, "\"", val, "\" must contain an '='", NULL);
+    if (*envc >= MAX_INIT_ENV_VARS)
+        return "too many variables, must be <= MAX_INIT_ENV_VARS";
+    **envp = val;
+    (*envp)++;
+    (*envc)++;
+    return NULL;
+}
+
+/*******************************************************************************
+ * Return a "standard" message for common configuration errors.
+ */
+static const char *conf_invalidValue(pool *p, const char *cmd, const char *id,
+                               const char *opt, const char *err)
+{
+    return psprintf(p, "%s%s%s: invalid value for %s: %s",
+                    cmd, id ? " " : "", id ? id : "",  opt, err);
+}
+
+/*******************************************************************************
+ * Set/Reset the uid/gid that Apache and the PM will run as.  This is user_id
+ * and group_id if we're started as root, and euid/egid otherwise.  Also try
+ * to check that the config files don't set the User/Group after a FastCGI
+ * directive is used that depends on it.
+ */
+/*@@@ To be complete, we should save a handle to the server each AppClass is
+ * configured in and at init() check that the user/group is still what we
+ * thought it was.  Also the other directives should only be allowed in the
+ * parent Apache server.
+ */
+static char *conf_setFcgiUidGid(int set)
+{
+    static int isSet = 0;
+    uid_t uid = geteuid();
+    gid_t gid = getegid();
+
+    if (set == 0) {
+        isSet = 0;
+        fcgi_user_id = (uid_t)-1;
+        fcgi_group_id = (gid_t)-1;
         return NULL;
+    }
+
+    uid = uid ? uid : user_id;
+    gid = uid ? gid : group_id;
+
+    if (isSet && (uid != fcgi_user_id || gid != fcgi_group_id)) {
+        return "User/Group commands must preceed FastCGI server definitions";
+    }
+
+    isSet = 1;
+    fcgi_user_id = uid;
+    fcgi_group_id = gid;
+    return NULL;
+}
+
+static void conf_reset(void* dummy)
+{
+    fcgiPool = NULL;
+    fastCgiServers = NULL;
+    conf_setFcgiUidGid(0);
+    fcgi_suexec = NULL;
+    ipcDir = DEFAULT_SOCK_DIR;
+    globalNumInstances = 0;
+
+    dynamicMaxProcs = FCGI_DEFAULT_MAX_PROCS;
+    dynamicMinProcs = FCGI_DEFAULT_MIN_PROCS;
+    dynamicMaxClassProcs = FCGI_DEFAULT_MAX_CLASS_PROCS;
+    dynamicKillInterval = FCGI_DEFAULT_KILL_INTERVAL;
+    dynamicUpdateInterval = FCGI_DEFAULT_UPDATE_INTERVAL;
+    dynamicGain = FCGI_DEFAULT_GAIN;
+    dynamicThreshhold1 = FCGI_DEFAULT_THRESHHOLD_1;
+    dynamicThreshholdN = FCGI_DEFAULT_THRESHHOLD_N;
+    dynamicPleaseStartDelay = FCGI_DEFAULT_START_PROCESS_DELAY;
+    dynamicAppConnectTimeout = FCGI_DEFAULT_APP_CONN_TIMEOUT;
+    dynamicEnvp = NULL;
+    dynamicProcessSlack = FCGI_DEFAULT_PROCESS_SLACK;
+    dynamicAutoRestart = FCGI_DEFAULT_RESTART_DYNAMIC;
+    dynamicAutoUpdate = FCGI_DEFAULT_AUTOUPDATE;
+    dynamicListenQueueDepth = FCGI_DEFAULT_LISTEN_Q;
+    dynamicInitStartDelay = DEFAULT_INIT_START_DELAY;
+    dynamicRestartDelay = FCGI_DEFAULT_RESTART_DELAY;
+}
+
+/*******************************************************************************
+ * Create a directory to hold Unix/Domain sockets.
+ */
+static const char *conf_createDir(pool *tp, char *path)
+{
+    struct stat finfo;
+
+    /* Is the directory spec'd correctly */
+    if (*path != '/') {
+        return "path is not absolute (it must start with a \"/\")";
+    }
+    else {
+        int i = strlen(path) - 1;
+
+        /* Strip trailing "/"s */
+        while(i > 0 && path[i] == '/') path[i--] = '\0';
+    }
+
+    /* Does it exist? */
+    if (stat(path, &finfo) != 0) {
+        /* No, but maybe we can create it */
+        if (mkdir(path, S_IRWXU) != 0) {
+            return psprintf(tp,
+                "doesn't exist and can't be created: %s",
+                strerror(errno));
+        }
+
+        /* If we're root, we're gonna setuid/setgid so we need to chown */
+        if (geteuid() == 0 && chown(path, user_id, group_id) != 0) {
+            return psprintf(tp,
+                "can't chown() to the server (uid %ld, gid %ld): %s",
+                (long)user_id, (long)group_id, strerror(errno));
+        }
+    }
+    else {
+        /* Yes, is it a directory? */
+        if (!S_ISDIR(finfo.st_mode))
+            return "isn't a directory!";
+
+        /* Can we RWX in there? */
+        if (WS_Access(NULL, &finfo, R_OK | W_OK | X_OK,
+                        fcgi_user_id, fcgi_group_id) != 0) {
+            return psprintf(tp,
+                "doesn't allow read/write/execute by the server (uid %ld, gid %ld)",
+                (long)fcgi_user_id, (long)fcgi_group_id);
+        }
+    }
+    return NULL;
+}
+
+/*******************************************************************************
+ * Create a "dynamic" subdirectory and mbox (used for RH->PM comm) in the
+ * ipcDir with appropriate permissions.
+ */
+static const char *conf_createDynamicDirAndMbox(pool *p)
+{
+    DIR *dp = NULL;
+    struct dirent *dirp = NULL;
+    int fd;
+    const char *err;
+    pool *tp;
+
+    ipcDynamicDir = pstrcat(p, ipcDir, "/dynamic", NULL);
+
+    err = conf_createDir(p, ipcDynamicDir);
+    if (err != NULL) {
+        return psprintf(p,
+            "can't create dynamic directory \"%s\": %s",
+            ipcDynamicDir, err);
+    }
+
+    /* Create a subpool for the directory operations */
+    tp = make_sub_pool(p);
+
+    dp = popendir(tp, ipcDynamicDir);
+    if (dp == NULL) {
+        destroy_pool(tp);
+        return psprintf(p, "can't open dynamic directory \"%s\": %s",
+            ipcDynamicDir, strerror(errno));
+    }
+
+    /* Delete everything in the directory, its all FCGI specific */
+    while ((dirp = readdir(dp)) != NULL) {
+        if (strcmp(dirp->d_name, ".") == 0
+                || strcmp(dirp->d_name, "..") == 0) {
+            continue;
+        }
+
+        unlink(pstrcat(tp, ipcDynamicDir, "/", dirp->d_name, NULL));
+    }
+
+    destroy_pool(tp);
+
+    /* Create mbox */
+    mbox = pstrcat(p, ipcDynamicDir, "/mbox", NULL);
+
+    /* @@@ This really should be a socket or pipe */
+    fd = popenf(p, mbox, O_CREAT | O_WRONLY | O_TRUNC, S_IRUSR | S_IWUSR);
+    if (fd < 0) {
+        return psprintf(p, "can't create \"%s\": %s",
+            mbox, strerror(errno));
+    }
+
+    /* If we're root, were gonna setuid/setgid so chown */
+    if (geteuid() == 0 && fchown(fd, user_id, group_id) != 0) {
+        return psprintf(p,
+            "can't chown() \"%s\" to server (uid %ld, gid %ld): %s",
+            mbox, (long)user_id, (long)group_id, strerror(errno));
+    }
+    pclosef(p, fd);
+
+    return NULL;
+}
+
+
+/*******************************************************************************
+ * Change the directory used for the Unix/Domain sockets from the default.
+ * Create the directory, the "dynamic" subdirectory, and the mbox used for
+ * comm between the RH and the PM (we do this here, as well as in
+ * ModFastCgiInit, so we can prevent Apache from starting if it fails).
+ */
+const char *conf_FastCgiIpcDir(cmd_parms *cmd, void *dummy, char *arg)
+{
+    pool * const tp = cmd->temp_pool;
+    const char * const name = cmd->cmd->name;
+    const char *err;
+
+    if (strcmp(ipcDir, DEFAULT_SOCK_DIR) != 0) {
+        return psprintf(tp, "%s %s: already defined as \"%s\"",
+                        name, arg, ipcDir);
+    }
+
+    err = conf_setFcgiUidGid(1);
+    if (err != NULL)
+        return psprintf(tp, "%s %s: %s", name, arg, err);
+
+    if (fastCgiServers != NULL) {
+        return psprintf(tp,
+            "The %s command must preceed static FastCGI server definitions",
+            name);
+    }
+
+    ipcDir = arg;
+
+    err = conf_createDir(tp, ipcDir);
+    if (err != NULL)
+        return psprintf(tp, "%s %s: %s", name, arg, err);
+
+    err = conf_createDynamicDirAndMbox(cmd->pool);
+    if (err != NULL)
+        return psprintf(tp, "%s %s: %s", name, arg, err);
+
+    return NULL;
+}
+
+/*******************************************************************************
+ * Enable, disable, or specify the path to the suexec program.
+ */
+const char *conf_FastCgiSuexec(cmd_parms *cmd, void *dummy, const char *arg)
+{
+    const char *err = NULL;
+    const char * const name = cmd->cmd->name;
+    pool * const tp = cmd->temp_pool;
+
+    if (!suexec_enabled) {
+        if (strcasecmp(arg, "Off") != 0) {
+	    fprintf(stderr,
+		    "Warning: %s requires SUEXEC wrapper be enabled in Apache\n", name);
+	}
+	return NULL;
+    }
+
+    err = conf_setFcgiUidGid(1);
+    if (err != NULL)
+        return psprintf(tp, "%s %s: %s", name, arg, err);
+
+    if (fastCgiServers != NULL) {
+        return psprintf(tp,
+            "The %s command must preceed static FastCGI server definitions",
+            name);
+    }
+
+    if (strcasecmp(arg, "On") == 0) {
+        fcgi_suexec = SUEXEC_BIN;
+    }
+    else if (strcasecmp(arg, "Off") == 0) {
+    }
+    else if (arg[0] != '/') {
+        return psprintf(tp,
+			"%s %s: path is not absolute (it must start with a \"/\")",
+			name, arg);
+    }
+    else {
+        if (WS_Access(arg, NULL, X_OK, fcgi_user_id, fcgi_group_id) != 0) {
+            return psprintf(tp,
+                "%s: \"%s\" is not executable by server (uid %ld, gid %ld)",
+                name, arg, (long)fcgi_user_id, (long)fcgi_group_id);
+        }
+
+        fcgi_suexec = arg;
+    }
+    return NULL;
+}
+
+/*******************************************************************************
+ * Configure a static FastCGI server.
+ */
+const char *conf_AppClass(cmd_parms *cmd, void *dummy, const char *arg)
+{
+    const char **envp;
+    int envc = 0;
+    FastCgiServerInfo *s;
+    pool *p = cmd->pool, *tp = cmd->temp_pool;
+    const char *name = cmd->cmd->name;
+    const char *execPath = getword_conf(p, &arg);
+    const char *option, *err;
+
+    if (*execPath == '\0')
+        return "AppClass requires a pathname!?";
+
+    err = conf_setFcgiUidGid(1);
+    if (err != NULL)
+        return psprintf(tp, "%s %s: %s", name, execPath, err);
+
+    /* See if we've already got one of these configured */
+    s = server_getById(execPath, cmd->server->server_uid,
+                       cmd->server->server_uid);
+    if (s != NULL) {
+        if (fcgi_suexec) {
+            return psprintf(tp,
+                "%s: redefinition of a previously defined FastCGI server \"%s\" with uid=%ld and gid=%ld",
+                name, execPath, (long)cmd->server->server_uid,
+                (long)cmd->server->server_gid);
+        }
+        else {
+            return psprintf(tp,
+                "%s; redefinition of a previously defined FastCGI server \"%s\"",
+                name, execPath);
+        }
+    }
+
+    if (fcgi_suexec != NULL) {
+        if (WS_Access(execPath, NULL, X_OK, cmd->server->server_uid,
+                      cmd->server->server_uid)) {
+            return psprintf(tp,
+                "%s %s: not executable by fcgi_suexec (uid %ld, gid %ld)",
+                name, execPath, (long)cmd->server->server_uid,
+                (long)cmd->server->server_uid);
+        }
+    }
+    else {
+        if (WS_Access(execPath, NULL, X_OK, fcgi_user_id, fcgi_group_id)) {
+            return psprintf(tp,
+                "%s %s: not executable by server (uid %ld, gid %ld)",
+                name, execPath, (long)fcgi_user_id, (long)fcgi_group_id);
+        }
+    }
+
+    s = server_new(p);
+    s->execPath = execPath;
+    s->directive = APP_CLASS_STANDARD;
+    s->restartOnExit = TRUE;
+    s->numProcesses = 1;
+
+    /* Allocate temp storage for the array of initial environment variables */
+    envp = pcalloc(tp, sizeof(char *) * MAX_INIT_ENV_VARS);
+    s->envp = (const char * const *)envp;
+
+    if (fcgi_suexec) {
+        struct passwd *pw;
+        struct group  *gr;
+
+        s->uid = cmd->server->server_uid;
+        pw = getpwuid(s->uid);
+        if (pw == NULL) {
+            return psprintf(tp, "mod_fastcgi: "
+                "getpwuid() couldn't determine the username for uid '%ld', "
+                "you probably need to modify the User directive: %s",
+                (long)s->uid, strerror(errno));
+        }
+        s->user = pstrdup(p, pw->pw_name);
+        s->username = s->user;
+
+        s->gid = cmd->server->server_gid;
+        gr = getgrgid(s->gid);
+        if (gr == NULL) {
+            return psprintf(tp, "mod_fastcgi: "
+                "getgrgid() couldn't determine the group name for gid '%ld', "
+                "you probably need to modify the Group directive: %s\n",
+                (long)s->gid, strerror(errno));
+        }
+        s->group = pstrdup(p, gr->gr_name);
+    }
+
+    /*  Parse directive arguments */
+    while (*arg) {
+        option = getword_conf(tp, &arg);
+
+        if (strcmp(option, "-processes") == 0) {
+            err = conf_getUInt(tp, &arg, &s->numProcesses, 1);
+            if (err != NULL)
+                return conf_invalidValue(tp, name, execPath, option, err);
+            continue;
+        }
+        else if (strcmp(option, "-restart-delay") == 0) {
+            err = conf_getUInt(tp, &arg, &s->restartDelay, 0);
+            if (err != NULL)
+                return conf_invalidValue(tp, name, execPath, option, err);
+            continue;
+        }
+        else if (strcmp(option, "-init-start-delay") == 0) {
+            err = conf_getUInt(tp, &arg, &s->initStartDelay, 0);
+            if (err != NULL)
+                return conf_invalidValue(tp, name, execPath, option, err);
+            continue;
+        }
+        else if (strcmp(option, "-priority") == 0) {
+            err = conf_getUInt(tp, &arg, &s->processPriority, 0);
+            if (err != NULL)
+                return conf_invalidValue(tp, name, execPath, option, err);
+            continue;
+        }
+        else if (strcmp(option, "-listen-queue-depth") == 0) {
+            err = conf_getUInt(tp, &arg, &s->listenQueueDepth, 1);
+            if (err != NULL)
+                return conf_invalidValue(tp, name, execPath, option, err);
+            continue;
+        }
+        else if (strcmp(option, "-appConnTimeout") == 0) {
+            err = conf_getUInt(tp, &arg, &s->appConnectTimeout, 0);
+            if (err != NULL)
+                return conf_invalidValue(tp, name, execPath, option, err);
+            continue;
+        }
+        else if (strcmp(option, "-port") == 0) {
+            err = conf_getUInt(tp, &arg, &s->port, 1);
+            if (err != NULL)
+                return conf_invalidValue(tp, name, execPath, option, err);
+            continue;
+        }
+        else if (strcmp(option, "-socket") == 0) {
+            s->sockPath = getword_conf(tp, &arg);
+            if (*s->sockPath == '\0')
+                return conf_invalidValue(tp, name, execPath, option, "\"\"");
+            continue;
+        }
+        else if (strcmp(option, "-initial-env") == 0) {
+            err = conf_getEnv(p, &arg, &envp, &envc);
+            if (err != NULL)
+                return conf_invalidValue(tp, name, execPath, option, err);
+            continue;
+        }
+        else
+            return conf_invalidValue(tp, name, execPath, option, NULL);
+    } /* while */
+
+    if (s->sockPath != NULL && s->port != 0) {
+        return psprintf(tp,
+                "%s %s: -port and -socket are mutually exclusive options",
+                name, execPath);
+    }
+
+    /* If -intial-env option was used, move env array to a surviving pool */
+    if (envc != 0)
+        s->envp = (const char **)pstrdup(p, *s->envp);
+    else
+        s->envp = NULL;
+
+    /* Initialize process structs */
+    s->procs = server_createProcs(p, s->numProcesses);
+
+    /* Build the appropriate sockaddr structure */
+    if (s->port != 0) {
+        err = sock_makeInetAddr(p, (struct sockaddr_in **)&s->sockAddr,
+                                &s->sockAddrLen, NULL, s->port);
+        if (err != NULL)
+            return psprintf(tp, "%s %s: %s", name, execPath, err);
     } else {
-        sprintf(errMsg, "ExternalAppClass: Unable to configure server\n");
-        goto ErrorReturn;
+        if (s->sockPath == NULL)
+             s->sockPath = sock_makeHash(tp, execPath, s->user, s->group);
+        s->sockPath = sock_makePath(p, s->sockPath, 0);
+        err = sock_makeDomainAddr(p, (struct sockaddr_un **)&s->sockAddr,
+                                  &s->sockAddrLen, s->sockPath);
+        if (err != NULL)
+            return psprintf(tp, "%s %s: %s", name, execPath, err);
     }
 
-MissingValueReturn:
-    sprintf(errMsg, "ExternalAppClass: missing value for %s\n", argv[i]);
-    goto ErrorReturn;
+    /* Add it to the list of FastCGI servers */
+    server_add(s);
 
-BadValueReturn:
-    sprintf(errMsg, "ExternalAppClass: bad value \"%s\" for %s\n",
-            argv[i], argv[i-1]);
-    goto ErrorReturn;
+    return NULL;
+}
+
+/*******************************************************************************
+ * Configure a static FastCGI server that is started/managed elsewhere.
+ */
+const char *conf_ExternalAppClass(cmd_parms *cmd, void *dummy, const char *arg)
+{
+    FastCgiServerInfo *s;
+    pool * const p = cmd->pool, *tp = cmd->temp_pool;
+    const char * const name = cmd->cmd->name;
+    const char *execPath = getword_conf(p, &arg);
+    const char *option, *err;
 
-ErrorReturn:
-    if(serverInfoPtr != NULL) {
-        FreeFcgiServerInfo(serverInfoPtr);
+    if (!*execPath) {
+        return pstrcat(tp, name,
+            " requires a path and either a -socket or -host option", NULL);
     }
-    if(argv != NULL) {
-        fcgi_Free(argv[1]);
-        fcgi_Free(argv);
+    /* See if we've already got one of these bettys configured */
+    s = server_getById(execPath, cmd->server->server_uid,
+                       cmd->server->server_gid);
+    if (s != NULL) {
+        if (fcgi_suexec != NULL) {
+            return psprintf(tp,
+                "%s: redefinition of a previously defined class \"%s\" with uid=%ld and gid=%ld",
+                name, execPath, (long)cmd->server->server_uid,
+                (long)cmd->server->server_gid);
+        }
+        else {
+            return psprintf(tp,
+                "%s: redefinition of previously defined class \"%s\"",
+                name, execPath);
+        }
     }
-    return errMsg;
+
+    s = server_new(p);
+    s->execPath = execPath;
+    s->directive = APP_CLASS_EXTERNAL;
+
+    err = server_setUidGid(p, s, cmd->server->server_uid, cmd->server->server_gid);
+    if (err != NULL)
+        return psprintf(tp, "%s %s: %s", name, execPath, err);
+
+    /*  Parse directive arguments */
+    while (*arg != '\0') {
+        option = getword_conf(tp, &arg);
+
+        if (strcmp(option, "-host") == 0) {
+            err = conf_getHostPort(p, &arg, &s->host, &s->port);
+            if (err != NULL)
+                return conf_invalidValue(tp, name, execPath, option, err);
+            continue;
+        }
+        else if (strcmp(option, "-socket") == 0) {
+            s->sockPath = getword_conf(tp, &arg);
+            if (*s->sockPath == '\0')
+                return conf_invalidValue(tp, name, execPath, option, "\"\"");
+            continue;
+        }
+        else if (strcmp(option, "-appConnTimeout") == 0) {
+            err = conf_getUInt(tp, &arg, &s->appConnectTimeout, 0);
+            if (err != NULL)
+                return conf_invalidValue(tp, name, execPath, option, err);
+            continue;
+        }
+        else {
+            return psprintf(tp, "%s %s: invalid option: %s",
+                            name, execPath, option);
+        }
+    } /* while */
+
+    /* Require one of -socket or -host, but not both */
+    if (s->sockPath != NULL && s->port != 0) {
+        return psprintf(tp,
+            "%s %s: -host and -socket are mutually exclusive options",
+            name, execPath);
+    }
+    if (s->sockPath == NULL && s->port == 0) {
+        return psprintf(tp,
+            "%s %s: -socket or -host option missing", name, execPath);
+    }
+
+    /* Build the appropriate sockaddr structure */
+    if (s->port != 0) {
+        err = sock_makeInetAddr(p, (struct sockaddr_in **)&s->sockAddr,
+                                &s->sockAddrLen, NULL, s->port);
+        if (err != NULL)
+            return psprintf(tp, "%s %s: %s", name, execPath, err);
+    } else {
+        s->sockPath = sock_makePath(p, s->sockPath, 0);
+        err = sock_makeDomainAddr(p, (struct sockaddr_un **)&s->sockAddr,
+                                  &s->sockAddrLen, s->sockPath);
+        if (err != NULL)
+            return psprintf(tp, "%s %s: %s", name, execPath, err);
+    }
+
+    /* Add it to the list of FastCGI servers */
+    server_add(s);
+
+    return NULL;
 }
 
 /*
  *----------------------------------------------------------------------
  *
- * FCGIConfigCmd --
+ * conf_FCGIConfig --
  *
  *      Implements the FastCGI FCGIConfig configuration directive.
  *      This command adds routines to control the execution of the
@@ -2188,235 +1521,135 @@ ErrorReturn:
  *
  *----------------------------------------------------------------------
  */
-const char *FCGIConfigCmd(cmd_parms *cmd, void *dummy, char *arg)
+const char *conf_FCGIConfig(cmd_parms *cmd, void *dummy, const char *arg)
 {
-    int argc;
-    char **argv = NULL;
-    int i, n;
-    char *errMsg = fcgi_Malloc(1024);
-    char *cvtPtr;
-    double d;
-    char **envPtr;
-    char *namePtr;
-    char *valuePtr;
+    const char **envp;
+    int envc = 0;
+    pool * const p = cmd->pool;
+    pool * const tp = cmd->temp_pool;
+    const char *err, *option;
+    const char * const name = cmd->cmd->name;
 
-    /*
-     * Parse the raw arguments into tokens.
-     * Argument/value pairs start from argv[1],
-     * where argv[0] is empty.
-     */
-    argv = ParseApacheRawArgs(arg, &argc);
-    if(argc < 2) {
-        sprintf(errMsg, "FCGIConfig: Too few args\n");
-        goto ErrorReturn;
-    }
+    /* Allocate temp storage for an initial environment */
+    envp = pcalloc(tp, sizeof(char *) * MAX_INIT_ENV_VARS);
+    dynamicEnvp = (const char * const *)envp;
 
-    dynamicEnvp = OS_EnvironInit(argc/2 + 1);
-    envPtr = dynamicEnvp;
-    
-    /* Parse the command line arguments.
-     */
-    for(i = 1; i < argc; i++) {
-        if((strcmp(argv[i], "-maxProcesses") == 0)) {
-            if((i + 1) == argc) {
-                goto MissingValueReturn;
-            }
-            i++;
-            n = strtol(argv[i], &cvtPtr, 10);
-            if(*cvtPtr != '\0' || n < 1 || n > 250) {
-                goto BadValueReturn;
-            }
-            maxProcs = n;
+    /* Parse the directive arguments */
+    while (*arg) {
+        option = getword_conf(tp, &arg);
+
+        if (strcmp(option, "-maxProcesses") == 0) {
+            err = conf_getUInt(tp, &arg, &dynamicMaxProcs, 1);
+            if (err != NULL)
+                return conf_invalidValue(tp, name, NULL, option, err);
             continue;
-        } else if((strcmp(argv[i], "-minProcesses") == 0)) {
-            if((i+1) == argc) {
-                goto MissingValueReturn;
-            }
-            i++;
-            n = strtol(argv[i], &cvtPtr, 10);
-            if(*cvtPtr != '\0' || n < 0 || n > 250) {
-                goto BadValueReturn;
-            }
-            minProcs = n;
-            continue;
-        } else if((strcmp(argv[i], "-maxClassProcesses") == 0)) {
-            if((i+1) == argc) {
-                goto MissingValueReturn;
-            }
-            i++;
-            n = strtol(argv[i], &cvtPtr, 10);
-            if(*cvtPtr != '\0' || n < 1 || n > 250) {
-                goto BadValueReturn;
-            }
-            maxClassProcs = n;
-            continue;
-        } else if((strcmp(argv[i], "-killInterval") == 0)) {
-            if((i+1) == argc) {
-                goto MissingValueReturn;
-            }
-            i++;
-            n = strtol(argv[i], &cvtPtr, 10);
-            if(*cvtPtr != '\0' || n < 1) {
-                goto BadValueReturn;
-            }
-            killInterval = n;
-            continue;
-        } else if((strcmp(argv[i], "-updateInterval") == 0)) {
-            if((i+1) == argc) {
-                goto MissingValueReturn;
-            }
-            i++;
-            n = strtol(argv[i], &cvtPtr, 10);
-            if(*cvtPtr != '\0' || n < 1) {
-                goto BadValueReturn;
-            }
-            updateInterval = n;
-            continue;
-        } else if((strcmp(argv[i], "-gainValue") == 0)) {
-            if((i+1) == argc) {
-                goto MissingValueReturn;
-            }
-            i++;
-            d = strtod(argv[i], &cvtPtr);
-            if(*cvtPtr != '\0' || d < 0.0 || d > 1.0) {
-                goto BadValueReturn;
-            }
-            gain = d;
-            continue;
-        } else if((strcmp(argv[i], "-singleThreshhold") == 0)) {
-            if((i+1) == argc) {
-                goto MissingValueReturn;
-            }
-            i++;
-            n = strtol(argv[i], &cvtPtr, 10);
-            if(*cvtPtr != '\0' || n < 1 || n > 100) {
-                goto BadValueReturn;
-            }
-            threshhold1 = n;
-            continue;
-        } else if((strcmp(argv[i], "-multiThreshhold") == 0)) {
-            if((i+1) == argc) {
-                goto MissingValueReturn;
-            }
-            i++;
-            n = strtol(argv[i], &cvtPtr, 10);
-            if(*cvtPtr != '\0' || n < 1 || n > 100) {
-                goto BadValueReturn;
-            }
-            threshholdN = n;
-            continue;
-        } else if((strcmp(argv[i], "-startDelay") == 0)) {
-            if((i+1) == argc) {
-                goto MissingValueReturn;
-            }
-            i++;
-            n = strtol(argv[i], &cvtPtr, 10);
-            if(*cvtPtr != '\0' || n < 1) {
-                goto BadValueReturn;
-            }
-            startProcessDelay = n;
-            continue;
-        } else if((strcmp(argv[i], "-initial-env") == 0)) {
-            if((i + 1) == argc) {
-                goto MissingValueReturn;
-            }
-            i++;
-            namePtr = argv[i];
-            valuePtr = strchr(namePtr, '=');
-            if(valuePtr != NULL) {
-                *valuePtr = '\0';
-                valuePtr++;
-            } else {
-                goto BadValueReturn;
-            }
-            OS_EnvString(envPtr, namePtr, valuePtr);
-            envPtr++;
-            valuePtr--;
-            *valuePtr = '=';
-            continue;
-        } else if((strcmp(argv[i], "-appConnTimeout") == 0)) {
-            if((i+1) == argc) {
-                goto MissingValueReturn;
-            }
-            i++;
-            n = strtol(argv[i], &cvtPtr, 10);
-            if(*cvtPtr != '\0' || n < 1) {
-                goto BadValueReturn;
-            }
-            dynamicAppConnectTimeout = n;
-            continue;
-        } else if((strcmp(argv[i], "-listen-queue-depth") == 0)) {
-            if((i+1) == argc) {
-                goto MissingValueReturn;
-            }
-            i++;
-            n = strtol(argv[i], &cvtPtr, 10);
-            if(*cvtPtr != '\0' || n < 1) {
-                goto BadValueReturn;
-            }
-            dynamicListenQueueDepth = n;
-            continue;
-        } else if((strcmp(argv[i], "-restart-delay") == 0)) {
-            if((i + 1) == argc) {
-                goto MissingValueReturn;
-            }
-            i++;
-            n = strtol(argv[i], &cvtPtr, 10);
-            if(*cvtPtr != '\0' || n < 0) {
-                goto BadValueReturn;
-            }
-            dynamicRestartDelay = n;
-            continue;
-        } else if((strcmp(argv[i], "-init-start-delay") == 0)) {
-            if((i + 1) == argc) {
-                goto MissingValueReturn;
-            }
-            i++;
-            n = strtol(argv[i], &cvtPtr, 10);
-            if(*cvtPtr != '\0' || n < 0) {
-                goto BadValueReturn;
-            }
-            dynamicInitStartDelay = n;
-            continue;
-        } else if((strcmp(argv[i], "-processSlack") == 0)) {
-            if((i+1) == argc) {
-                goto MissingValueReturn;
-            }
-            i++;
-            n = strtol(argv[i], &cvtPtr, 10);
-            if(*cvtPtr != '\0' || n < 1 || n > 250) {
-                goto BadValueReturn;
-            }
-            processSlack = n;
-            continue;
-        } else if((strcmp(argv[i], "-restart") == 0)) {
-            restartDynamic = 1;
-            continue;
-        } else if((strcmp(argv[i], "-autoUpdate") == 0)) {
-            autoUpdate = 1;
-            continue;
-        } else {
-            sprintf(errMsg, "FCGIConfig: Unknown option %s\n", argv[i]);
-            goto ErrorReturn;
         }
-    } /* for */
-    /* all done */
-    fcgi_Free(argv);
-    fcgi_Free(errMsg);
-    return NULL;
+        else if (strcmp(option, "-minProcesses") == 0) {
+            err = conf_getUInt(tp, &arg, &dynamicMinProcs, 0);
+            if (err != NULL)
+                return conf_invalidValue(tp, name, NULL, option, err);
+            continue;
+        }
+        else if (strcmp(option, "-maxClassProcesses") == 0) {
+            err = conf_getUInt(tp, &arg, &dynamicMaxClassProcs, 1);
+            if (err != NULL)
+                return conf_invalidValue(tp, name, NULL, option, err);
+            continue;
+        }
+        else if (strcmp(option, "-killInterval") == 0) {
+            err = conf_getUInt(tp, &arg, &dynamicKillInterval, 1);
+            if (err != NULL)
+                return conf_invalidValue(tp, name, NULL, option, err);
+            continue;
+        }
+        else if (strcmp(option, "-updateInterval") == 0) {
+            err = conf_getUInt(tp, &arg, &dynamicUpdateInterval, 1);
+            if (err != NULL)
+                return conf_invalidValue(tp, name, NULL, option, err);
+            continue;
+        }
+        else if (strcmp(option, "-gainValue") == 0) {
+            err = conf_getFloat(tp, &arg, &dynamicGain, 0.0, 1.0);
+            if (err != NULL)
+                return conf_invalidValue(tp, name, NULL, option, err);
+            continue;
+        }
+        else if (strcmp(option, "-singleThreshhold") == 0) {
+            err = conf_getUInt(tp, &arg, &dynamicThreshhold1, 1);
+            if (err != NULL)
+                return conf_invalidValue(tp, name, NULL, option, err);
+            continue;
+        }
+        else if (strcmp(option, "-multiThreshhold") == 0) {
+            err = conf_getUInt(tp, &arg, &dynamicThreshholdN, 1);
+            if (err != NULL)
+                return conf_invalidValue(tp, name, NULL, option, err);
+            continue;
+        }
+        else if (strcmp(option, "-startDelay") == 0) {
+            err = conf_getUInt(tp, &arg, &dynamicPleaseStartDelay, 1);
+            if (err != NULL)
+                return conf_invalidValue(tp, name, NULL, option, err);
+            continue;
+        }
+        else if (strcmp(option, "-initial-env") == 0) {
+            err = conf_getEnv(p, &arg, &envp, &envc);
+            if (err != NULL)
+                return conf_invalidValue(tp, name, NULL, option, err);
+            continue;
+        }
+        else if (strcmp(option, "-appConnTimeout") == 0) {
+            err = conf_getUInt(tp, &arg, &dynamicAppConnectTimeout, 0);
+            if (err != NULL)
+                return conf_invalidValue(tp, name, NULL, option, err);
+            continue;
+        }
+        else if (strcmp(option, "-listen-queue-depth") == 0) {
+            err = conf_getUInt(tp, &arg, &dynamicListenQueueDepth, 1);
+            if (err != NULL)
+                return conf_invalidValue(tp, name, NULL, option, err);
+            continue;
+        }
+        else if (strcmp(option, "-restart-delay") == 0) {
+            err = conf_getUInt(tp, &arg, &dynamicRestartDelay, 0);
+            if (err != NULL)
+                return conf_invalidValue(tp, name, NULL, option, err);
+            continue;
+        }
+        else if (strcmp(option, "-init-start-delay") == 0) {
+            err = conf_getUInt(tp, &arg, &dynamicInitStartDelay, 0);
+            if (err != NULL)
+                return conf_invalidValue(tp, name, NULL, option, err);
+            continue;
+        }
+        else if (strcmp(option, "-processSlack") == 0) {
+            err = conf_getUInt(tp, &arg, &dynamicProcessSlack, 1);
+            if (err != NULL)
+                return conf_invalidValue(tp, name, NULL, option, err);
+            continue;
+        }
+        else if (strcmp(option, "-restart") == 0) {
+            dynamicAutoRestart = 1;
+            continue;
+        }
+        else if (strcmp(option, "-autoUpdate") == 0) {
+            dynamicAutoUpdate = 1;
+            continue;
+        }
+        else {
+            return psprintf(tp, "%s: invalid option: %s", name, option);
+        }
+    } /* while */
 
-MissingValueReturn:
-    sprintf(errMsg, "FCGIConfig: missing value for %s\n", argv[i]);
-    goto ErrorReturn;
-BadValueReturn:
-    sprintf(errMsg, "FCGIConfig: bad value \"%s\" for %s\n",
-            argv[i], argv[i-1]);
-    goto ErrorReturn;
-ErrorReturn:
-    if(argv != NULL) {
-        fcgi_Free(argv);
+    /* If -intial-env option was used, move env array to a surviving pool */
+    if (envc != 0) {
+        dynamicEnvp = (const char * const *)pstrdup(p, (char *)dynamicEnvp);
     }
-    return errMsg;
+    else {
+        dynamicEnvp = NULL;
+    }
+
+    return NULL;
 }
 
 /*
@@ -2516,8 +1749,9 @@ int LockRegion(int fd, int cmd, int type, off_t offset, int whence, off_t len)
 #define TMP_BUFSIZ (512)
 #endif
 
-int AddNewRecord(char id, char* execPath,
-        unsigned long qsecs, unsigned long ctime, unsigned long now)
+int AddNewRecord(pool *p, char id, char* execPath, const char *user,
+         const char *group, unsigned long qsecs,
+         unsigned long ctime, unsigned long now)
 {
     int fd, size, status;
     char buf[TMP_BUFSIZ];
@@ -2525,12 +1759,12 @@ int AddNewRecord(char id, char* execPath,
     memset(buf, 0, TMP_BUFSIZ);
     switch(id) {
         case PLEASE_START:
-                sprintf(buf, "%c %s\n",
-                id, execPath);
+                sprintf(buf, "%c %s %s %s\n",
+                id, execPath, user, group);
                 break;
         case CONN_TIMEOUT:
-                sprintf(buf, "%c %s %lu\n",
-                id, execPath, qsecs);
+                sprintf(buf, "%c %s %s %s %lu\n",
+                id, execPath, user, group, qsecs);
                 break;
         case REQ_COMPLETE:
                 sprintf(buf, "%c %s %lu %lu %lu\n",
@@ -2542,7 +1776,7 @@ int AddNewRecord(char id, char* execPath,
     size = (strchr((const char *)buf, '\n')-buf)+1;
     ASSERT(size>0);
 
-    if((fd = open(mbox, O_WRONLY|O_APPEND))<0) {
+    if((fd = popenf(p, mbox, O_WRONLY|O_APPEND, 0))<0) {
         return (-1);
     }
     WritewLock(fd);
@@ -2554,8 +1788,7 @@ int AddNewRecord(char id, char* execPath,
     } else {
         status = size;
     }
-    Unlock(fd);
-    close(fd);
+    pclosef(p, fd);
     return (status);
 }
 
@@ -2579,35 +1812,36 @@ int AddNewRecord(char id, char* execPath,
 int RemoveRecords(void)
 {
     FastCgiServerInfo *s;
-    OS_IpcAddr *ipcAddrPtr = NULL;
     struct stat statbuf;
-    int recs = 0, fd, i;
+    int recs = -1, fd, i;
     char *buf=NULL, opcode;
-    char *lockFileName=NULL;
     char *ptr1=NULL, *ptr2=NULL;
     char execName[TMP_BUFSIZ];
+    char user[17];
+    char group[16];
     unsigned long qsec = 0, ctime = 0; /* microseconds spent waiting for the
                                         * application, and spent using it */
     time_t now = time(NULL);
-    int listenFd;
+    pool *sp;
+    pool * const tp = make_sub_pool(fcgiPool);
+
+    user[17] = group[16] = '\0';
 
     /* Obtain the data from the mbox file */
-    if((fd = open(mbox, O_RDWR))<0) {
+    if ((fd = popenf(tp, mbox, O_RDWR, S_IRUSR | S_IWUSR)) < 0) {
         fprintf(errorLog,
                 "[%s] mod_fastcgi: unable to open mbox: %s\n",
                 get_time(), strerror(errno));
-        fflush(errorLog);
-        return -1;
+        goto CleanupReturn;
     }
     WritewLock(fd);
     if(fstat(fd, &statbuf)<0) {
         fprintf(errorLog, "errno = %d\n", (errno));
         fprintf(errorLog,
                 "[%s] mod_fastcgi: Unable to fstat() mbox\n", get_time());
-        recs = -1;
         goto NothingToDo;
     }
-    buf = fcgi_Malloc(statbuf.st_size+1);
+    buf = pcalloc(tp, statbuf.st_size + 1);
     if(statbuf.st_size==0) {
         recs = 0;
         goto NothingToDo;
@@ -2615,19 +1849,18 @@ int RemoveRecords(void)
     if(read(fd, (void *)buf, statbuf.st_size)<statbuf.st_size) {
         fprintf(errorLog,
                 "[%s] mod_fastcgi: Read failed for mbox\n", get_time());
-        recs = -1;
         goto NothingToDo;
     }
     if(ftruncate(fd, 0)<0) {
         fprintf(errorLog,
                 "[%s] mod_fastcgi: Unable to ftruncate() mbox\n", get_time());
-        recs = -1;
         goto NothingToDo;
     }
+
     recs = 1;
+
 NothingToDo:
-    Unlock(fd);
-    close(fd);
+    pclosef(tp, fd);
     if(recs<0) {
         goto CleanupReturn;
     }
@@ -2641,11 +1874,11 @@ NothingToDo:
     if(lastAnalyze == 0) {
         lastAnalyze = now;
     }
-    if((long)(now-lastAnalyze)>=updateInterval) {
+    if((long)(now-lastAnalyze)>=dynamicUpdateInterval) {
         for(s=fastCgiServers;s!=NULL;s=s->next) {
             /* XXX what does this adjustment do? */
-            lastAnalyze += (((long)(now-lastAnalyze)/updateInterval)*updateInterval);
-            s->smoothConnTime = (1.0-gain)*s->smoothConnTime + gain*s->totalConnTime;
+            lastAnalyze += (((long)(now-lastAnalyze)/dynamicUpdateInterval)*dynamicUpdateInterval);
+            s->smoothConnTime = (1.0-dynamicGain)*s->smoothConnTime + dynamicGain*s->totalConnTime;
             s->totalConnTime = ctime;
             s->totalQueueTime = qsec;
         }
@@ -2663,61 +1896,128 @@ NothingToDo:
         opcode = *ptr1;
         switch (opcode) {
             case PLEASE_START:
-                sscanf(ptr1, "%c %s\n", &opcode, execName);
+                sscanf(ptr1, "%c %s %16s %15s\n", &opcode, execName, user, group);
                 break;
             case CONN_TIMEOUT:
-                sscanf(ptr1, "%c %s %lu\n", &opcode, execName, &qsec);
+                sscanf(ptr1, "%c %s %16s %15s %lu\n", &opcode, execName, user, group, &qsec);
                 break;
             case REQ_COMPLETE:
-                sscanf(ptr1, "%c %s %lu %lu %lu\n", &opcode, execName,
-                    &qsec, &ctime, &now);
+                sscanf(ptr1, "%c %s %16s %15s %lu %lu %lu\n", &opcode,
+                       execName, user, group, &qsec, &ctime, &now);
                 break;
             default:
                 goto CleanupReturn;
                 break;
         }
-        s = LookupFcgiServerInfo(execName);
-        if(s==NULL && opcode != REQ_COMPLETE) {
-            s = CreateFcgiServerInfo(maxClassProcs, execName);
-            DStringAppend(&s->execPath, execName, -1);
-            s->numProcesses = 0;
-            s->restartTime = 0;
+
+        s = server_get(execName, user, group);
+
+        if (s==NULL && opcode != REQ_COMPLETE) {
+            const char *err, *lockPath;
+
+            /* Create a perm subpool to hold the new server data,
+             * we can destroy it if something doesn't pan out */
+            sp = make_sub_pool(fcgiPool);
+
+            /* Create a new "dynamic" server */
+            s = server_new(sp);
+            s->directive = APP_CLASS_DYNAMIC;
             s->restartDelay = dynamicRestartDelay;
             s->initStartDelay = dynamicInitStartDelay;
             s->envp = dynamicEnvp;
-            s->directive = APP_CLASS_DYNAMIC;
-            /* create a socket file for the app */
-            ipcAddrPtr = (OS_IpcAddr *) OS_InitIpcAddr();
-            listenFd = OS_CreateLocalIpcFd((OS_IpcAddress *)ipcAddrPtr,
-                    dynamicListenQueueDepth,
-                    (user_id == (uid_t) -1)  ? geteuid() : user_id,
-#ifndef __EMX__
-                    (group_id == (gid_t) -1) ? getegid() : group_id,
-#else
-                    (gid_t)-1,
-#endif
-                    MakeSocketName, execName,
-                    NULL, -1, 1);
-            if(listenFd<0) {
-                fprintf(errorLog, "Unable to create a socket for %s\n",
-                        execName);
-            } else {
-                s->listenFd = listenFd;
-                for(i=0;i<maxClassProcs;i++) {
-                    s->procInfo[i].listenFd = listenFd;
+            s->execPath = pstrdup(sp, execName);
+            s->procs = server_createProcs(sp, dynamicMaxClassProcs);
+
+            /* Create socket file's path */
+            s->sockPath = sock_makeHash(tp, execName, user, group);
+            s->sockPath = sock_makePath(sp, s->sockPath, 1);
+
+            /* Create sockaddr, prealloc it so it won't get created in tp */
+            s->sockAddr = pcalloc(sp, sizeof(struct sockaddr_un));
+            err = sock_makeDomainAddr(tp, (struct sockaddr_un **)&s->sockAddr,
+                                      &s->sockAddrLen, s->sockPath);
+            if (err) {
+                ap_log_error(FCGI_LOG_ERR, NULL,
+                          "FastCGI: failed to create dynamic server"
+                          " \"%s\": %s", execName, err);
+                goto BagNewServer;
+            }
+
+            /* Create the socket */
+            if ((s->listenFd =
+                    psocket(sp, s->sockAddr->sa_family, SOCK_STREAM, 0)) < 0) {
+                ap_log_error(FCGI_LOG_ERR, NULL,
+                          "FastCGI: failed to create dynamic server"
+                          " \"%s\": can't create socket: %s",
+                          execName, strerror(errno));
+                goto BagNewServer;
+            }
+
+            /* bind() and listen() */
+            err = sock_bindAndListen(tp, s->sockAddr, s->sockAddrLen,
+                                     s->listenQueueDepth, s->listenFd);
+            if (err) {
+                ap_log_error(FCGI_LOG_ERR, NULL,
+                          "FastCGI: failed to create dynamic server"
+                          " \"%s\": %s", execName, err);
+                goto BagNewServer;
+            }
+
+            /* Create the lock file */
+            lockPath = dynamic_makeLockPath(tp, s->sockPath);
+            fd = popenf(tp, lockPath,
+                       O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
+            if (fd < 0) {
+                ap_log_error(FCGI_LOG_ERR, NULL,
+                          "FastCGI: failed to create dynamic server"
+                          " \"%s\": can't create/open lock file \"%s\": %s",
+                          execName, lockPath, err);
+                goto BagNewServer;
+            }
+            pclosef(tp, fd);
+
+            /* If suexec is being used, config user/group info */
+            if (fcgi_suexec) {
+                if (user[0] == '~') {
+                    /* its a user dir uri, the rest is a username, not a uid */
+                    struct passwd *pw = getpwnam(&user[1]);
+
+                    if (!pw) {
+                        ap_log_error(FCGI_LOG_ERR, NULL,
+                                  "FastCGI: can't get uid for username  \"%s\": %s",
+                                  &user[1], strerror(errno));
+                        goto BagNewServer;
+                    }
+                    s->uid = pw->pw_uid;
+                    s->user = pstrdup(sp, user);
+                    s->username = s->user;
+
+                    s->gid = pw->pw_gid;
+                    s->group = psprintf(sp, "%ld", (long)s->gid);
+                }
+                else {
+                    struct passwd *pw;
+
+                    s->uid = (uid_t)atol(user);
+                    pw = getpwuid(s->uid);
+                    if (!pw) {
+                        ap_log_error(FCGI_LOG_ERR, NULL,
+                                  "FastCGI: failed to create dynamic server"
+                                  " \"%s\": can't get username for uid \"%ld\": %s",
+                                  execName, (long)s->uid, strerror(errno));
+                        goto BagNewServer;
+                    }
+                    s->user = pstrdup(sp, user);
+                    s->username = pstrdup(sp, pw->pw_name);
+
+                    s->gid = (gid_t)atol(group);
+                    s->group = pstrdup(sp, group);
                 }
             }
-            OS_FreeIpcAddr(ipcAddrPtr);
-            /* don't forget to create a lock file for this app */
-            lockFileName = MakeLockFileName(execName);
-            fd = open(lockFileName, O_WRONLY | O_CREAT | O_TRUNC,
-                    S_IRUSR | S_IWUSR);
-            ASSERT(fd>0);
-            close(fd);
-            free(lockFileName);
+        server_add(s);
         } else {
             if(opcode==PLEASE_START) {
-                if (autoUpdate) {
+                if (dynamicAutoUpdate) {
                     /* Check to see if the binary has changed.  If so,
                     * kill the FCGI application processes, and
                     * restart them.
@@ -2728,24 +2028,24 @@ NothingToDo:
                             (stbuf.st_mtime > s->restartTime)) {
                         /* kill old server(s) */
                         if (s->directive == APP_CLASS_DYNAMIC) {
-                            numChildren = maxClassProcs;
+                            numChildren = dynamicMaxClassProcs;
                         } else {
                             numChildren = s->numProcesses;
                         }
                         for (i = 0; i < s->numProcesses; i++) {
-                            kill(s->procInfo[i].pid, SIGTERM);
+                            kill(s->procs[i].pid, SIGTERM);
                         }
                         fprintf(errorLog,
                                 "mod_fastcgi: binary %s modified, restarting FCGI app server\n",
                                 execName);
                     }
-               
-                    /* If restartDynamic, don't mark any new processes
+
+                    /* If dynamicAutoRestart, don't mark any new processes
                      * for  starting because we probably got the
-                     * PLEASE_START due to autoUpdate and the ProcMgr
+                     * PLEASE_START due to dynamicAutoUpdate and the ProcMgr
                      * will be restarting all of those we just killed.
                      */
-                    if (restartDynamic)
+                    if (dynamicAutoRestart)
                         continue;
                 } else {
                     /* we've been asked to start a process--only start
@@ -2757,13 +2057,13 @@ NothingToDo:
 
                     /* see if any instances of this app are running */
                     if (s->directive == APP_CLASS_DYNAMIC) {
-                        numChildren = maxClassProcs;
+                        numChildren = dynamicMaxClassProcs;
                     } else {
                         numChildren = s->numProcesses;
                     }
 
                     for (i = 0; i < numChildren; i++) {
-                        if (s->procInfo[i].state == STATE_STARTED)
+                        if (s->procs[i].state == STATE_STARTED)
                             count++;
                     }
                     /* if already running, don't start another one */
@@ -2776,34 +2076,34 @@ NothingToDo:
         switch (opcode) {
             case PLEASE_START:
             case CONN_TIMEOUT:
-                if((s->numProcesses+1)>maxClassProcs) {
+                if((s->numProcesses+1)>dynamicMaxClassProcs) {
                     /* Can't do anything here, log error */
                     fprintf(errorLog,
-                            "[%s] mod_fastcgi: Exceeded maxClassProcs\n",
+                            "[%s] mod_fastcgi: Exceeded dynamicMaxClassProcs\n",
                             get_time());
                     continue;
                 }
-                if((globalNumInstances+1)>maxProcs) {
+                if((globalNumInstances+1)>dynamicMaxProcs) {
                     /*
                      * Extra instances should have been
                      * terminated beforehand, probably need
                      * to increase ProcessSlack parameter
                      */
                     fprintf(errorLog,
-                            "[%s] mod_fastcgi: Exceeded maxProcs\n",
+                            "[%s] mod_fastcgi: Exceeded dynamicMaxProcs\n",
                             get_time());
                     continue;
                 }
                 /* find next free slot */
-                for(i=0;i<maxClassProcs;i++) {
-                    if((s->procInfo[i].pid <= 0) &&
-                            ((s->procInfo[i].state == STATE_READY) ||
-                            (s->procInfo[i].state == STATE_NEEDS_STARTING) ||
-                            (s->procInfo[i].state == STATE_KILLED)))
+                for(i=0;i<dynamicMaxClassProcs;i++) {
+                    if((s->procs[i].pid <= 0) &&
+                            ((s->procs[i].state == STATE_READY) ||
+                            (s->procs[i].state == STATE_NEEDS_STARTING) ||
+                            (s->procs[i].state == STATE_KILLED)))
                         break;
                 }
-                ASSERT(i<maxClassProcs);
-                s->procInfo[i].state = STATE_NEEDS_STARTING;
+                ASSERT(i<dynamicMaxClassProcs);
+                s->procs[i].state = STATE_NEEDS_STARTING;
                 break;
             case REQ_COMPLETE:
                 /* only record stats if we have a structure */
@@ -2813,14 +2113,16 @@ NothingToDo:
                 }
                 break;
         }
+
+        continue;
+
+BagNewServer:
+        destroy_pool(sp);
     }
 
 CleanupReturn:
-    if (buf!=NULL) {
-        fcgi_Free(buf);
-        buf = NULL;
-    }
     fflush(errorLog);
+    destroy_pool(tp);
     return (recs);
 }
 #undef TMP_BUFSIZ
@@ -2828,8 +2130,8 @@ CleanupReturn:
 
 /* Information about a process we are doing a blocking kill of.  */
 struct FuncData {
-    char *lockFileName;  /* name of the lock file to lock */
-    pid_t pid;           /* process to issue SIGTERM to   */
+    const char *lockFileName;    /* name of the lock file to lock */
+    pid_t pid;                   /* process to issue SIGTERM to   */
 };
 
 /*
@@ -2903,9 +2205,10 @@ void KillDynamicProcs()
     float loadFactor;       /* percentage, 0-100, of totalTime that
                              * the processes actually used */
     int i, victims = 0;
-    char *lockFileName;
+    const char *lockFileName;
     int lockFd;
     pid_t pid;
+    pool *tp = make_sub_pool(fcgiPool);
 
     /* pass 1 - locate and mark all victims */
     for(s=fastCgiServers;  s!=NULL; s=s->next) {
@@ -2916,7 +2219,7 @@ void KillDynamicProcs()
         /* If the number of non-victims is less than or equal to
            the minimum that may be running without being killed off,
            don't select any more victims.  */
-        if((globalNumInstances-victims)<=minProcs) {
+        if((globalNumInstances-victims)<=dynamicMinProcs) {
             break;
         }
         connTime = s->smoothConnTime ? s->smoothConnTime : s->totalConnTime;
@@ -2927,19 +2230,19 @@ void KillDynamicProcs()
         loadFactor = connTime/totalTime*100.0;
         if(((s->numProcesses>1) &&
                 (((s->numProcesses/(s->numProcesses-1))*loadFactor)
-                < threshholdN)) ||
+                < dynamicThreshholdN)) ||
                 ((s->numProcesses==1) &&
-                (loadFactor<threshhold1))) {
-            for(i=0;i<maxClassProcs;i++) {
+                (loadFactor<dynamicThreshhold1))) {
+            for(i=0;i<dynamicMaxClassProcs;i++) {
                 /* if need to kill extra instance and have one that
                  * is not started yet, do not start it and skip */
-                if(s->procInfo[i].state == STATE_NEEDS_STARTING) {
-                    s->procInfo[i].state = STATE_READY;
+                if(s->procs[i].state == STATE_NEEDS_STARTING) {
+                    s->procs[i].state = STATE_READY;
                     victims++;
                     break;
                 }
-                if(s->procInfo[i].state == STATE_STARTED) {
-                    s->procInfo[i].state = STATE_VICTIM;
+                if(s->procs[i].state == STATE_STARTED) {
+                    s->procs[i].state = STATE_VICTIM;
                     victims++;
                     break;
                 }
@@ -2952,16 +2255,18 @@ void KillDynamicProcs()
         if (s->directive != APP_CLASS_DYNAMIC)
             continue;
 
-        for(i=0;i<maxClassProcs;i++) {
-            if(s->procInfo[i].state == STATE_VICTIM) {
-                lockFileName = MakeLockFileName(DStringValue(&s->execPath));
-                if((lockFd = open(lockFileName, O_RDWR))<0) {
+        for(i = 0; i < dynamicMaxClassProcs; i++) {
+            if(s->procs[i].state == STATE_VICTIM) {
+                lockFileName = dynamic_makeLockPath(tp, s->execPath);
+                if ((lockFd = popenf(tp, lockFileName, O_RDWR, 0))<0) {
                     /*
                      * If we need to kill an application and the
                      * corresponding lock file does not exist, then
                      * that means we are in big trouble here
                      */
-                    fcgi_Free(lockFileName);
+                    /*@@@ this should be logged, but since all the lock
+                     * file stuff will be tossed, I'll leave it now */
+                    pclosef(tp, lockFd);
                     continue;
                 }
                 if(WriteLock(lockFd)<0) {
@@ -2974,9 +2279,9 @@ void KillDynamicProcs()
                      * that fork() is not very costly and this
                      * situation occurs very rarely, which it should
                      */
-                    funcData = fcgi_Malloc(sizeof(struct FuncData));
+                    funcData = pcalloc(tp, sizeof(struct FuncData));
                     funcData->lockFileName = lockFileName;
-                    funcData->pid = s->procInfo[i].pid;
+                    funcData->pid = s->procs[i].pid;
                     /*
                      * We can not call onto spawn_child() here
                      * since we are completely disassociated from
@@ -2984,9 +2289,9 @@ void KillDynamicProcs()
                      * directly.
                      */
                     if((pid=fork())<0) {
-                        close(lockFd);
-                        fcgi_Free(funcData->lockFileName);
-                        fcgi_Free(funcData);
+                        /*@@@ this should be logged, but since all the lock
+                         * file stuff will be tossed, I'll leave it now */
+                        destroy_pool(tp);
                         return;
                     } else if(pid==0) {
                         /* child */
@@ -2997,20 +2302,17 @@ void KillDynamicProcs()
                         BlockingKill(funcData);
                     } else {
                         /* parent */
-                        close(lockFd);
-                        fcgi_Free(funcData->lockFileName);
-                        fcgi_Free(funcData);
+                        pclosef(tp, lockFd);
                     }
                 } else {
-                    kill(s->procInfo[i].pid, SIGTERM);
-                    Unlock(lockFd);
-                    close(lockFd);
-                    fcgi_Free(lockFileName);
+                    kill(s->procs[i].pid, SIGTERM);
+                    pclosef(tp, lockFd);
                     break;
                 }
             }
         }
     }
+    destroy_pool(tp);
 }
 
 /*
@@ -3060,7 +2362,7 @@ static FILE *FastCgiProcMgrGetErrLog(void)
          * errorLog = fopen(errorLogPathname, "a"),
          * but work around faulty implementations of fopen (SunOS)
          */
-        int fd = open(errorLogPathname, O_WRONLY | O_APPEND | O_CREAT,
+        int fd = popenf(fcgiPool, errorLogPathname, O_WRONLY | O_APPEND | O_CREAT,
                 S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
         if(fd >= 0) {
             errorLog = fdopen(fd, "a");
@@ -3139,18 +2441,15 @@ static int OS_ExecFcgiProgram(
         pid_t *childPid,
         int listenFd,
         int priority,
-        char *programName,
-        char **envPtr)
+        const char *programName,
+        const char * const *envPtr,
+        const char *user,
+        const char *group)
 {
     int i;
-    DString dirName;
+    char *dirName;
     char *dnEnd, *failedSysCall;
-    char *dispatchProgram = programName;
     int save_errno;
-
-#ifdef RBOX_PATH
-    dispatchProgram = RBOX_PATH;
-#endif
 
     /*
      * Fork the fcgi process.
@@ -3162,34 +2461,32 @@ static int OS_ExecFcgiProgram(
         return 0;
     }
 
-    /*
-     * We're the child; no return.
-     */
+    /* We're the child.
+     * We gonna exec() shortly so Apache pools don't matter */
 
     if(listenFd != FCGI_LISTENSOCK_FILENO) {
-        OS_Dup2(listenFd, FCGI_LISTENSOCK_FILENO);
-        OS_Close(listenFd);
+        dup2(listenFd, FCGI_LISTENSOCK_FILENO);
+        close(listenFd);
     }
 
-    DStringInit(&dirName);
     dnEnd = strrchr(programName, '/');
-    if(dnEnd == NULL) {
-        DStringAppend(&dirName, "./", 2);
+    if (dnEnd == NULL) {
+        dirName = "./";
     } else {
-        DStringAppend(&dirName, programName, dnEnd - programName);
+        dirName = pcalloc(fcgiPool, dnEnd - programName + 1);
+        dirName = memcpy(dirName, programName, dnEnd - programName);
     }
-    if(chdir(DStringValue(&dirName)) < 0) {
+    if (chdir(dirName) < 0) {
         failedSysCall = "chdir";
-        goto ErrorExit;
+        goto FailedSystemCallExit;
     }
-    DStringFree(&dirName);
 
 #ifndef __EMX__
      /* OS/2 dosen't support nice() */
     if(priority != 0) {
         if(nice(priority) == -1) {
             failedSysCall = "nice";
-            goto ErrorExit;
+            goto FailedSystemCallExit;
         }
     }
 #endif
@@ -3200,20 +2497,26 @@ static int OS_ExecFcgiProgram(
      */
     for(i=0; i < MAX_OPEN_FDS; i++) {
         if(i != FCGI_LISTENSOCK_FILENO) {
-            OS_Close(i);
+            close(i);
         }
     }
-    do {
-        if(envPtr != NULL) {
-            execle(dispatchProgram, programName, NULL, envPtr);
-            failedSysCall = "execle";
-        } else {
-            execl(dispatchProgram, programName, NULL);
-            failedSysCall = "execl";
-        }
-    } while(errno == EINTR);
 
-ErrorExit:
+    if (fcgi_suexec != NULL) {
+        char *shortName = strrchr(programName, '/') + 1;
+
+        do {
+            execle(fcgi_suexec, fcgi_suexec, user, group, shortName, NULL, envPtr);
+        } while (errno == EINTR);
+    } else {
+        do {
+            execle(programName, programName, NULL, envPtr);
+        } while (errno == EINTR);
+    }
+
+    failedSysCall = "execle";
+
+
+FailedSystemCallExit:
     save_errno = errno;
     /*
      * We had to close all files but the FCGI listener socket in order to
@@ -3232,11 +2535,13 @@ ErrorExit:
 
 void FastCgiProcMgr(void *data)
 {
-    FastCgiServerInfo *s, *tmp;
+    FastCgiServerInfo *s;
     int i;
     int status, callWaitPid, callDynamicProcs;
     sigset_t sigMask;
     int alarmLeft = 0;
+    pool *tp;
+    const char *err;
 
     /*
      * Create mbox file now, so we won't have to check for
@@ -3259,12 +2564,12 @@ void FastCgiProcMgr(void *data)
     sigdelset(&sigMask, SIGUSR1);
     sigdelset(&sigMask, SIGHUP);
 
-    if ((OS_Signal(SIGTERM, FastCgiProcMgrSignalHander) == SIG_ERR) ||
-            (OS_Signal(SIGCHLD, FastCgiProcMgrSignalHander) == SIG_ERR) ||
-            (OS_Signal(SIGALRM, FastCgiProcMgrSignalHander) == SIG_ERR) ||
-            (OS_Signal(SIGUSR2, FastCgiProcMgrSignalHander) == SIG_ERR) ||
-            (OS_Signal(SIGUSR1, FastCgiProcMgrSignalHander) == SIG_ERR) ||
-            (OS_Signal(SIGHUP, FastCgiProcMgrSignalHander) == SIG_ERR)) {
+    if ((signal(SIGTERM, FastCgiProcMgrSignalHander) == SIG_ERR) ||
+            (signal(SIGCHLD, FastCgiProcMgrSignalHander) == SIG_ERR) ||
+            (signal(SIGALRM, FastCgiProcMgrSignalHander) == SIG_ERR) ||
+            (signal(SIGUSR2, FastCgiProcMgrSignalHander) == SIG_ERR) ||
+            (signal(SIGUSR1, FastCgiProcMgrSignalHander) == SIG_ERR) ||
+            (signal(SIGHUP, FastCgiProcMgrSignalHander) == SIG_ERR)) {
         fprintf(errorLog,
                 "[%s] mod_fastcgi: signal() failed (exiting): %s\n",
                 get_time(), strerror(errno));
@@ -3272,20 +2577,51 @@ void FastCgiProcMgr(void *data)
         exit(1);
     }
 
-    /* Initialize AppClass */
-    for(s = fastCgiServers; s != NULL; s = s->next) {
-        s->restartTime = 0;
-        for(i = 0; i < s->numProcesses; i++) {
-            s->procInfo[i].state = STATE_NEEDS_STARTING;
-        }
+    if (fcgi_suexec) {
+        fprintf(errorLog,
+            "[%s] FastCGI: suEXEC mechanism enabled (wrapper: %s)\n",
+            get_time(), fcgi_suexec);
+        fflush(errorLog);
     }
+
+    /* Initialize AppClass */
+    tp = make_sub_pool(fcgiPool);
+    for(s = fastCgiServers; s != NULL; s = s->next) {
+        if (s->directive == APP_CLASS_EXTERNAL)
+        continue;
+
+        /* Create the socket */
+        s->listenFd = psocket(fcgiPool, s->sockAddr->sa_family, SOCK_STREAM, 0);
+        if (s->listenFd < 0) {
+            ap_log_error(FCGI_LOG_ERR, NULL,
+                         "FastCGI: AppClass \"%s\" disabled: psocket() failed: %s",
+                         s->execPath, strerror(errno));
+            continue;
+        }
+
+        /* bind() and listen() */
+        err = sock_bindAndListen(tp, s->sockAddr, s->sockAddrLen,
+                                s->listenQueueDepth, s->listenFd);
+        if (err) {
+            ap_log_error(FCGI_LOG_ERR, NULL,
+                         "FastCGI: AppClass \"%s\" disabled: %s",
+                         s->execPath, err);
+            pclosesocket(fcgiPool, s->listenFd);
+            s->listenFd = -1;
+            continue;
+        }
+
+        for (i = 0; i < s->numProcesses; i++)
+            s->procs[i].state = STATE_NEEDS_STARTING;
+    }
+    destroy_pool(tp);
 
     /*
      * Loop until SIGTERM
      */
     for (;;) {
         time_t now;
-        int sleepSeconds = min(killInterval, updateInterval);
+        int sleepSeconds = min(dynamicKillInterval, dynamicUpdateInterval);
         pid_t childPid;
         int waitStatus;
         int numChildren;
@@ -3314,45 +2650,45 @@ void FastCgiProcMgr(void *data)
          * FastCGI applications.
          */
         for(s = fastCgiServers; s != NULL; s = s->next) {
-            if(s->directive == APP_CLASS_EXTERNAL) {
+            if (s->directive == APP_CLASS_EXTERNAL || s->listenFd < 0) {
                 continue;
             }
             if(s->directive == APP_CLASS_DYNAMIC) {
-                numChildren = maxClassProcs;
+                numChildren = dynamicMaxClassProcs;
             } else {
                 numChildren = s->numProcesses;
             }
             for(i = 0; i < numChildren; i++) {
-                if((s->procInfo[i].pid <= 0) &&
-                    (s->procInfo[i].state == STATE_NEEDS_STARTING)) {
+                if((s->procs[i].pid <= 0) &&
+                    (s->procs[i].state == STATE_NEEDS_STARTING)) {
                     time_t restartTime;
                     time_t now = time(NULL);
 
-                    if (s->procInfo[i].pid == 0) {
+                    if (s->procs[i].pid == 0) {
                         restartTime = s->restartTime + s->initStartDelay;
                     } else {
                         restartTime = s->restartTime + s->restartDelay;
                     }
 
                     if(restartTime <= now) {
-                        int restart = (s->procInfo[i].pid < 0);
+                        int restart = (s->procs[i].pid < 0);
 
                         s->restartTime = now;
                         if(CaughtSigTerm()) {
                             goto ProcessSigTerm;
                         }
                         status = OS_ExecFcgiProgram(
-                                &s->procInfo[i].pid,
-                                s->procInfo[i].listenFd,
+                                &s->procs[i].pid,
+                                s->listenFd,
                                 s->processPriority,
-                                DStringValue(&s->execPath),
-                                s->envp);
+                                s->execPath,
+                                s->envp, s->username, s->group);
                         if(status != 0) {
                             fprintf(errorLog,
                                     "[%s] mod_fastcgi: %s"
                                     " fork failed, errno = %s.\n",
                                     get_time(),
-                                    DStringValue(&s->execPath),
+                                    s->execPath,
                                     strerror(errno));
                             fflush(errorLog);
                             /* do not restart failed dynamic apps */
@@ -3361,35 +2697,33 @@ void FastCgiProcMgr(void *data)
                                         max(s->restartDelay,
                                         FCGI_MIN_EXEC_RETRY_DELAY));
                             } else {
-                                s->procInfo[i].state = STATE_READY;
+                                s->procs[i].state = STATE_READY;
                             }
-                            ASSERT(s->procInfo[i].pid < 0);
+                            ASSERT(s->procs[i].pid < 0);
                             break;
                         }
                         if (s->directive == APP_CLASS_DYNAMIC) {
                             s->numProcesses++;
                             globalNumInstances++;
                         }
-                        s->procInfo[i].state = STATE_STARTED;
-                        if (restart) {
+                        s->procs[i].state = STATE_STARTED;
+
+                        if (restart)
                             s->numRestarts++;
-                            fprintf(errorLog,
-                                    "[%s] mod_fastcgi: %s"
-                                    " restarted with pid %d.\n",
-                                    get_time(),
-                                    DStringValue(&s->execPath),
-                                    (int)s->procInfo[i].pid);
-                            fflush(errorLog);
-                        } else {
-                            fprintf(errorLog,
-                                    "[%s] mod_fastcgi: %s"
-                                    " started with pid %d.\n",
-                                    get_time(),
-                                    DStringValue(&s->execPath),
-                                    (int)s->procInfo[i].pid);
-                            fflush(errorLog);
+
+                        if (fcgi_suexec != NULL) {
+		            fprintf(errorLog,
+				    "[%s] FastCGI: %s (uid %ld, gid %ld) %sstarted with pid %d\n",
+				    get_time(), s->execPath, (long)s->uid,
+				    (long)s->gid, restart ? "re" : "", s->procs[i].pid);
+			}
+		        else {
+			    fprintf(errorLog,
+                                    "[%s] FastCGI: %s %sstarted with pid %d\n",
+				    get_time(), s->execPath, restart ? "re" : "",
+                                    s->procs[i].pid);
                         }
-                        ASSERT(s->procInfo[i].pid > 0);
+                        ASSERT(s->procs[i].pid > 0);
                     } else {
                         sleepSeconds = min(sleepSeconds, restartTime - now);
                     }
@@ -3434,8 +2768,8 @@ void FastCgiProcMgr(void *data)
             if(epoch == 0) {
                 epoch = now;
             }
-            if(((long)(now-epoch)>=killInterval) ||
-                    ((globalNumInstances+processSlack)>=maxProcs)) {
+            if(((long)(now-epoch)>=dynamicKillInterval) ||
+                    ((globalNumInstances+dynamicProcessSlack)>=dynamicMaxProcs)) {
                 KillDynamicProcs();
                 epoch = now;
             }
@@ -3466,12 +2800,12 @@ void FastCgiProcMgr(void *data)
                     continue;
                 }
                 if(s->directive == APP_CLASS_DYNAMIC) {
-                    numChildren = maxClassProcs;
+                    numChildren = dynamicMaxClassProcs;
                 } else {
                     numChildren = s->numProcesses;
                 }
                 for(i = 0; i < numChildren; i++) {
-                    if(s->procInfo[i].pid == childPid) {
+                    if(s->procs[i].pid == childPid) {
                         goto ChildFound;
                     }
                 }
@@ -3483,27 +2817,27 @@ void FastCgiProcMgr(void *data)
              */
             continue;
 ChildFound:
-            s->procInfo[i].pid = -1;
+            s->procs[i].pid = -1;
 
             /* restart static apps */
             if(s->directive == APP_CLASS_STANDARD) {
-                s->procInfo[i].state = STATE_NEEDS_STARTING;
+                s->procs[i].state = STATE_NEEDS_STARTING;
                 s->numFailures++;
             } else {
                 s->numProcesses--;
                 globalNumInstances--;
-                if(s->procInfo[i].state == STATE_VICTIM) {
-                    s->procInfo[i].state = STATE_KILLED;
+                if(s->procs[i].state == STATE_VICTIM) {
+                    s->procs[i].state = STATE_KILLED;
                     continue;
                 } else {
                     /*
-                     * dynamic app shouldn't have died or autoUpdate killed it
+                     * dynamic app shouldn't have died or dynamicAutoUpdate killed it
                      */
                     s->numFailures++;
-                    if (restartDynamic) {
-                        s->procInfo[i].state = STATE_NEEDS_STARTING;
+                    if (dynamicAutoRestart) {
+                        s->procs[i].state = STATE_NEEDS_STARTING;
                     } else {
-                        s->procInfo[i].state = STATE_READY;
+                        s->procs[i].state = STATE_READY;
                     }
                 }
             }
@@ -3512,36 +2846,18 @@ ChildFound:
                 fprintf(errorLog,
                         "[%s] mod_fastcgi: %s (pid %d) terminated"
                         " by calling exit with status = %d\n",
-                        get_time(), DStringValue(&s->execPath), (int)childPid,
+                        get_time(), s->execPath, (int)childPid,
                         WEXITSTATUS(waitStatus));
             } else {
                 ASSERT(WIFSIGNALED(waitStatus));
                 fprintf(errorLog,
                         "[%s] mod_fastcgi: %s (pid %d) terminated"
                         " due to uncaught signal %d\n",
-                        get_time(), DStringValue(&s->execPath), (int)childPid,
+                        get_time(), s->execPath, (int)childPid,
                         WTERMSIG(waitStatus));
             }
             fflush(errorLog);
         } /* for (;;) */
-
-        for(s=fastCgiServers;s!=NULL;) {
-            if(s->directive == APP_CLASS_DYNAMIC && s->numProcesses == 0) {
-                numChildren = 0;
-                for (i = 0; i < maxClassProcs; i++) {
-                    if (s->procInfo[i].state == STATE_NEEDS_STARTING ||
-                            s->procInfo[i].pid > 0)
-                        numChildren++;
-                }
-                if(numChildren == 0) {
-                    tmp=s->next;
-                    FreeFcgiServerInfo(s);
-                    s=tmp;
-                    continue;
-                }
-            }
-            s=s->next;
-        }
     } /* for (;;) */
 
 ProcessSigTerm:
@@ -3549,7 +2865,7 @@ ProcessSigTerm:
      * Kill off the children, then exit.
      */
     while(fastCgiServers != NULL) {
-        FreeFcgiServerInfo(fastCgiServers);
+        server_shutdown(fcgiPool, fastCgiServers);
     }
     exit(0);
 }
@@ -3706,33 +3022,41 @@ static int restarts = 0;
 void ModFastCgiInit(server_rec *s, pool *p)
 {
     FILE *fp=NULL;
-    char *ptr, buf[IOBUFSIZE];
+    char buf[IOBUFSIZE];
     int n;
-    uid_t uid;
-    gid_t gid;
+    const char *err;
+
+    /* Register to reset to default values when the config pool is cleaned */
+    register_cleanup(p, NULL, conf_reset, null_cleanup);
+
+    conf_setFcgiUidGid(1);
 
     /*
      * This hack will prevent the starting of the process manager
      * the first time Apache reads its configuration files.
      */
-    if((restarts==0)&&(standalone==1)) {
+    if (restarts == 0 && standalone == 1) {
         restarts++;
-        readingConfig = FALSE;
         return;
     }
+
+    /* keep config/perm pool global - its too much of pain to retrofit */
+    fcgiPool = p;
 
     if(s->error_fname != NULL) {
         errorLogPathname = server_root_relative(p, s->error_fname);
     }
 
-    uid = (user_id == (uid_t) -1)  ? geteuid() : user_id;
-#ifndef __EMX__
-    gid = (group_id == (gid_t) -1) ? getegid() : group_id;
-#else
-    gid = (gid_t)-1;
-#endif
-    if((ptr=CreateDynamicDirAndMbox(uid, gid))!=NULL) {
-        log_printf(s, "mod_fastcgi: %s\n", ptr);
+    /* Create Unix/Domain socket directory */
+    err = conf_createDir(p, ipcDir);
+    if (err != NULL) {
+        log_printf(s, "FastCGI: %s", err);
+    }
+
+    /* Create Dynamic directory and mbox file */
+    err = conf_createDynamicDirAndMbox(p);
+    if (err != NULL) {
+        log_printf(s, "FastCGI: %s", err);
     }
 
 #if APACHE_RELEASE < 1030000
@@ -3760,7 +3084,6 @@ void ModFastCgiInit(server_rec *s, pool *p)
         procMgr = strtol(buf, NULL, 10);
         ASSERT(procMgr!=-1);
     }
-    readingConfig = FALSE;
 }
 
 /*
@@ -3786,10 +3109,12 @@ void ModFastCgiInit(server_rec *s, pool *p)
  *----------------------------------------------------------------------
  */
 
-void SignalProcessManager(char id, char *execPath,
-        unsigned long qsecs, unsigned long ctime, unsigned long now)
+void SignalProcessManager(pool *rp, char id, char *execPath,
+              const char *user, const char *group,
+              unsigned long qsecs, unsigned long ctime,
+              unsigned long now)
 {
-    AddNewRecord(id, execPath, qsecs, ctime, now);
+    AddNewRecord(rp, id, execPath, user, group, qsecs, ctime, now);
     if(id!=REQ_COMPLETE) {
         kill(procMgr, SIGUSR2);
     }
@@ -3879,7 +3204,7 @@ static void MakeBeginRequestBody(
 static void SendBeginRequest(FastCgiInfo *infoPtr)
 {
     FCGI_BeginRequestBody body;
-    unsigned int bodySize;
+    u_int bodySize;
 
     /*
     * We should be the first ones to use this buffer.
@@ -3958,7 +3283,7 @@ static void FCGIUtil_BuildNameValueHeader(
  *----------------------------------------------------------------------
  */
 
-static int SendEnvironment(WS_Request *reqPtr, FastCgiInfo *infoPtr, char ***envp)
+static int SendEnvironment(request_rec *reqPtr, FastCgiInfo *infoPtr, char ***envp)
 {
     static int              headerLen, nameLen, valueLen, totalLen;
     static char             *equalPtr;
@@ -4107,7 +3432,7 @@ static void ClientToCgiBuffer(FastCgiInfo *infoPtr)
  *----------------------------------------------------------------------
  */
 
-static int CgiToClientBuffer(FastCgiInfo *infoPtr)
+static int CgiToClientBuffer(pool *p, FastCgiInfo *infoPtr)
 {
     FCGI_Header header;
     int len;
@@ -4158,7 +3483,7 @@ static int CgiToClientBuffer(FastCgiInfo *infoPtr)
                 if(len > 0) {
                     switch(infoPtr->parseHeader) {
                         case SCAN_CGI_READING_HEADERS:
-                            BufferDStringAppend(infoPtr->header,
+                            BufferAppend(p, &infoPtr->header,
                                     infoPtr->inbufPtr, len);
                             break;
                         case SCAN_CGI_FINISHED:
@@ -4179,7 +3504,7 @@ static int CgiToClientBuffer(FastCgiInfo *infoPtr)
                 break;
             case FCGI_STDERR:
                 if(len > 0) {
-                    BufferDStringAppend(infoPtr->errorOut,
+                    BufferAppend(p, &infoPtr->errorOut,
                             infoPtr->inbufPtr, len);
                     infoPtr->dataLen -= len;
                 }
@@ -4353,10 +3678,10 @@ char *ScanLine(char *start, int continuation)
  *----------------------------------------------------------------------
  */
 
-void ScanCGIHeader(WS_Request *reqPtr, FastCgiInfo *infoPtr)
+void ScanCGIHeader(request_rec *reqPtr, FastCgiInfo *infoPtr)
 {
     char *p, *next, *name, *value;
-    int len, flag;
+    int len, flag, headerBufLen;
     int hasContentType, hasStatus, hasLocation;
 
     ASSERT(infoPtr->parseHeader == SCAN_CGI_READING_HEADERS);
@@ -4365,8 +3690,9 @@ void ScanCGIHeader(WS_Request *reqPtr, FastCgiInfo *infoPtr)
      * Do we have the entire header?  Scan for the blank line that
      * terminates the header.
      */
-    p = DStringValue(infoPtr->header);
-    len = DStringLength(infoPtr->header);
+    p = infoPtr->header;
+    len = strlen(infoPtr->header);
+    headerBufLen = len;
     flag = 0;
     while(len-- && flag < 2) {
         switch(*p) {
@@ -4401,7 +3727,7 @@ void ScanCGIHeader(WS_Request *reqPtr, FastCgiInfo *infoPtr)
      */
     infoPtr->parseHeader = SCAN_CGI_FINISHED;
     hasContentType = hasStatus = hasLocation = FALSE;
-    next = DStringValue(infoPtr->header);
+    next = infoPtr->header;
     for(;;) {
         next = ScanLine(name = next, TRUE);
         if(*name == '\0') {
@@ -4501,14 +3827,11 @@ void ScanCGIHeader(WS_Request *reqPtr, FastCgiInfo *infoPtr)
     if(reqPtr->header_only) {
         return;
     }
-    len = next - DStringValue(infoPtr->header);
-    len = DStringLength(infoPtr->header) - len;
+    len = headerBufLen - (next - infoPtr->header);
     ASSERT(len >= 0);
     ASSERT(BufferLength(infoPtr->reqOutbufPtr) == 0);
     if(BufferFree(infoPtr->reqOutbufPtr) < len) {
-        Buffer *newBuf = BufferCreate(len);
-        BufferDelete(infoPtr->reqOutbufPtr);
-        infoPtr->reqOutbufPtr = newBuf;
+        infoPtr->reqOutbufPtr = BufferCreate(reqPtr->pool, len);
     }
     ASSERT(BufferFree(infoPtr->reqOutbufPtr) >= len);
     if(len > 0) {
@@ -4525,9 +3848,7 @@ BadHeader:
     if((p = strpbrk(name, "\r\n")) != NULL) {
         *p = '\0';
     }
-    fcgi_Free(infoPtr->errorMsg);
-    infoPtr->errorMsg = fcgi_Malloc(FCGI_ERRMSG_LEN + strlen(name));
-    sprintf(infoPtr->errorMsg,
+    infoPtr->errorMsg = psprintf(reqPtr->pool,
             "mod_fastcgi: Malformed response header from app: '%s'", name);
     goto ErrorReturn;
 
@@ -4538,9 +3859,7 @@ DuplicateNotAllowed:
     goto ErrorReturn;
 
 BadStatusValue:
-    fcgi_Free(infoPtr->errorMsg);
-    infoPtr->errorMsg = fcgi_Malloc(FCGI_ERRMSG_LEN + strlen(value));
-    sprintf(infoPtr->errorMsg,
+    infoPtr->errorMsg = psprintf(reqPtr->pool,
             "mod_fastcgi: Invalid Status value '%s'", value);
     goto ErrorReturn;
 
@@ -4574,7 +3893,7 @@ ErrorReturn:
  *----------------------------------------------------------------------
  */
 
-static void FillOutbuf(WS_Request *reqPtr, FastCgiInfo *infoPtr)
+static void FillOutbuf(request_rec *reqPtr, FastCgiInfo *infoPtr)
 {
     char *end;
     int count, countRead;
@@ -4618,7 +3937,7 @@ static void FillOutbuf(WS_Request *reqPtr, FastCgiInfo *infoPtr)
  *----------------------------------------------------------------------
  */
 
-static void DrainReqOutbuf(WS_Request *reqPtr, FastCgiInfo *infoPtr)
+static void DrainReqOutbuf(request_rec *reqPtr, FastCgiInfo *infoPtr)
 {
     char *begin;
     int count;
@@ -4637,6 +3956,48 @@ static void DrainReqOutbuf(WS_Request *reqPtr, FastCgiInfo *infoPtr)
 /*
  *----------------------------------------------------------------------
  *
+ * GetUidGid --
+ *
+ *      Determine the user and group suexec should be called with.
+ *      Based on code in Apache's create_argv_cmd() (util_script.c).
+ *
+ * Results:
+ *      0   success
+ *      <0  failure
+ *
+ * Side effects:
+ *      none
+ *
+ *----------------------------------------------------------------------
+ */
+
+static void GetUserGroup(request_rec *r, const char **user, const char **group)
+{
+    if (fcgi_suexec == NULL) {
+        *user = "-";
+        *group = "-";
+        return;
+    }
+
+    if (strncmp("/~", r->uri, 2) == 0) {
+        /* its a user dir uri, just send the ~user, and leave it to the PM */
+        char *end = strchr(r->uri + 2, '/');
+
+        if (end)
+            *user = memcpy(pcalloc(r->pool, end - r->uri), r->uri + 1, end - r->uri - 1);
+        else
+            *user = pstrdup(r->pool, r->uri + 1);
+        *group = "-";
+    }
+    else {
+        *user = psprintf(r->pool, "%ld", (long)r->server->server_uid);
+        *group = psprintf(r->pool, "%ld", (long)r->server->server_gid);
+    }
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
  * ConnectToFcgiApp --
  *
  *      Open a connection to the FastCGI application.
@@ -4649,23 +4010,45 @@ static void DrainReqOutbuf(WS_Request *reqPtr, FastCgiInfo *infoPtr)
  */
 static void CloseConnectionToFcgiApp(FastCgiInfo *infoPtr);
 
-static int ConnectToFcgiApp(WS_Request *reqPtr, FastCgiInfo *infoPtr)
+static int ConnectToFcgiApp(request_rec *reqPtr, FastCgiInfo *infoPtr)
 {
-    OS_IpcAddr*     ipcAddrPtr = NULL;
     int             flags = 0;
     struct timeval  tval;
     fd_set          write_fds, read_fds;
     int             status;
+    pool *rp = reqPtr->pool;
+    const char *sockPath = NULL;
+    struct sockaddr *sockAddr = NULL;
+    int sockAddrLen;
+    const char *err;
+
+    GetUserGroup(reqPtr, &infoPtr->user, &infoPtr->group);
+
+    /* Create the connection point */
+    if (infoPtr->dynamic) {
+        sockPath = sock_makeHash(rp, reqPtr->filename, infoPtr->user, infoPtr->group);
+        sockPath = sock_makePath(rp, sockPath, 1);
+        err = sock_makeDomainAddr(rp, (struct sockaddr_un **)&sockAddr,
+                                  &sockAddrLen, sockPath);
+        if (err) {
+            infoPtr->errorMsg = pstrcat(rp, "mod_fastcgi: ", err, NULL);
+            goto Error;
+        }
+    } else {
+        sockAddr = infoPtr->serverPtr->sockAddr;
+        sockAddrLen = infoPtr->serverPtr->sockAddrLen;
+    }
 
     /* Dynamic app's lockfile handling */
     if(infoPtr->dynamic) {
-        char*        lockFileName = MakeLockFileName(reqPtr->filename);
+        const char *lockFileName = dynamic_makeLockPath(rp, sockPath);
         struct stat  lstbuf;
         struct stat  bstbuf;
         int          result = 0;
+
         do {
             if( stat(lockFileName,&lstbuf)==0 && S_ISREG(lstbuf.st_mode) ) {
-                if (autoUpdate &&
+                if (dynamicAutoUpdate &&
                         (stat(reqPtr->filename,&bstbuf) == 0) &&
                         (lstbuf.st_mtime < bstbuf.st_mtime)) {
                     /* Its already running, but there's a newer one,
@@ -4673,20 +4056,19 @@ static int ConnectToFcgiApp(WS_Request *reqPtr, FastCgiInfo *infoPtr)
                      * it will notice that the binary is newer,
                      * and do a restart instead.
                      */
-                    SignalProcessManager(PLEASE_START,
-                        reqPtr->filename, 0, 0, 0);
+
+                    SignalProcessManager(rp, PLEASE_START,
+                        reqPtr->filename, infoPtr->user, infoPtr->group, 0, 0, 0);
                     sleep(1);
                 }
-                infoPtr->lockFd = open(lockFileName,O_APPEND);
+                infoPtr->lockFd = popenf(rp, lockFileName, O_APPEND, 0);
                 result = (infoPtr->lockFd < 0) ? (0) : (1);
             } else {
-                SignalProcessManager(PLEASE_START,
-                    reqPtr->filename, 0, 0, 0);
+                SignalProcessManager(rp, PLEASE_START,
+                    reqPtr->filename, infoPtr->user, infoPtr->group, 0, 0, 0);
                 sleep(1);
             }
         } while (result != 1);
-
-        free(lockFileName);
 
         /* Block until we get a shared (non-exclusive) read Lock */
         if(ReadwLock(infoPtr->lockFd) < 0) {
@@ -4696,33 +4078,9 @@ static int ConnectToFcgiApp(WS_Request *reqPtr, FastCgiInfo *infoPtr)
         }
     }
 
-    /* Create the connection point */
-    if(infoPtr->dynamic) {
-        struct sockaddr_un*  addrPtr;
-
-        ipcAddrPtr = (OS_IpcAddr *) OS_InitIpcAddr();
-        /* Fill in the serverAddr structure, even though the ProcMgr
-         * is responsible for creating a socket. */
-        addrPtr = (struct sockaddr_un *) fcgi_Malloc(sizeof(struct sockaddr_un));
-        ipcAddrPtr->serverAddr = (struct sockaddr *) addrPtr;
-        if(OS_BuildSockAddrUn(MakeSocketName(reqPtr->filename,
-                NULL, -1, &ipcAddrPtr->bindPath, 1),
-                addrPtr, &ipcAddrPtr->addrLen) != 0) {
-            sprintf(infoPtr->errorMsg,
-                    "mod_fastcgi: Socket path name is too long: ");
-            infoPtr->errorMsg = fcgi_Realloc(infoPtr->errorMsg,
-                    strlen(infoPtr->errorMsg) + strlen(reqPtr->filename) + 1);
-            strcat(infoPtr->errorMsg, reqPtr->filename);
-            goto Error;
-        }
-        ipcAddrPtr->addrType = TYPE_LOCAL;
-    } else {
-        ASSERT(infoPtr->serverPtr != NULL);
-        ipcAddrPtr = (OS_IpcAddr *) infoPtr->serverPtr->ipcAddr;
-    }
-
-    if((infoPtr->fd = OS_Socket(ipcAddrPtr->serverAddr->sa_family,
-            SOCK_STREAM, 0)) < 0) {
+    /* Create the socket */
+    infoPtr->fd = psocket(rp, sockAddr->sa_family, SOCK_STREAM, 0);
+    if (infoPtr->fd < 0) {
         sprintf(infoPtr->errorMsg,
                 "mod_fastcgi: socket() failed: ");
         goto SystemError;
@@ -4752,9 +4110,7 @@ static int ConnectToFcgiApp(WS_Request *reqPtr, FastCgiInfo *infoPtr)
              "mod_fastcgi: gettimeofday() failed: ");
         goto SystemError;
     }
-    if (connect(infoPtr->fd,
-            (struct sockaddr *)ipcAddrPtr->serverAddr,
-            ipcAddrPtr->addrLen) >= 0) {
+    if (connect(infoPtr->fd, (struct sockaddr *)sockAddr, sockAddrLen) >= 0) {
         goto ConnectionComplete;
     }
     if (errno != EINPROGRESS) {
@@ -4767,7 +4123,7 @@ static int ConnectToFcgiApp(WS_Request *reqPtr, FastCgiInfo *infoPtr)
             FD_ZERO(&write_fds);
             FD_SET(infoPtr->fd, &write_fds);
             read_fds = write_fds;
-            tval.tv_sec = startProcessDelay;
+            tval.tv_sec = dynamicPleaseStartDelay;
             tval.tv_usec = 0;
 
 #ifdef SELECT_NEEDS_CAST
@@ -4787,9 +4143,9 @@ static int ConnectToFcgiApp(WS_Request *reqPtr, FastCgiInfo *infoPtr)
             }
             if(status == 0) {
                 /* select() timed out */
-                SignalProcessManager(CONN_TIMEOUT,
-                        reqPtr->filename,
-                        (unsigned long)startProcessDelay*1000000,
+                SignalProcessManager(rp, CONN_TIMEOUT,
+                        reqPtr->filename, infoPtr->user, infoPtr->group,
+                        (unsigned long)dynamicPleaseStartDelay*1000000,
                         0, 0);
             } else {
                 /* connect() completed */
@@ -4863,7 +4219,6 @@ ConnectionComplete:
                  "mod_fastcgi: gettimeofday() failed: ");
             goto SystemError;
         }
-        OS_FreeIpcAddr(ipcAddrPtr);
     }
 
     return TRUE;
@@ -4873,15 +4228,10 @@ SystemError:
       if (msg == NULL) {
           msg = "errno out of range";
       }
-      infoPtr->errorMsg = fcgi_Realloc(infoPtr->errorMsg,
-          strlen(infoPtr->errorMsg) + strlen(msg) + 1);
-      strcat(infoPtr->errorMsg, msg);
+      infoPtr->errorMsg = pstrcat(rp, infoPtr->errorMsg, msg, NULL);
     }
 Error:
     CloseConnectionToFcgiApp(infoPtr);
-    if(infoPtr->dynamic) {
-        OS_FreeIpcAddr(ipcAddrPtr);
-    }
     log_reason(infoPtr->errorMsg, reqPtr->filename, reqPtr);
     return FALSE;
 }
@@ -4903,12 +4253,13 @@ Error:
  */
 static void CloseConnectionToFcgiApp(FastCgiInfo *infoPtr)
 {
+    pool *rp = infoPtr->reqPtr->pool;
+
     if (infoPtr->fd != -1)
-        OS_Close(infoPtr->fd);
+        pclosesocket(rp, infoPtr->fd);
 
     if (infoPtr->dynamic) {   /* dynamic == TRUE */
-        Unlock(infoPtr->lockFd);
-        close(infoPtr->lockFd);
+        pclosef(rp, infoPtr->lockFd);
 
         if(infoPtr->keepReadingFromFcgiApp == FALSE) {
             /* XXX REQ_COMPLETE is only sent for requests which complete
@@ -4924,7 +4275,8 @@ static void CloseConnectionToFcgiApp(FastCgiInfo *infoPtr)
                      "mod_fastcgi: gettimeofday() failed: %s\n", strerror(errno));
                 fflush (infoPtr->reqPtr->server->error_log);
             } else {
-                SignalProcessManager(REQ_COMPLETE, infoPtr->reqPtr->filename,
+                SignalProcessManager(rp, REQ_COMPLETE, infoPtr->reqPtr->filename,
+                    infoPtr->user, infoPtr->group,
                     (unsigned long)((infoPtr->queueTime.tv_sec
                         - infoPtr->startTime.tv_sec)*1000000
                         + infoPtr->queueTime.tv_usec
@@ -4970,7 +4322,7 @@ static void CloseConnectionToFcgiApp(FastCgiInfo *infoPtr)
  *----------------------------------------------------------------------
  */
 
-static int FastCgiDoWork(WS_Request *reqPtr, FastCgiInfo *infoPtr)
+static int FastCgiDoWork(request_rec *reqPtr, FastCgiInfo *infoPtr)
 {
     struct timeval  timeOut, *timeOutPtr;
     fd_set  read_set, write_set;
@@ -4979,6 +4331,7 @@ static int FastCgiDoWork(WS_Request *reqPtr, FastCgiInfo *infoPtr)
     int     doClientWrite;
     int     envSent = FALSE;    /* has the complete ENV been buffered? */
     char    **envp = NULL;      /* pointer used by SendEnvironment() */
+    pool *rp = reqPtr->pool;
 
     FD_ZERO(&read_set);
     FD_ZERO(&write_set);
@@ -5092,7 +4445,7 @@ static int FastCgiDoWork(WS_Request *reqPtr, FastCgiInfo *infoPtr)
         }
         /* Move data from the app input buffer (inbufPtr) to client
            output buffer (reqOutBuf) */
-        if(CgiToClientBuffer(infoPtr) != OK) {
+        if(CgiToClientBuffer(rp, infoPtr) != OK) {
             /* infoPtr->errorMsg is setup by CgiToClientBuffer() */
            goto Error;
         }
@@ -5116,7 +4469,7 @@ static int FastCgiDoWork(WS_Request *reqPtr, FastCgiInfo *infoPtr)
             sprintf(infoPtr->errorMsg,
                     "mod_fastcgi: Unterminated CGI response headers,"
                     " %d bytes received from app",
-                    DStringLength(infoPtr->header));
+                    strlen(infoPtr->header));
             goto Error;
         case SCAN_CGI_BAD_HEADER:
             /* infoPtr->errorMsg is setup by ScanHeader() */
@@ -5141,9 +4494,7 @@ SystemError:
     if (msg == NULL) {
         msg = "errno out of range";
     }
-    infoPtr->errorMsg = fcgi_Realloc(infoPtr->errorMsg,
-        strlen(infoPtr->errorMsg) + strlen(msg) + 1);
-    strcat(infoPtr->errorMsg, msg);
+    infoPtr->errorMsg = pstrcat(rp, infoPtr->errorMsg, msg, NULL);
 }
 Error:
     CloseConnectionToFcgiApp(infoPtr);
@@ -5173,7 +4524,7 @@ void FcgiCleanUp(FastCgiInfo *infoPtr)
     if(infoPtr == NULL) {
         return;
     }
-    if(DStringLength(infoPtr->errorOut) > 0) {
+    if(strlen(infoPtr->errorOut) > 0) {
         /*
          * Would like to call log_reason here, but log_reason
          * says "access failed" which isn't necessarily so.
@@ -5181,20 +4532,9 @@ void FcgiCleanUp(FastCgiInfo *infoPtr)
         fprintf(infoPtr->reqPtr->server->error_log,
                 "[%s] mod_fastcgi: stderr output from %s: '%s'\n",
                 get_time(), infoPtr->reqPtr->filename,
-                DStringValue(infoPtr->errorOut));
+                infoPtr->errorOut);
         fflush(infoPtr->reqPtr->server->error_log);
     }
-    BufferDelete(infoPtr->inbufPtr);
-    BufferDelete(infoPtr->outbufPtr);
-    BufferDelete(infoPtr->reqInbufPtr);
-    BufferDelete(infoPtr->reqOutbufPtr);
-    BufferDelete(infoPtr->erBufPtr);
-    fcgi_Free(infoPtr->errorMsg);
-    DStringFree(infoPtr->header);
-    DStringFree(infoPtr->errorOut);
-    fcgi_Free(infoPtr->header);
-    fcgi_Free(infoPtr->errorOut);
-    fcgi_Free(infoPtr);
 }
 
 /*
@@ -5228,20 +4568,20 @@ static int is_scriptaliased(request_rec *r)
 }
 
 
-static int FastCgiHandler(WS_Request *reqPtr)
+static int FastCgiHandler(request_rec *reqPtr)
 {
     FastCgiServerInfo *serverInfoPtr = NULL;
     FastCgiInfo *infoPtr = NULL;
     char *argv0 = NULL;
-    uid_t uid;
-    gid_t gid;
     struct timeval;
     int status;
+    pool *rp = reqPtr->pool;
 
     /*
      * Model after mod_cgi::cgi_handler() to provide better
      * compliance with HTTP 1.1 specification and security
      */
+
     no2slash(reqPtr->filename);
     if(reqPtr->method_number == M_OPTIONS) {
         /* do not allow anything but GET and POST */
@@ -5280,23 +4620,32 @@ static int FastCgiHandler(WS_Request *reqPtr)
         return FORBIDDEN;
     }
 
-    serverInfoPtr = LookupFcgiServerInfo(reqPtr->filename);
+    /* See if there's a static server configured */
+    serverInfoPtr = server_getById(reqPtr->filename,
+                                         reqPtr->server->server_uid,
+                                         reqPtr->server->server_gid);
     if (serverInfoPtr == NULL) {
-        /*
-         * Either this application does not exist, or it is
-         * the invocation of the dynamic fastcgi
-         * application.
-         */
-        uid = (user_id == (uid_t) -1)  ? geteuid() : user_id;
-#ifndef __EMX__
-        gid = (group_id == (gid_t) -1) ? getegid() : group_id;
-#else
-        gid = (gid_t)-1;
-#endif
-        if(WS_Access(reqPtr->filename, &(reqPtr->finfo), X_OK, uid, gid)) {
-            log_reason("mod_fastcgi: Requested application was not found",
+        /* Nope, its a request for a dynamic FastCGI application */
+        if (fcgi_suexec != NULL) {
+            if (WS_Access(NULL, &reqPtr->finfo, X_OK,
+                          reqPtr->server->server_uid,
+                          reqPtr->server->server_gid)) {
+                log_reason(psprintf(rp,
+                    "FastCGI: script not executable by fcgi_suexec (uid %ld, gid %ld)",
+                    (long)reqPtr->server->server_uid, (long)reqPtr->server->server_gid),
                     reqPtr->filename, reqPtr);
-            return NOT_FOUND;
+                return NOT_FOUND;
+            }
+        }
+        else {
+            if (WS_Access(NULL, &reqPtr->finfo, X_OK,
+                          fcgi_user_id, fcgi_group_id)) {
+                log_reason(psprintf(rp,
+                    "FastCGI: script not executable by server (uid %ld, gid %ld)",
+                    (long)fcgi_user_id, (long)fcgi_group_id),
+                    reqPtr->filename, reqPtr);
+                return NOT_FOUND;
+            }
         }
     }
 
@@ -5309,21 +4658,19 @@ static int FastCgiHandler(WS_Request *reqPtr)
      * Allocate and initialize FastCGI private data to augment the request
      * structure.
      */
-    infoPtr = (FastCgiInfo *) fcgi_Malloc(sizeof(FastCgiInfo));
+    infoPtr = (FastCgiInfo *)pcalloc(rp, sizeof(FastCgiInfo));
     infoPtr->serverPtr = serverInfoPtr;
-    infoPtr->inbufPtr = BufferCreate(SERVER_BUFSIZE);
-    infoPtr->outbufPtr = BufferCreate(SERVER_BUFSIZE);
+    infoPtr->inbufPtr = BufferCreate(rp, SERVER_BUFSIZE);
+    infoPtr->outbufPtr = BufferCreate(rp, SERVER_BUFSIZE);
     infoPtr->gotHeader = FALSE;
-    infoPtr->reqInbufPtr = BufferCreate(SERVER_BUFSIZE);
-    infoPtr->reqOutbufPtr = BufferCreate(SERVER_BUFSIZE);
-    infoPtr->errorMsg =  fcgi_Malloc(FCGI_ERRMSG_LEN);
+    infoPtr->reqInbufPtr = BufferCreate(rp, SERVER_BUFSIZE);
+    infoPtr->reqOutbufPtr = BufferCreate(rp, SERVER_BUFSIZE);
+    infoPtr->errorMsg =  pcalloc(rp, FCGI_ERRMSG_LEN);
     infoPtr->parseHeader = SCAN_CGI_READING_HEADERS;
-    infoPtr->header = (DString *) malloc(sizeof(DString));
-    infoPtr->errorOut = (DString *) malloc(sizeof(DString));
+    infoPtr->header = "";
+    infoPtr->errorOut = "";
     infoPtr->reqPtr = reqPtr;
-    DStringInit(infoPtr->header);
-    DStringInit(infoPtr->errorOut);
-    infoPtr->erBufPtr = BufferCreate(sizeof(FCGI_EndRequestBody) + 1);
+    infoPtr->erBufPtr = BufferCreate(rp, sizeof(FCGI_EndRequestBody) + 1);
     infoPtr->readingEndRequestBody = FALSE;
     infoPtr->exitStatus = 0;
     infoPtr->exitStatusSet = FALSE;
@@ -5361,7 +4708,7 @@ static int FastCgiHandler(WS_Request *reqPtr)
              * This redirect needs to be a GET no matter what the original
              * method was.
              */
-            reqPtr->method = pstrdup(reqPtr->pool, "GET");
+            reqPtr->method = "GET";
             reqPtr->method_number = M_GET;
 
             /* We already read the message body (if any), so don't allow
@@ -5391,10 +4738,11 @@ CleanupReturn:
 
 
 command_rec fastcgi_cmds[] = {
-    { "AppClass", AppClassCmd, NULL, RSRC_CONF, RAW_ARGS, NULL },
-    { "ExternalAppClass", ExternalAppClassCmd, NULL, RSRC_CONF, RAW_ARGS, NULL },
-    { "FastCgiIpcDir", FastCgiIpcDirCmd, NULL, RSRC_CONF, TAKE1, NULL },
-    { "FCGIConfig", FCGIConfigCmd, NULL, RSRC_CONF, RAW_ARGS, NULL },
+    { "AppClass", conf_AppClass, NULL, RSRC_CONF, RAW_ARGS, NULL },
+    { "ExternalAppClass", conf_ExternalAppClass, NULL, RSRC_CONF, RAW_ARGS, NULL },
+    { "FastCgiIpcDir", conf_FastCgiIpcDir, NULL, RSRC_CONF, TAKE1, NULL },
+    { "FastCgiSuexec", conf_FastCgiSuexec, NULL, RSRC_CONF, TAKE1, NULL },
+    { "FCGIConfig", conf_FCGIConfig, NULL, RSRC_CONF, RAW_ARGS, NULL },
     { NULL }
 };
 

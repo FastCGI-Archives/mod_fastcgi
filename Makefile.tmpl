@@ -3,11 +3,11 @@
 #
 #   Apache v1.3's Configure uses this to create a Makefile 
 # 
-# $Id: Makefile.tmpl,v 1.1 1998/05/27 12:56:20 roberts Exp $
+# $Id: Makefile.tmpl,v 1.2 1998/11/24 04:46:26 roberts Exp $
 
 LIB=libfastcgi.$(LIBEXT)
 
-OBJS=mod_fastcgi.o fcgibuf.o fcgitcl.o fcgios.o
+OBJS=mod_fastcgi.o fcgibuf.o
 
 # Build commands
 
@@ -41,13 +41,11 @@ depend:
 # Dependencies
 
 $(OBJS): mod_fastcgi.h  fcgivers.h 
-mod_fastcgi.o: fastcgi.h  fcgitcl.h fcgibuf.h fcgios.h              \
+mod_fastcgi.o: fastcgi.h  fcgibuf.h                                 \
          $(INCDIR)/httpd.h  $(INCDIR)/http_config.h                 \
          $(INCDIR)/http_protocol.h  $(INCDIR)/http_core.h           \
          $(INCDIR)/http_log.h  $(INCDIR)/http_protocol.h            \
          $(INCDIR)/http_main.h 
-fcgitcl.o: fcgitcl.h
-fcgibuf.o: fcgibuf.h fcgitcl.h fcgios.h
-fcgios.o:  fcgios.h
+fcgibuf.o: fcgibuf.h
 
 

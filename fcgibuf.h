@@ -3,11 +3,13 @@
  *
  * This file provides interface for the buffer library.
  *
- * $Id: fcgibuf.h,v 1.4 1998/02/24 17:11:40 roy Exp $
+ * $Id: fcgibuf.h,v 1.5 1998/11/24 04:46:28 roberts Exp $
  */
 
 #ifndef _FCGIBUF_H_
 #define _FCGIBUF_H_
+
+#include "alloc.h"
 
 /*
  * This structure implements ring buffers, used to buffer data between
@@ -32,7 +34,7 @@ typedef struct Buffer {
 /* function definitions */
 void BufferCheck(Buffer *bufPtr);
 void BufferReset(Buffer *bufPtr);
-Buffer *BufferCreate(int size);
+Buffer *BufferCreate(pool *p, int size);
 void BufferDelete(Buffer *bufPtr);
 int BufferRead(Buffer *bufPtr, int fd);
 int BufferWrite(Buffer *bufPtr, int fd);
@@ -44,6 +46,6 @@ int BufferAddData(Buffer *bufPtr, char *data, int datalen);
 int BufferAdd(Buffer *bufPtr, char *str);
 int BufferGetData(Buffer *bufPtr, char *data, int datalen);
 void BufferMove(Buffer *toPtr, Buffer *fromPtr, int len);
-void BufferDStringAppend(DString *strPtr, Buffer *bufPtr, int len);
+void BufferAppend(pool *p, char **strPtr, Buffer *bufPtr, int len);
 
 #endif
