@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_pm.c,v 1.45 2001/02/19 06:03:01 robs Exp $
+ * $Id: fcgi_pm.c,v 1.46 2001/02/19 06:04:15 robs Exp $
  */
 
 
@@ -736,7 +736,7 @@ static void dynamic_read_msgs(int read_ready)
      * To prevent the idle application from running indefinitely, we
      * check the timer and if it is expired, we recompute the values
      * for each running application class.  Then, when REQ_COMPLETE
-     * message is recieved, only updates are made to the data structures.
+     * message is received, only updates are made to the data structures.
      */
     if (fcgi_dynamic_last_analyzed == 0) {
         fcgi_dynamic_last_analyzed = now;
