@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.125 2002/03/04 02:29:33 robs Exp $
+ *  $Id: mod_fastcgi.c,v 1.126 2002/03/04 22:31:01 robs Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -1304,6 +1304,14 @@ static int server_error(fcgi_request *fr)
 {
     int rv;
     request_rec *r = fr->r;
+
+    if (! fr->exitStatusSet
+        && fcgi_buf_add_fd(fr->serverInputBuffer, fr->fd) > 0
+        && fcgi_protocol_dequeue(r->pool, fr) == OK
+        && fr->parseHeader == SCAN_CGI_READING_HEADERS) 
+    {
+        process_headers(r, fr);
+    }
 
 #if defined(SIGPIPE) && MODULE_MAGIC_NUMBER < 19990320
     /* Make sure we leave with Apache's sigpipe_handler in place */
