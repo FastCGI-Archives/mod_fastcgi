@@ -1,6 +1,6 @@
 <!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">
 <html>
-<!-- $Id: mod_fastcgi.html,v 1.21 2001/02/19 06:21:17 robs Exp $ -->
+<!-- $Id: mod_fastcgi.html,v 1.22 2001/05/12 12:53:57 robs Exp $ -->
 
 <head>
 <title>Apache module mod_fastcgi</title>
@@ -164,9 +164,9 @@ the specified extension(s) as FastCGI applications:</p>
   <h2><a name="directives">Directives</a></h2>
   <ul>
     <li><A href="#FastCgiServer"><code>FastCgiServer</code></a>
-    <li><A href="#FastCgiConfig"><code>FastCgiConfig</a></code>
+    <li><A href="#FastCgiConfig"><code>FastCgiConfig</code></a>
     <li><A href="#FastCgiExternalServer"><code>FastCgiExternalServer</code></a>
-    <li><A href="#FastCgiIpcDir"><code>FastCgiIpcDir</a></code>
+    <li><A href="#FastCgiIpcDir"><code>FastCgiIpcDir</code></a>
     <li><a href="#FastCgiWrapper"><code>FastCgiWrapper</code></a>
     <li><A href="#FastCgiAuthenticator"><code>FastCgiAuthenticator</code></a>
     <li><A href="#FastCgiAuthenticatorAuthoritative"><code>FastCgiAuthenticatorAuthoritative</code></a>
@@ -294,372 +294,361 @@ the named pipe. The <code>-socket</code> and <code>-port</code> options are
 mutually exclusive.</DD>
 </dl>
 
-<dl>
+<dl> 
   <hr>
-  <h2><a NAME="FastCgiConfig">FastCgiConfig</a></h2><!-- %plaintext &lt;?INDEX {\tt FastCgiConfig} directive&gt; -->
+  <h2><a NAME="FastCgiConfig">FastCgiConfig</a></h2>
+  <!-- %plaintext &lt;?INDEX {\tt FastCgiConfig} directive&gt; -->
   <table border="0">
-    <tr>
+    <tr> 
       <td><a HREF="http://www.apache.org/docs/mod/directive-dict.html#Syntax" REL="Help"><strong>Syntax:</strong></a></td>
       <td><code>FastCgiConfig <em>option [option ...]</em></code></td>
     </tr>
-    <tr>
+    <tr> 
       <td><a HREF="http://www.apache.org/docs/mod/directive-dict.html#Context" REL="Help"><strong>Context:</strong></a></td>
       <td>server config</td>
     </tr>
   </table>
-  <p>The <code>FastCgiConfig</code> directive defines the default parameters for
-  <i>all</i> dynamic
-  FastCGI applications. This directive does not affect static or external
-  applications in any way.</p>
-  <p>Dynamic applications are not started at server initialization, but upon demand.
-  If the demand is heavy, additional application instances are started. As the demand
-  fades, application instances are killed off. Many of the options govern this
-  process.</p>
+  <p>The <code>FastCgiConfig</code> directive defines the default parameters for 
+    <i>all</i> dynamic FastCGI applications. This directive does not affect static 
+    or external applications in any way.</p>
+  <p>Dynamic applications are not started at server initialization, but upon demand. 
+    If the demand is heavy, additional application instances are started. As the 
+    demand fades, application instances are killed off. Many of the options govern 
+    this process.</p>
   <p><em>Option</em> can be one of (case insensitive):</p>
-
-  <dt><code><b>-appConnTimeout <em>n</em></b> (0 seconds)</code>
-  <dd><b>Unix:&nbsp;</b>The number of seconds to wait for a connection to the FastCGI application to
-    complete or 0 to indicate a blocking <code>connect()</code> should be
-    used. Blocking <code>connect()</code>s have an OS dependent internal
-    timeout. If the timeout expires, a SERVER_ERROR results. For
-    non-zero values, this is the amount of time used in a <code>select()</code> 
-    to write to the file descriptor returned by a non-blocking
-    <code>connect()</code>. Non-blocking <code>connect()</code>s are troublesome
-    on many platforms. See also <code>-idle-timeout</code>, it produces similar results
-    but in a more portable manner.<br>
- <b>Windows NT:&nbsp;</b>TCP based applications work as above. Named pipe based 
-  applications (static applications configured without the <code>-port</code> option and 
-  dynamic applications) use this value successfully to limit the amount of time 
-  to wait for a connection (i.e. it's not "troublesome"). By default, this 
-  is 90 seconds (FCGI_NAMED_PIPE_CONNECT_TIMEOUT in mod_fastcgi.h). 
-
-  <dt><code><b>-autoUpdate</b> (none)</code>
-  <dd>Causes mod_fastcgi to check the modification time of the application on disk before
-    processing each request. If the application on disk has been changed, the process manager is
-    notified and all running instances of the application are killed off. In general,
-    it's preferred that this type of functionality be built-in to the application (e.g. every
-    100th request it checks to see if there's a newer version on disk and exits if so).
-    There may be an outstanding problem (bug) when this option is used with <code>-restart</code>. 
-
-  <dt><code><b>-gainValue <em>n</em></b> (0.5)</code>
-  <dd>A floating point value between 0 and 1 used as an exponent in the computation of
-    the exponentially decayed connection times load factor of the currently running dynamic
-    FastCGI applications. Old values are scaled by (<code>1&nbsp;-&nbsp;gainValue</code>), so
-    making it smaller weights old values more than the current value (which is scaled
-    by <code>gainValue</code>). 
-
-  <dt><code><b>-idle-timeout <em>n</em></b> (30 seconds)</code>
-  <dd>The number of seconds of FastCGI application inactivity allowed before the
-    request is aborted and the event is logged (at the <code>error</code> <a href="http://www.apache.org/docs/mod/core.html#loglevel"><code>LogLevel</code></a>).
-  The inactivity timer applies only as long as a connection is pending with the 
-  FastCGI application. If a request is queued to an application, but the 
-  application doesn't respond (by writing and flushing) within this period, the 
-  request will be aborted. If communication is complete with the 
-  application but incomplete with the client (the response is buffered), the 
-  timeout does not apply. 
-
-  <dt><code><b>-initial-env <em>name[=[value]]</EM></b> (none)</code>
-  <dd>A name-value pair to be passed in the initial 
-  environment when instances of applications are spawned. To pass a 
-  variable from the Apache environment, don't provide the "=" (if the variable 
-  isn't actually in the environment, it will be defined without a value).
-  To define a variable without a value, provide the "=" without any value.
-  The option can be used repeatedly. 
-
-  <dt><code><b>-init-start-delay <em>n</em></b> (1 second)</code>
-  <dd>The minimum number of seconds between the spawning of 
-  instances of applications. This delay decreases the demand placed 
-  on the system at server initialization. 
-
-  <dt><code><b>-killInterval <em>n</em></b> (300 seconds)</code>
-  <dd>Determines how often the dynamic 
-  application instance killing policy is implemented within the process 
-  manager. Smaller numbers result in a more aggressive policy, larger
-  numbers a less aggressive policy. 
-
-  <dt><code><b>-listen-queue-depth <em>n</em></b> (100)</code>
-  <dd>The depth of <code>listen()</code> queue (also known as the 
-  backlog) shared by all instances of applications. A deeper 
-  listen queue allows the server to cope with transient load fluctuations 
-  without rejecting requests; it does not increase throughput. Adding 
-  additional application instances may increase throughput/performance, 
-  depending upon the application and the host. 
-
-  <dt><code><b>-maxClassProcesses <em>n</em></b> (10)</code>
-  <dd>The maximum number of dynamic FastCGI application 
-  instances allowed to run for any one FastCGI application. 
-
-  <dt><code><b>-maxProcesses <em>n</em></b> (50)</code>
-  <dd>The maximum total number of dynamic FastCGI 
-  application instances allowed to run at any one time. 
-
-  <dt><code><b>-minProcesses <em>n</em></b> (5)</code>
-  <dd>The minimum total number of dynamic FastCGI 
-  application instances allowed to run at any one time without being killed off 
-  by the process manager (due to lack of demand). 
-
-  <dt><code><b>-multiThreshold <em>n</em></b> (50)</code>
-  <dd>An integer between 0 and 100 used to determine whether any one instance of a FastCGI
-    application should be terminated. If the application has more than one instance
-    currently running, this attribute will be used to decide whether one of them should be
-    terminated. If only one instance remains, <code>singleThreshold</code> is used instead. 
-  <br>For historic reasons the mis-spelling <code>multiThreshhold</code> is also accepted.
-
-  <dt><code><b>-pass-header <em>header</em></b> (none)</code>
-  <dd>The name of an HTTP Request Header to be passed in the <i>request</i> environment. This option makes 
-  available the contents of headers which are normally not available (e.g. 
-  Authorization) to a CGI environment. 
-
-  <dt><code><b>-priority <em>n</em></b> (0)</code>
-  <dd>The process priority to be assigned to the application instances (using <code>setpriority()</code>). 
-
-  <dt><code><b>-processSlack <em>n</em></b> (5)</code>
-  <dd>If the sum of the number of all currently running dynamic FastCGI
-  applications and <code>processSlack</code> exceeds <code>maxProcesses</code>,
-  the process manager invokes the killing policy. This is to improve
-  performance at higher loads by killing some of the most inactive application
-  instances before reaching <code>maxProcesses</code>.
-
-  <dt><code><b>-restart</b> (none)</code>
-  <dd>Causes the process manager to restart 
-  dynamic applications upon failure (similar to static applications). 
-
-  <dt><code><b>-restart-delay <em>n</em></b> (5 seconds)</code>
-  <dd>The minimum number of seconds between the respawning 
-  of failed instances of applications. This delay prevents a broken 
-  application from soaking up too much of the system. 
-
-  <dt><code><b>-singleThreshold <em>n</em></b> (0)</code>
-  <dd>An integer between 0 and 100 used to determine 
-  whether the last instance of a FastCGI application can be terminated. If 
-  the process manager computed load factor for the application is lower than the 
-  specified threshold, the last instance is terminated. In order to make 
-  your executables run in the "idle" mode for the long time, you would specify 
-  a value closer to 1, however if memory or CPU time is of primary concern, a 
-  value closer to 100 would be more applicable. A value of 0 will prevent 
-  the last instance of an application from being terminated; this is the default 
-  value, changing it is not recommended (especially if <code>-appConnTimeout</code> is set). 
-  <br>For historic reasons the mis-spelling <code>singleThreshhold</code> is also accepted.
-
-  <dt><code><b>-startDelay <em>n</em></b> (3 seconds)</code>
-  <dd>The number of seconds the web server waits patiently while trying to connect to a
-    dynamic FastCGI application. If the interval expires, the process manager is
-    notified with hope it will start another instance of the application. The <code>startDelay</code>
-    must be less than <code>appConnTimeout</code> to be effective. 
-  <dt><code><b>-updateInterval <em>n</em></b> (300 seconds)</code>
-  <dd>The updateInterval determines how often statistical 
-  analysis is performed to determine the fate of dynamic FastCGI applications. 
-
+  <dt><code><b>-appConnTimeout <em>n</em></b> (0 seconds)</code> 
+  <dd><b>Unix:&nbsp;</b>The number of seconds to wait for a connection to the 
+    FastCGI application to complete or 0 to indicate a blocking <code>connect()</code> 
+    should be used. Blocking <code>connect()</code>s have an OS dependent internal 
+    timeout. If the timeout expires, a SERVER_ERROR results. For non-zero values, 
+    this is the amount of time used in a <code>select()</code> to write to the 
+    file descriptor returned by a non-blocking <code>connect()</code>. Non-blocking 
+    <code>connect()</code>s are troublesome on many platforms. See also <code>-idle-timeout</code>, 
+    it produces similar results but in a more portable manner.<br>
+    <b>Windows NT:&nbsp;</b>TCP based applications work as above. Named pipe based 
+    applications (static applications configured without the <code>-port</code> 
+    option and dynamic applications) use this value successfully to limit the 
+    amount of time to wait for a connection (i.e. it's not "troublesome"). By 
+    default, this is 90 seconds (FCGI_NAMED_PIPE_CONNECT_TIMEOUT in mod_fastcgi.h). 
+  <dt><code><b>-autoUpdate</b> (none)</code> 
+  <dd>Causes mod_fastcgi to check the modification time of the application on 
+    disk before processing each request. If the application on disk has been changed, 
+    the process manager is notified and all running instances of the application 
+    are killed off. In general, it's preferred that this type of functionality 
+    be built-in to the application (e.g. every 100th request it checks to see 
+    if there's a newer version on disk and exits if so). There may be an outstanding 
+    problem (bug) when this option is used with <code>-restart</code>. 
+  <dt><code><b>-gainValue <em>n</em></b> (0.5)</code> 
+  <dd>A floating point value between 0 and 1 used as an exponent in the computation 
+    of the exponentially decayed connection times load factor of the currently 
+    running dynamic FastCGI applications. Old values are scaled by (<code>1&nbsp;-&nbsp;gainValue</code>), 
+    so making it smaller weights old values more than the current value (which 
+    is scaled by <code>gainValue</code>). 
+  <dt><code><b>-idle-timeout <em>n</em></b> (30 seconds)</code> 
+  <dd>The number of seconds of FastCGI application inactivity allowed before the 
+    request is aborted and the event is logged (at the <code>error</code> <a href="http://www.apache.org/docs/mod/core.html#loglevel"><code>LogLevel</code></a>). 
+    The inactivity timer applies only as long as a connection is pending with 
+    the FastCGI application. If a request is queued to an application, but the 
+    application doesn't respond (by writing and flushing) within this period, 
+    the request will be aborted. If communication is complete with the application 
+    but incomplete with the client (the response is buffered), the timeout does 
+    not apply. 
+  <dt><code><b>-initial-env <em>name[=[value]]</EM></b> (none)</code> 
+  <dd>A name-value pair to be passed in the initial environment when instances 
+    of applications are spawned. To pass a variable from the Apache environment, 
+    don't provide the "=" (if the variable isn't actually in the environment, 
+    it will be defined without a value). To define a variable without a value, 
+    provide the "=" without any value. The option can be used repeatedly. 
+  <dt><code><b>-init-start-delay <em>n</em></b> (1 second)</code> 
+  <dd>The minimum number of seconds between the spawning of instances of applications. 
+    This delay decreases the demand placed on the system at server initialization. 
+  <dt><code><b>-killInterval <em>n</em></b> (300 seconds)</code> 
+  <dd>Determines how often the dynamic application instance killing policy is 
+    implemented within the process manager. Smaller numbers result in a more aggressive 
+    policy, larger numbers a less aggressive policy. 
+  <dt><code><b>-listen-queue-depth <em>n</em></b> (100)</code> 
+  <dd>The depth of <code>listen()</code> queue (also known as the backlog) shared 
+    by all instances of applications. A deeper listen queue allows the server 
+    to cope with transient load fluctuations without rejecting requests; it does 
+    not increase throughput. Adding additional application instances may increase 
+    throughput/performance, depending upon the application and the host. 
+  <dt><code><b>-maxClassProcesses <em>n</em></b> (10)</code> 
+  <dd>The maximum number of dynamic FastCGI application instances allowed to run 
+    for any one FastCGI application. 
+  <dt><code><b>-maxProcesses <em>n</em></b> (50)</code> 
+  <dd>The maximum total number of dynamic FastCGI application instances allowed 
+    to run at any one time. 
+  <dt><code><b>-minProcesses <em>n</em></b> (5)</code> 
+  <dd>The minimum total number of dynamic FastCGI application instances allowed 
+    to run at any one time without being killed off by the process manager (due 
+    to lack of demand). 
+  <dt><code><b>-multiThreshold <em>n</em></b> (50)</code> 
+  <dd>An integer between 0 and 100 used to determine whether any one instance 
+    of a FastCGI application should be terminated. If the application has more 
+    than one instance currently running, this attribute will be used to decide 
+    whether one of them should be terminated. If only one instance remains, <code>singleThreshold</code> 
+    is used instead. <br>
+    For historic reasons the mis-spelling <code>multiThreshhold</code> is also 
+    accepted. 
+  <dt><code><b>-pass-header <em>header</em></b> (none)</code> 
+  <dd>The name of an HTTP Request Header to be passed in the <i>request</i> environment. 
+    This option makes available the contents of headers which are normally not 
+    available (e.g. Authorization) to a CGI environment. 
+  <dt><code><b>-priority <em>n</em></b> (0)</code> 
+  <dd>The process priority to be assigned to the application instances (using 
+    <code>setpriority()</code>). 
+  <dt><code><b>-processSlack <em>n</em></b> (5)</code> 
+  <dd>If the sum of the number of all currently running dynamic FastCGI applications 
+    and <code>processSlack</code> exceeds <code>maxProcesses</code>, the process 
+    manager invokes the killing policy. This is to improve performance at higher 
+    loads by killing some of the most inactive application instances before reaching 
+    <code>maxProcesses</code>. 
+  <dt><code><b>-restart</b> (none)</code> 
+  <dd>Causes the process manager to restart dynamic applications upon failure 
+    (similar to static applications). 
+  <dt><code><b>-restart-delay <em>n</em></b> (5 seconds)</code> 
+  <dd>The minimum number of seconds between the respawning of failed instances 
+    of applications. This delay prevents a broken application from soaking up 
+    too much of the system. 
+  <dt><code><b>-singleThreshold <em>n</em></b> (0)</code> 
+  <dd>An integer between 0 and 100 used to determine whether the last instance 
+    of a FastCGI application can be terminated. If the process manager computed 
+    load factor for the application is lower than the specified threshold, the 
+    last instance is terminated. In order to make your executables run in the 
+    "idle" mode for the long time, you would specify a value closer to 1, however 
+    if memory or CPU time is of primary concern, a value closer to 100 would be 
+    more applicable. A value of 0 will prevent the last instance of an application 
+    from being terminated; this is the default value, changing it is not recommended 
+    (especially if <code>-appConnTimeout</code> is set). <br>
+    For historic reasons the mis-spelling <code>singleThreshhold</code> is also 
+    accepted. 
+  <dt><code><b>-startDelay <em>n</em></b> (3 seconds)</code> 
+  <dd>The number of seconds the web server waits patiently while trying to connect 
+    to a dynamic FastCGI application. If the interval expires, the process manager 
+    is notified with hope it will start another instance of the application. The 
+    <code>startDelay</code> must be less than <code>appConnTimeout</code> to be 
+    effective. 
+  <dt><code><b>-updateInterval <em>n</em></b> (300 seconds)</code> 
+  <dd>The updateInterval determines how often statistical analysis is performed 
+    to determine the fate of dynamic FastCGI applications. 
   <dt>&nbsp; 
-  <hr>
-  <h2><a name="FastCgiExternalServer">FastCgiExternalServer</a></h2><!-- %plaintext &lt;?INDEX {\tt FastCgiConfig} directive&gt; -->
-  <table border="0">
-    <tr>
-      <td><a HREF="http://www.apache.org/docs/mod/directive-dict.html#Syntax" REL="Help"><strong>Syntax:</strong></a></td>
-      <td><code>FastCgiExternalServer <em>filename</em> -host <em>hostname:port
-        [option ...]</em></code></td>
-    </tr>
-    <tr>
-      <td></td>
-      <td><code>FastCgiExternalServer <em>filename</em> -socket <em>filename [option ...]</em></code></td>
-    </tr>
-    <tr>
-      <td><a HREF="http://www.apache.org/docs/mod/directive-dict.html#Context" REL="Help"><strong>Context:</strong></a></td>
-      <td>server config</td>
-    </tr>
-  </table>
-  <p>The <code>FastCgiExternalServer</code> directive defines <em>filename</em> as an external FastCGI application.
-  If <EM>filename</EM>  
-        does not begin with a slash (/) then
-  it is assumed to be relative to the <a
-  href="http://www.apache.org/docs/mod/core.html#serverroot">ServerRoot</a>. The <EM>filename</EM> does 
-  not have to exist in the local filesystem. URIs that Apache 
-  resolves to this <EM>filename</EM> will be handled by this external 
-  FastCGI application.. </p>
-  <p>External FastCGI applications are not started by the process manager, they are presumed
-  to be started and managed "external" to Apache and mod_fastcgi. The
-  FastCGI devkit provides a simple tool, <code>cgi-fcgi</code>, for starting FastCGI applications independent of the
-  server (applications can also be <i>self-starting</i>, see the devkit).</p>
-  <p><em>Option</em> can be one of (case insensitive):</p>
-
-  <dt><code><b>-appConnTimeout <em>n</em></b> (0 seconds)</code>
-  <dd><b>Unix:&nbsp</b>The number of seconds to wait for a connection to the FastCGI application to
-    complete or 0 to indicate a blocking <code>connect()</code> should be
-    used. Blocking <code>connect()</code>s have an OS dependent internal
-    timeout. If the timeout expires, a SERVER_ERROR results. For
-    non-zero values, this is the amount of time used in a <code>select()</code> 
-    to write to the file descriptor returned by a non-blocking
-    <code>connect()</code>. Non-blocking <code>connect()</code>s are troublesome
-    on many platforms. See also <code>-idle-timeout</code>, it produces similar results
-    but in a more portable manner.<br>
- <b>Windows NT:&nbsp;</b>TCP based applications work as above. Named pipe based 
-  applications (static applications configured without the <code>-port</code> option and 
-  dynamic applications) use this value successfully to limit the amount of time 
-  to wait for a connection (i.e. it's not "troublesome"). By default, this 
-  is 90 seconds (FCGI_NAMED_PIPE_CONNECT_TIMEOUT in mod_fastcgi.h). 
-
-  <dt><code><b>-idle-timeout <em>n</em></b> (30 seconds)</code>
-  <dd>The number of seconds of FastCGI application inactivity allowed before the
-    request is aborted and the event is logged (at the <code>error</code> <a href="http://www.apache.org/docs/mod/core.html#loglevel"><code>LogLevel</code></a>).
-  The inactivity timer applies only as long as a connection is pending with the 
-  FastCGI application. If a request is queued to an application, but the 
-  application doesn't respond (by writing and flushing) within this period, the 
-  request will be aborted. If communication is complete with the 
-  application but incomplete with the client (the response is buffered), the 
-  timeout does not apply. 
-
-  <dt><code><b>-flush</b> (none)</code>
-  <dd>Force a write to the client as data is received from the application. By default, <code>mod_fastcgi</code> buffers data in order to free the 
-  application as quickly as possible. 
-
-  <dt><code><b>-host <em>hostname:port</em></b> (none)</code>
-  <dd>The hostname or IP address and TCP port number (1-65535) the application uses for
-    communication with the web server. The <code>-socket</code> and <code>-host</code> options are mutually exclusive. 
-
-  <dt><code><b>-pass-header <em>header</em></b> (none)</code>
-  <dd>The name of an HTTP Request Header to be passed in the <i>request</i> environment. This option makes 
-  available the contents of headers which are normally not available (e.g. 
-  Authorization) to a CGI environment. 
-
-  <dt><code><b>-socket<em> filename</em></b> (none)</code>
-  <dd><b>Unix:&nbsp;</b>The filename of the Unix domain socket the application uses for communication with the
-    web server. The filename is relative to the <code><A href="#FastCgiIpcDir">FastCgiIpcDir</A></code>. The <code>-socket</code>
+    <hr>
+    <h2><a name="FastCgiExternalServer">FastCgiExternalServer</a></h2>
+    <!-- %plaintext &lt;?INDEX {\tt FastCgiConfig} directive&gt; -->
+    <table border="0">
+      <tr> 
+        <td><a HREF="http://www.apache.org/docs/mod/directive-dict.html#Syntax" REL="Help"><strong>Syntax:</strong></a></td>
+        <td><code>FastCgiExternalServer <em>filename</em> -host <em>hostname:port 
+          [option ...]</em></code></td>
+      </tr>
+      <tr> 
+        <td></td>
+        <td><code>FastCgiExternalServer <em>filename</em> -socket <em>filename 
+          [option ...]</em></code></td>
+      </tr>
+      <tr> 
+        <td><a HREF="http://www.apache.org/docs/mod/directive-dict.html#Context" REL="Help"><strong>Context:</strong></a></td>
+        <td>server config</td>
+      </tr>
+    </table>
+    <p>The <code>FastCgiExternalServer</code> directive defines <em>filename</em> 
+      as an external FastCGI application. If <EM>filename</EM> does not begin 
+      with a slash (/) then it is assumed to be relative to the <a
+  href="http://www.apache.org/docs/mod/core.html#serverroot">ServerRoot</a>. The 
+      <EM>filename</EM> does not have to exist in the local filesystem. URIs that 
+      Apache resolves to this <EM>filename</EM> will be handled by this external 
+      FastCGI application.. </p>
+    <p>External FastCGI applications are not started by the process manager, they 
+      are presumed to be started and managed "external" to Apache and mod_fastcgi. 
+      The FastCGI devkit provides a simple tool, <code>cgi-fcgi</code>, for starting 
+      FastCGI applications independent of the server (applications can also be 
+      <i>self-starting</i>, see the devkit).</p>
+    <p><em>Option</em> can be one of (case insensitive):</p>
+  <dt><code><b>-appConnTimeout <em>n</em></b> (0 seconds)</code> 
+  <dd><b>Unix:&nbsp</b>The number of seconds to wait for a connection to the FastCGI 
+    application to complete or 0 to indicate a blocking <code>connect()</code> 
+    should be used. Blocking <code>connect()</code>s have an OS dependent internal 
+    timeout. If the timeout expires, a SERVER_ERROR results. For non-zero values, 
+    this is the amount of time used in a <code>select()</code> to write to the 
+    file descriptor returned by a non-blocking <code>connect()</code>. Non-blocking 
+    <code>connect()</code>s are troublesome on many platforms. See also <code>-idle-timeout</code>, 
+    it produces similar results but in a more portable manner.<br>
+    <b>Windows NT:&nbsp;</b>TCP based applications work as above. Named pipe based 
+    applications (static applications configured without the <code>-port</code> 
+    option and dynamic applications) use this value successfully to limit the 
+    amount of time to wait for a connection (i.e. it's not "troublesome"). By 
+    default, this is 90 seconds (FCGI_NAMED_PIPE_CONNECT_TIMEOUT in mod_fastcgi.h). 
+  <dt><code><b>-idle-timeout <em>n</em></b> (30 seconds)</code> 
+  <dd>The number of seconds of FastCGI application inactivity allowed before the 
+    request is aborted and the event is logged (at the <code>error</code> <a href="http://www.apache.org/docs/mod/core.html#loglevel"><code>LogLevel</code></a>). 
+    The inactivity timer applies only as long as a connection is pending with 
+    the FastCGI application. If a request is queued to an application, but the 
+    application doesn't respond (by writing and flushing) within this period, 
+    the request will be aborted. If communication is complete with the application 
+    but incomplete with the client (the response is buffered), the timeout does 
+    not apply. 
+  <dt><code><b>-flush</b> (none)</code> 
+  <dd>Force a write to the client as data is received from the application. By 
+    default, <code>mod_fastcgi</code> buffers data in order to free the application 
+    as quickly as possible. 
+  <dt><code><b>-host <em>hostname:port</em></b> (none)</code> 
+  <dd>The hostname or IP address and TCP port number (1-65535) the application 
+    uses for communication with the web server. The <code>-socket</code> and <code>-host</code> 
+    options are mutually exclusive. 
+  <dt><code><b>-pass-header <em>header</em></b> (none)</code> 
+  <dd>The name of an HTTP Request Header to be passed in the <i>request</i> environment. 
+    This option makes available the contents of headers which are normally not 
+    available (e.g. Authorization) to a CGI environment. 
+  <dt><code><b>-socket<em> filename</em></b> (none)</code> 
+  <dd><b>Unix:&nbsp;</b>The filename of the Unix domain socket the application 
+    uses for communication with the web server. The filename is relative to the 
+    <code><A href="#FastCgiIpcDir">FastCgiIpcDir</A></code>. The <code>-socket</code> 
     and <code>-port</code> options are mutually exclusive. 
-  <dd> <b>Windows NT:&nbsp;</b> The name of the named pipe the application uses
-for communicating with the web server. the name is relative to the <code><A href="#FastCgiIpcDir">
-FastCgiIpcDir</A></code>.
-The <code>-socket</code> and <code>-port</code> options are mutually exclusive. 
-  <dt>
-  <hr>
-  <h2><a name="FastCgiIpcDir">FastCgiIpcDir</a></h2><!-- %plaintext &lt;?INDEX {\tt FastCgiConfig} directive&gt; -->
-  <table border="0">
-    <tr>
-      <td><a HREF="http://www.apache.org/docs/mod/directive-dict.html#Syntax" REL="Help"><strong>Syntax:</strong></a></td>
-      <td><code><B>Unix:&nbsp</B>FastCgiIpcDir <em>directory</em></code></td>
-    </tr>
-    <tr>
-       <td></td>
-       <td><code><b>Windows NT:&nbsp</b>FastCgiIpcDir <i>name</i></code></td> 
-    </tr>
-    <tr>
-      <td><a href="http://www.apache.org/docs/mod/directive-dict.html#Default"><strong>Default:</strong></a></td>
-      <td><code><b>Unix:&nbsp;</b>FastCgiIpcDir /tmp/fcgi</code></td>
-    </tr>
-    <tr>
-      <td></td>
-      <td><code><b>Windows NT:&nbsp;</b>FastCgiIpcDir \\.\pipe\ModFastCgi\</code></td>
-    </tr>
-    <tr>
-      <td><a HREF="http://www.apache.org/docs/mod/directive-dict.html#Context" REL="Help"><strong>Context:</strong></a></td>
-      <td>server config</td>
-    </tr>
-  </table>
-  <p><b>Unix:&nbsp;</b>The <code>FastCgiIpcDir</code> directive specifies <em>directory</em> as the place to
-  store (and in the case of external FastCGI applications, find) the Unix socket files used
-  for communication between the applications and the web server. If the directory does
-  not begin with a slash (/) then it is assumed to be relative to the <a
-  href="http://www.apache.org/docs/mod/core.html#serverroot">ServerRoot</a>. If the
-  directory doesn't exist, an attempt is made to create it with appropriate
-  permissions. Do not specify a directory that is not on a local filesystem! If
-  you use the default directory (or another directory within <code>/tmp</code>), <code>mod_fastcgi</code>
-  will break if your system periodically deletes files from <code>/tmp</code>.</p>
-  <p><b>Windows NT:&nbsp;</b>The <code>FastCgiIpcDir </code>directive specifies <i>name
-  </i>as the root for the named pipes used for communication between the
-  application and the web server. The <i>name</i> must be in the form
-  of <b>\\.\pipe\</b><i>pipename. </i>The <i>pipename </i>part can contain
-  any character other than a backslash</p>
-  <p>The <code>FastCgiIpcDir</code> directive must precede any <A href="#FastCgiServer"><code>FastCgiServer</code></a>
-  or <A href="#FastCgiExternalServer"><code>FastCgiExternalServer</code></a> directives
-  (which make use of Unix sockets). The directory must be readable, writeable, and
-  executable (searchable) by the web server, but otherwise should not be accessible to
-  anyone.</p>
-  <hr>
-  <h2><a name="FastCgiWrapper">FastCgiWrapper</a></h2><!-- %plaintext &lt;?INDEX {\tt FastCgiConfig} directive&gt; -->
-  <table border="0">
-    <tr>
-      <td><a HREF="http://www.apache.org/docs/mod/directive-dict.html#Syntax" REL="Help"><strong>Syntax:</strong></a></td>
-      <td><code>FastCgiWrapper <em>On | Off | filename</em></code></td>
-    </tr>
-    <tr>
-      <td><a href="http://www.apache.org/docs/mod/directive-dict.html#Default"><strong>Default:</strong></a></td>
-      <td><code>FastCgiWrapper Off<em> </em></code></td>
-    </tr>
-    <tr>
-      <td><a HREF="http://www.apache.org/docs/mod/directive-dict.html#Context" REL="Help"><strong>Context:</strong></a></td>
-      <td>server config</td>
-    </tr>
-  </table>
-  <p>The <code>FastCgiWrapper</code> directive is used to enable support for a
-  wrapper such as suexec or cgiwrap. To use the same wrapper used by Apache, set <code>FastCgiWrapper</code>
-  to <em>On</em> (NOTE - mod_fastcgi cannot reliably determine the wrapper
-  used by Apache when built as a DSO). The <i>On</i> argument requires suexec be enabled in Apache (for
-  CGI). To use a specific wrapper, specify
-  a <em>filename</em>. If the filename does not begin with a slash (/) then it is
-  assumed to be relative to the <a
+  <dd> <b>Windows NT:&nbsp;</b> The name of the named pipe the application uses 
+    for communicating with the web server. the name is relative to the <code><A href="#FastCgiIpcDir"> 
+    FastCgiIpcDir</A></code>. The <code>-socket</code> and <code>-port</code> 
+    options are mutually exclusive. 
+  <dt> 
+    <hr>
+    <h2><a name="FastCgiIpcDir">FastCgiIpcDir</a></h2>
+    <!-- %plaintext &lt;?INDEX {\tt FastCgiConfig} directive&gt; -->
+    <table border="0">
+      <tr> 
+        <td><a HREF="http://www.apache.org/docs/mod/directive-dict.html#Syntax" REL="Help"><strong>Syntax:</strong></a></td>
+        <td><code><B>Unix:&nbsp</B>FastCgiIpcDir <em>directory</em></code></td>
+      </tr>
+      <tr> 
+        <td></td>
+        <td><code><b>Windows NT:&nbsp</b>FastCgiIpcDir <i>name</i></code></td>
+      </tr>
+      <tr> 
+        <td><a href="http://www.apache.org/docs/mod/directive-dict.html#Default"><strong>Default:</strong></a></td>
+        <td><code><b>Unix:&nbsp;</b>FastCgiIpcDir /tmp/fcgi</code></td>
+      </tr>
+      <tr> 
+        <td></td>
+        <td><code><b>Windows NT:&nbsp;</b>FastCgiIpcDir \\.\pipe\ModFastCgi\</code></td>
+      </tr>
+      <tr> 
+        <td><a HREF="http://www.apache.org/docs/mod/directive-dict.html#Context" REL="Help"><strong>Context:</strong></a></td>
+        <td>server config</td>
+      </tr>
+    </table>
+    <p><b>Unix:&nbsp;</b>The <code>FastCgiIpcDir</code> directive specifies <em>directory</em> 
+      as the place to store (and in the case of external FastCGI applications, 
+      find) the Unix socket files used for communication between the applications 
+      and the web server. If the directory does not begin with a slash (/) then 
+      it is assumed to be relative to the <a
+  href="http://www.apache.org/docs/mod/core.html#serverroot">ServerRoot</a>. If 
+      the directory doesn't exist, an attempt is made to create it with appropriate 
+      permissions. Do not specify a directory that is not on a local filesystem! 
+      If you use the default directory (or another directory within <code>/tmp</code>), 
+      <code>mod_fastcgi</code> will break if your system periodically deletes 
+      files from <code>/tmp</code>.</p>
+    <p><b>Windows NT:&nbsp;</b>The <code>FastCgiIpcDir </code>directive specifies 
+      <i>name </i>as the root for the named pipes used for communication between 
+      the application and the web server. The <i>name</i> must be in the form 
+      of <b>\\.\pipe\</b><i>pipename. </i>The <i>pipename </i>part can contain 
+      any character other than a backslash</p>
+    <p>The <code>FastCgiIpcDir</code> directive must precede any <A href="#FastCgiServer"><code>FastCgiServer</code></a> 
+      or <A href="#FastCgiExternalServer"><code>FastCgiExternalServer</code></a> 
+      directives (which make use of Unix sockets). The directory must be readable, 
+      writeable, and executable (searchable) by the web server, but otherwise 
+      should not be accessible to anyone.</p>
+    <hr>
+    <h2><a name="FastCgiWrapper">FastCgiWrapper</a></h2>
+    <!-- %plaintext &lt;?INDEX {\tt FastCgiConfig} directive&gt; -->
+    <table border="0">
+      <tr> 
+        <td><a HREF="http://www.apache.org/docs/mod/directive-dict.html#Syntax" REL="Help"><strong>Syntax:</strong></a></td>
+        <td><code>FastCgiWrapper <em>On | Off | filename</em></code></td>
+      </tr>
+      <tr> 
+        <td><a href="http://www.apache.org/docs/mod/directive-dict.html#Default"><strong>Default:</strong></a></td>
+        <td><code>FastCgiWrapper Off<em> </em></code></td>
+      </tr>
+      <tr> 
+        <td><a HREF="http://www.apache.org/docs/mod/directive-dict.html#Context" REL="Help"><strong>Context:</strong></a></td>
+        <td>server config</td>
+      </tr>
+    </table>
+    <p>The <code>FastCgiWrapper</code> directive is used to enable support for 
+      a wrapper such as <a href="http://httpd.apache.org/docs/suexec.html">suexec</a> 
+      (included with Apache in the support directory) or <a href="http://cgiwrap.sourceforge.net/">cgiwrap</a>. 
+      To use the same wrapper used by Apache, set <code>FastCgiWrapper</code> 
+      to <em>On</em> (NOTE - mod_fastcgi cannot reliably determine the wrapper 
+      used by Apache when built as a DSO). The <i>On</i> argument requires suexec 
+      be enabled in Apache (for CGI). To use a specific wrapper, specify a <em>filename</em>. 
+      If the filename does not begin with a slash (/) then it is assumed to be 
+      relative to the <a
   
   href="http://www.apache.org/docs/mod/core.html#serverroot" 
- >ServerRoot</a>. The wrapper is used to invoke all FastCGI applications
-  (in the future this directive will have directory context).</p>
-  <p>When <code>FastCgiWrapper</code> is enabled, no assumptions are made about
-  the target application and thus presence and permissions checks cannot be
-  made. This is the responsibility of the wrapper.</p>
-  <p>The wrapper is invoked with the following arguments: username, group,
-  application. The username and group are determined as described
-  below. The application is the &quot;filename&quot; Apache resolves the
-  requested URI to (dynamic) or the filename provided as an argument to another
-  FastCGI (server or authorizer) directive. These arguments may or may not
-  be used by the wrapper (e.g. suexec uses them, cgiwrap parses the URI and
-  ignores them). The environment passed to the wrapper is identical to the
-  environment passed when a wrapper is not in use.</p>
-  <p>When <code>FastCgiWrapper</code> is enabled, the location of static or external FastCGI
-  application directives can be important. They inherit their user and group from the <code>User</code>
-  and <code>Group</code> of the virtual server in which they were defined. <code>User</code>
-  and <code>Group</code> directives should precede FastCGI application definitions.
-  Note that this does <em>not</em> limit the FastCGI application to the virtual server in
-  which they were defined, the application is allowed to service requests from any virtual
-  server with the same user and group. If a request is received for a FastCGI
-  application without an existing matching definition running with the correct user and
-  group, a dynamic instance of the application is started with the correct user and group.
-  This can lead to multiple copies of the same application running with different
-  user/group. If this is a problem, preclude navigation to the application from other
-  virtual servers or configure the virtual servers with the same User and Group.</p>
-  <p>See the Apache documentation for more information about suexec (make sure you fully
-  understand the security implications).</p>
-  <hr>
-  <h2><a name="FastCgiAuthenticator">FastCgiAuthenticator</a></h2><!-- %plaintext &lt;?INDEX {\tt FastCgiConfig} directive&gt; -->
-  <table border="0">
-    <tr>
-      <td><a HREF="http://www.apache.org/docs/mod/directive-dict.html#Syntax" REL="Help"><strong>Syntax:</strong></a></td>
-      <td><code>FastCgiAuthenticator <em>filename</em> [-compat]</code></td>
-    </tr>
-    <tr>
-      <td><a HREF="http://www.apache.org/docs/mod/directive-dict.html#Context" REL="Help"><strong>Context:</strong></a></td>
-      <td>directory</td>
-    </tr>
-  </table>
-  <p>The <code>FastCgiAuthenticator</code> directive is used to define a FastCGI application
-  as a per-directory authenticator. Authenticators verify the requestor is who he says
-  he is by matching the provided username and password against a list or database of known
-  users and passwords. FastCGI based authenticators are useful primarily when the user
-  database is maintained within an existing independent program or resides on a machine
-  other than the web server.</p>
-  <p>If the FastCGI application <em>filename</em> does not have a corresponding static or
-  external server definition, it is started as a dynamic FastCGI application. If the
-  filename does not begin with a slash (/) then it is assumed to be relative to the <a
+ >ServerRoot</a>. The wrapper is used to invoke all FastCGI applications (in the 
+      future this directive will have directory context).</p>
+    <p>When <code>FastCgiWrapper</code> is enabled, no assumptions are made about 
+      the target application and thus presence and permissions checks cannot be 
+      made. This is the responsibility of the wrapper.</p>
+    <p>The wrapper is invoked with the following arguments: username, group, application. 
+      The username and group are determined as described below. The application 
+      is the &quot;filename&quot; Apache resolves the requested URI to (dynamic) 
+      or the filename provided as an argument to another FastCGI (server or authorizer) 
+      directive. These arguments may or may not be used by the wrapper (e.g. suexec 
+      uses them, cgiwrap parses the URI and ignores them). The environment passed 
+      to the wrapper is identical to the environment passed when a wrapper is 
+      not in use.</p>
+    <p>When <code>FastCgiWrapper</code> is enabled, the location of static or 
+      external FastCGI application directives can be important. They inherit their 
+      user and group from the <code>User</code> and <code>Group</code> of the 
+      virtual server in which they were defined. <code>User</code> and <code>Group</code> 
+      directives should precede FastCGI application definitions. Note that this 
+      does <em>not</em> limit the FastCGI application to the virtual server in 
+      which they were defined, the application is allowed to service requests 
+      from any virtual server with the same user and group. If a request is received 
+      for a FastCGI application without an existing matching definition running 
+      with the correct user and group, a dynamic instance of the application is 
+      started with the correct user and group. This can lead to multiple copies 
+      of the same application running with different user/group. If this is a 
+      problem, preclude navigation to the application from other virtual servers 
+      or configure the virtual servers with the same User and Group.</p>
+    <p>See the Apache documentation for more information about suexec (make sure 
+      you fully understand the security implications).</p>
+    <hr>
+    <h2><a name="FastCgiAuthenticator">FastCgiAuthenticator</a></h2>
+    <!-- %plaintext &lt;?INDEX {\tt FastCgiConfig} directive&gt; -->
+    <table border="0">
+      <tr> 
+        <td><a HREF="http://www.apache.org/docs/mod/directive-dict.html#Syntax" REL="Help"><strong>Syntax:</strong></a></td>
+        <td><code>FastCgiAuthenticator <em>filename</em> [-compat]</code></td>
+      </tr>
+      <tr> 
+        <td><a HREF="http://www.apache.org/docs/mod/directive-dict.html#Context" REL="Help"><strong>Context:</strong></a></td>
+        <td>directory</td>
+      </tr>
+    </table>
+    <p>The <code>FastCgiAuthenticator</code> directive is used to define a FastCGI 
+      application as a per-directory authenticator. Authenticators verify the 
+      requestor is who he says he is by matching the provided username and password 
+      against a list or database of known users and passwords. FastCGI based authenticators 
+      are useful primarily when the user database is maintained within an existing 
+      independent program or resides on a machine other than the web server.</p>
+    <p>If the FastCGI application <em>filename</em> does not have a corresponding 
+      static or external server definition, it is started as a dynamic FastCGI 
+      application. If the filename does not begin with a slash (/) then it is 
+      assumed to be relative to the <a
   
   href="http://www.apache.org/docs/mod/core.html#serverroot" 
  >ServerRoot</a>.</p>
-  <p><code>FastCgiAuthenticator</code> is used within <a
-  href="http://www.apache.org/docs/mod/core.html#directory"><code>Directory</code></a> or <a
+    <p><code>FastCgiAuthenticator</code> is used within <a
+  href="http://www.apache.org/docs/mod/core.html#directory"><code>Directory</code></a> 
+      or <a
   
   href="http://www.apache.org/docs/mod/core.html#location" 
- ><code>Location</code></a>
-  containers and must include an <a href="http://www.apache.org/docs/mod/core.html#authtype"><code>AuthType</code></a>
-  and <a href="http://www.apache.org/docs/mod/core.html#authname"><code>AuthName</code></a>
-  directive. Only the <code>Basic</code> user authentication type is supported.
-  It must be accompanied by a <a href="http://www.apache.org/docs/mod/core.html#require"><code>require</code></a>
-  or <code><A href="#FastCgiAuthorizer">FastCgiAuthorizer</a></code> directive in order to
-  work correctly.</p>
+ ><code>Location</code></a> containers and must include an <a href="http://www.apache.org/docs/mod/core.html#authtype"><code>AuthType</code></a> 
+      and <a href="http://www.apache.org/docs/mod/core.html#authname"><code>AuthName</code></a> 
+      directive. Only the <code>Basic</code> user authentication type is supported. 
+      It must be accompanied by a <a href="http://www.apache.org/docs/mod/core.html#require"><code>require</code></a> 
+      or <code><A href="#FastCgiAuthorizer">FastCgiAuthorizer</a></code> directive 
+      in order to work correctly.</p>
 </dl>
 
 <blockquote>
@@ -668,7 +657,7 @@ The <code>-socket</code> and <code>-port</code> options are mutually exclusive.
   AuthName ProtectedRealm<br>
   FastCgiAuthenticator fcgi-bin/authenticator<br>
   require valid-user<br>
-  &lt;/Directory&gt;</code></P>
+  &lt;/Directory&gt;</P></code>
 </blockquote>
 
 <p><code>mod_fastcgi</code> sends nearly all of the standard environment variables
@@ -768,7 +757,7 @@ Authorization Required reply. Disabling the default should be carefully consider
   AuthName ProtectedRealm<br>
   AuthDBMUserFile conf/authentication-database<br>
   FastCgiAuthorizer fcgi-bin/authorizer<br>
-  &lt;/Directory&gt;</code></P>
+  &lt;/Directory&gt;</P></code>
 </blockquote>
 
 <p><code>mod_fastcgi</code> sends nearly all of the standard environment variables
@@ -853,7 +842,7 @@ Authorization Required reply. Disabling the default should be carefully consider
 <blockquote>
   <code><p>&lt;Directory htdocs/protected&gt;<br>
   FastCgiAccessChecker fcgi-bin/access-checker<br>
-  &lt;/Directory&gt;</code></P>
+  &lt;/Directory&gt;</P></code>
 </blockquote>
 
 <p><code>mod_fastcgi</code> sends nearly all of the standard environment variables
