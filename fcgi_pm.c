@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_pm.c,v 1.66 2002/02/05 14:13:55 robs Exp $
+ * $Id: fcgi_pm.c,v 1.67 2002/02/16 03:18:11 robs Exp $
  */
 
 
@@ -1444,9 +1444,9 @@ void fcgi_pm_main(void *dummy)
     }
 
 #ifdef WIN32
-    child_wait_thread = CreateThread(NULL, 0,
-        (LPTHREAD_START_ROUTINE) child_wait_thread_main, NULL, 0, NULL);
-    if (child_wait_thread == NULL)
+    child_wait_thread = (HANDLE) _beginthread(child_wait_thread_main, 0, NULL);
+
+    if (child_wait_thread == (HANDLE) -1)
     {
         ap_log_error(FCGI_LOG_ALERT, fcgi_apache_main_server,
             "FastCGI: failed to create process manager's wait thread!");

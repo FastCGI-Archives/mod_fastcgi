@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.122 2002/02/12 03:46:52 robs Exp $
+ *  $Id: mod_fastcgi.c,v 1.123 2002/02/16 03:18:11 robs Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -321,10 +321,10 @@ static void fcgi_child_init(server_rec *dc0, pool *dc1)
     }
 
     /* Spawn of the process manager thread */
-    fcgi_pm_thread = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)fcgi_pm_main, NULL, 0, NULL);
-    if (fcgi_pm_thread == NULL) {
+    fcgi_pm_thread = (HANDLE) _beginthread(fcgi_pm_main, 0, NULL);
+    if (fcgi_pm_thread == (HANDLE) -1) {
         ap_log_error(FCGI_LOG_ALERT, fcgi_apache_main_server, 
-            "CreateThread() failed to spawn the process manager");
+            "_beginthread() failed to spawn the process manager");
     }
 #endif
 
