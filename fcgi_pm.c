@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_pm.c,v 1.62 2001/11/17 02:14:09 robs Exp $
+ * $Id: fcgi_pm.c,v 1.63 2001/11/20 01:51:27 robs Exp $
  */
 
 
@@ -620,7 +620,7 @@ static void schedule_start(fcgi_server *s, int proc)
     time_t time_passed = now - s->restartTime;
 
     if ((s->procs[proc].pid && (time_passed < (int) s->restartDelay))
-        || ((s->procs[proc].pid == 0) && (time_passed < (int) s->initStartDelay)))
+        || ((s->procs[proc].pid == 0) && (time_passed < s->initStartDelay)))
     {
         FCGIDBG6("ignore_job: slot=%d, pid=%ld, time_passed=%ld, initStartDelay=%ld, restartDelay=%ld", proc, s->procs[proc].pid, time_passed, s->initStartDelay, s->restartDelay);
         return;
@@ -628,7 +628,7 @@ static void schedule_start(fcgi_server *s, int proc)
 
     FCGIDBG3("scheduling_start: %s (%d)", s->fs_path, proc);
     s->procs[proc].state = FCGI_START_STATE;
-    if (proc == (int)dynamicMaxClassProcs - 1) {
+    if (proc == dynamicMaxClassProcs - 1) {
         ap_log_error(FCGI_LOG_WARN_NOERRNO, fcgi_apache_main_server,
             "FastCGI: scheduled the %sstart of the last (dynamic) server "
             "\"%s\" process: reached dynamicMaxClassProcs (%d)",
@@ -1655,15 +1655,15 @@ ChildFound:
 
             if (WIFEXITED(waitStatus)) {
                 ap_log_error(FCGI_LOG_WARN_NOERRNO, fcgi_apache_main_server,
-                    "FastCGI:%s server \"%s\" (pid %d) terminated by calling exit with status '%d'",
+                    "FastCGI:%s server \"%s\" (pid %ld) terminated by calling exit with status '%d'",
                     (s->directive == APP_CLASS_DYNAMIC) ? " (dynamic)" : "",
-                    s->fs_path, (int)childPid, WEXITSTATUS(waitStatus));
+                    s->fs_path, childPid, WEXITSTATUS(waitStatus));
             }
             else if (WIFSIGNALED(waitStatus)) {
                 ap_log_error(FCGI_LOG_WARN_NOERRNO, fcgi_apache_main_server,
-                    "FastCGI:%s server \"%s\" (pid %d) terminated due to uncaught signal '%d' (%s)%s",
+                    "FastCGI:%s server \"%s\" (pid %ld) terminated due to uncaught signal '%d' (%s)%s",
                     (s->directive == APP_CLASS_DYNAMIC) ? " (dynamic)" : "",
-                    s->fs_path, (int)childPid, WTERMSIG(waitStatus), SYS_SIGLIST[WTERMSIG(waitStatus)],
+                    s->fs_path, childPid, WTERMSIG(waitStatus), SYS_SIGLIST[WTERMSIG(waitStatus)],
 #ifdef WCOREDUMP
                     WCOREDUMP(waitStatus) ? ", a core file may have been generated" : "");
 #else
@@ -1672,9 +1672,9 @@ ChildFound:
             }
             else if (WIFSTOPPED(waitStatus)) {
                 ap_log_error(FCGI_LOG_WARN_NOERRNO, fcgi_apache_main_server,
-                    "FastCGI:%s server \"%s\" (pid %d) stopped due to uncaught signal '%d' (%s)",
+                    "FastCGI:%s server \"%s\" (pid %ld) stopped due to uncaught signal '%d' (%s)",
                     (s->directive == APP_CLASS_DYNAMIC) ? " (dynamic)" : "",
-                    s->fs_path, (int)childPid, WTERMSIG(waitStatus), SYS_SIGLIST[WTERMSIG(waitStatus)]);
+                    s->fs_path, childPid, WTERMSIG(waitStatus), SYS_SIGLIST[WTERMSIG(waitStatus)]);
             }
         } /* for (;;), waitpid() */
 
@@ -1714,7 +1714,7 @@ ChildFound:
                 fcgi_dynamic_epoch = now;
             }
 
-            if (((long)(now-fcgi_dynamic_epoch) >= (int)dynamicKillInterval) ||
+            if ((now-fcgi_dynamic_epoch >= (int) dynamicKillInterval) ||
                ((fcgi_dynamic_total_proc_count+dynamicProcessSlack) >= dynamicMaxProcs)) {
                 dynamic_kill_idle_fs_procs();
                 fcgi_dynamic_epoch = now;

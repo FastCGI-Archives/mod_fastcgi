@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi.h,v 1.32 2001/05/29 15:22:12 robs Exp $
+ * $Id: fcgi.h,v 1.33 2001/11/20 01:51:27 robs Exp $
  */
 
 #ifndef FCGI_H
@@ -388,15 +388,15 @@ int fcgi_buf_add_fd(Buffer *buf, int fd);
 int fcgi_buf_get_to_fd(Buffer *bufPtr, int fd);
 #endif
 
-void fcgi_buf_get_block_info(Buffer *bufPtr, char **beginPtr, size_t *countPtr);
-void fcgi_buf_toss(Buffer *bufPtr, size_t count);
-void fcgi_buf_get_free_block_info(Buffer *bufPtr, char **endPtr, size_t *countPtr);
-void fcgi_buf_add_update(Buffer *bufPtr, size_t count);
-int fcgi_buf_add_block(Buffer *bufPtr, char *data, size_t datalen);
+void fcgi_buf_get_block_info(Buffer *bufPtr, char **beginPtr, int *countPtr);
+void fcgi_buf_toss(Buffer *bufPtr, int count);
+void fcgi_buf_get_free_block_info(Buffer *bufPtr, char **endPtr, int *countPtr);
+void fcgi_buf_add_update(Buffer *bufPtr, int count);
+int fcgi_buf_add_block(Buffer *bufPtr, char *data, int datalen);
 int fcgi_buf_add_string(Buffer *bufPtr, char *str);
 int fcgi_buf_get_to_block(Buffer *bufPtr, char *data, int datalen);
 void fcgi_buf_get_to_buf(Buffer *toPtr, Buffer *fromPtr, int len);
-void fcgi_buf_get_to_array(Buffer *buf,array_header *arr, size_t len);
+void fcgi_buf_get_to_array(Buffer *buf, array_header *arr, int len);
 
 /*
  * fcgi_util.c
@@ -423,7 +423,7 @@ void fcgi_util_fs_add(fcgi_server *s);
 const char *fcgi_util_fs_set_uid_n_gid(pool *p, fcgi_server *s, uid_t uid, gid_t gid);
 ServerProcess *fcgi_util_fs_create_procs(pool *p, int num);
 
-int fcgi_util_gettimeofday(struct timeval *);
+int fcgi_util_ticks(struct timeval *);
 
 #ifdef WIN32
 int fcgi_pm_add_job(fcgi_pm_job *new_job);
