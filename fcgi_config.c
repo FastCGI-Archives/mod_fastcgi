@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_config.c,v 1.35 2002/07/29 00:05:06 robs Exp $
+ * $Id: fcgi_config.c,v 1.36 2002/08/20 02:36:15 robs Exp $
  */
 
 #include "fcgi.h"
@@ -231,8 +231,6 @@ const char *fcgi_config_set_fcgi_uid_n_gid(int set)
         return NULL;
     }
 
-#ifndef APACHE2
-
     if (uid == 0) {
         uid = ap_user_id;
     }
@@ -240,8 +238,6 @@ const char *fcgi_config_set_fcgi_uid_n_gid(int set)
     if (gid == 0) {
         gid = ap_group_id;
     }
-
-#endif /* !APACHE2 */
 
     if (isSet && (uid != fcgi_user_id || gid != fcgi_group_id)) {
         return "User/Group commands must preceed FastCGI server definitions";
@@ -337,7 +333,7 @@ const char *fcgi_config_make_dir(pool *tp, char *path)
                 strerror(errno));
         }
 
-#if !defined(WIN32) && !defined(APACHE2)
+#ifndef WIN32
         /* If we're root, we're gonna setuid/setgid so we need to chown */
         if (geteuid() == 0 && chown(path, ap_user_id, ap_group_id) != 0) {
             return ap_psprintf(tp,

@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_pm.c,v 1.75 2002/07/29 00:07:28 robs Exp $
+ * $Id: fcgi_pm.c,v 1.76 2002/08/20 02:36:15 robs Exp $
  */
 
 
@@ -32,7 +32,7 @@ HANDLE fcgi_event_handles[3];
 #endif
 
 
-#if !defined(WIN32) && !defined(APACHE2)
+#ifndef WIN32
 static int seteuid_root(void)
 {
     int rc = seteuid((uid_t)0);
@@ -87,21 +87,17 @@ static void fcgi_kill(ServerProcess *process, int sig)
 
 #else /* !WIN32 */
 
-#ifndef APACHE2
     if (fcgi_wrapper) 
     {
         seteuid_root();
     }
-#endif
 
     kill(process->pid, sig);
 
-#ifndef APACHE2
     if (fcgi_wrapper) 
     {
         seteuid_user();
     }
-#endif
 
 #endif /* !WIN32 */
 }
@@ -395,11 +391,9 @@ static pid_t spawn_fs_process(fcgi_server *fs, ServerProcess *process)
     if (fcgi_wrapper && (fcgi_user_id != fs->uid || fcgi_group_id != fs->gid)) {
         char *shortName = strrchr(fs->fs_path, '/') + 1;
 
-#ifndef APACHE2
         /* Relinquish our root real uid powers */
         seteuid_root();
         setuid(ap_user_id);
-#endif
 
         do {
             execle(fcgi_wrapper, fcgi_wrapper, fs->username, fs->group, shortName, NULL, fs->envp);
@@ -683,7 +677,7 @@ CLEANUP:
 #endif /* WIN32 */
 }
 
-#if !defined(WIN32) && !defined(APACHE2)
+#ifndef WIN32
 static void reduce_privileges(void)
 {
     char *name;
@@ -750,7 +744,7 @@ static void change_process_name(const char * const name)
 {
     strncpy(ap_server_argv0, name, strlen(ap_server_argv0));
 }
-#endif
+#endif /* !WIN32 */
 
 static void schedule_start(fcgi_server *s, int proc)
 {
@@ -1578,10 +1572,8 @@ void fcgi_pm_main(void *dummy)
 
 #else
 
-#ifndef APACHE2
     reduce_privileges();
     change_process_name("fcgi-pm");
-#endif
 
     close(fcgi_pm_pipe[1]);
     setup_signals();

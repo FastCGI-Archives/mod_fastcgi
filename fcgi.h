@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi.h,v 1.40 2002/07/26 03:10:54 robs Exp $
+ * $Id: fcgi.h,v 1.41 2002/08/20 02:36:15 robs Exp $
  */
 
 #ifndef FCGI_H
@@ -44,6 +44,10 @@ typedef apr_status_t apcb_t;
 
 #define XtOffsetOf APR_OFFSETOF
 #define ap_select select
+
+#define ap_user_id    unixd_config.user_id
+#define ap_group_id   unixd_config.group_id
+#define ap_user_name  unixd_config.user_name
 
 #ifndef S_ISDIR
 #define S_ISDIR(m)      (((m)&(S_IFMT)) == (S_IFDIR))
