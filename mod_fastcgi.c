@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.153 2003/06/19 02:18:00 robs Exp $
+ *  $Id: mod_fastcgi.c,v 1.154 2003/10/30 00:59:21 robs Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -672,7 +672,6 @@ static const char *process_headers(request_rec *r, fcgi_request *fr)
             case '\f':
                 name = "Invalid Character";
                 goto BadHeader;
-                break;
             default:
                 flag = 0;
                 break;
