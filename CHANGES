@@ -1,5 +1,8 @@
 Changes with mod_fastcgi 2.2.1
 
+ *) Add an extern declaration for ap_sys_siglist, its exposed but not in any
+    Apache header file.
+    
  *) Added a FastCGI Authorizer Role compatibility mode which implements the 
     specification to the tee.  Use -compat arg with any of the Auth server
     directives.  This is intended for new and existing FastCGI authorizer
