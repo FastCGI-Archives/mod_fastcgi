@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_pm.c,v 1.36 2000/08/03 16:47:32 robs Exp $
+ * $Id: fcgi_pm.c,v 1.37 2000/08/11 02:32:17 robs Exp $
  */
 
 
@@ -162,8 +162,14 @@ static const char *bind_n_listen(pool *p, struct sockaddr *socket_addr,
     }
 
     /* Bind it to the socket_addr */
-    if (bind(sock, socket_addr, socket_addr_len) != 0)
-        return "bind() failed";
+    if (bind(sock, socket_addr, socket_addr_len) != 0) {
+        return ap_psprintf(p, "bind() failed [%s]", 
+#ifndef WIN32
+            socket_addr->sa_family == AF_UNIX ?
+                ((struct sockaddr_un *)socket_addr)->sun_path :
+#endif
+                ap_psprintf(p, "port=%d", ((struct sockaddr_in *)socket_addr)->sin_port));
+    }
 
 #ifndef WIN32
     /* Twiddle permissions */
