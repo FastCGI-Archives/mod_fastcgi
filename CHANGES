@@ -1,4 +1,9 @@
-Changes with mod_fastcgi 2.2
+Changes with mod_fastcgi 2.2.0
+
+ *) Serious rewrite of mod_fastcgi.html.  An example conf will have
+    to wait until another time - I'm burned out on docs updates.
+
+ *) Add to the mod_fastcgi to the server version string.
 
  *) SCO doesn't like the const in the arg to inet_addr() and
     gethostbyname().

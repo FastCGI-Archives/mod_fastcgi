@@ -1,642 +1,693 @@
-<HTML>
-<!-- mod_fastcgi.html                                                     -->
-<!--	Documentation for the mod_fastcgi Apache module                   -->
-<!-- Copyright (c) 1996 Open Market, Inc.                                 -->
-<!-- See the file "LICENSE.TERMS" for information on usage and            -->
-<!-- redistribution of this file, and for a DISCLAIMER OF ALL WARRANTIES. -->
-<HEAD>
-  <META NAME="GENERATOR" CONTENT="Adobe PageMill 3.0 Win">
-  <TITLE>Apache module mod_fastcgi</TITLE>
-</HEAD>
-<BODY>
-
-<P><IMG SRC="http://www.apache.org/images/apache_sub.gif" ALT=""
-ALIGN="BOTTOM"> <!--/%hypertext --></P>
-
-<H1>Module mod_fastcgi</H1>
-
-<P>This module is contained in the <CODE>mod_fastcgi.c</CODE>
-file, and is not compiled into the server by default. To use <CODE>mod_fastcgi</CODE>
-you first copy <CODE>src/mod_fastcgi.c</CODE> from this kit into
-your Apache server's source directory. Then you add the following
-line to the server build Configuration file:</P>
-
-<PRE>
-        Module fastcgi_module    mod_fastcgi.o</PRE>
-
-<P>FastCGI provides a high-performance alternative to CGI for
-writing Web server applications in a variety of languages, including
-Perl, C, C++, Java, and Python. FastCGI gets its speed by having
-keeping application processes running between requests. So, unlike
-CGI, you do not have the overhead of starting up a new process
-and doing application initialization (e.g. connecting to a database)
-each time somebody requests a document.</P>
-
-<P>FastCGI applications communicate with a Web server using a
-simple communications protocol. A single full-duplex connection
-communicates the environment variables and <CODE>stdin</CODE>
-data to the application, and <CODE>stdout</CODE> and <CODE>stderr</CODE>
-data to the Web server. An application can reside on a different
-machine from the Web server, allowing applications to scale beyond
-a single box and providing easier integration with existing systems.</P>
-
-<P>For more information on FastCGI, including freely available
-FastCGI server modules and application libraries, go to the <A
-HREF="http://www.fastcgi.com/">FastCGI website (http://www.fastcgi.com/)</A>.</P>
-
-<P>&nbsp;</P>
-
-<H2>Summary</H2>
-
-<P>In order to configure FastCGI applications, you need a combination
-of <CODE>mod_fastcgi</CODE> directives and other directives provided
-by the Apache server.</P>
-
-<P>You use the <CODE>AppClass</CODE> directive to start the FastCGI
-applications that you want to be managed by this Web server. The
-applications are managed in the sense that the server (a) logs
-an error message when a managed process dies and (b) attempts
-to restart managed processes that die.</P>
-
-<P>You use one or both of the <CODE>AppClass</CODE> and <CODE>ExternalAppClass</CODE>
-directives to define an association between a pathname and the
-connection information for a FastCGI application. Connection information
-is either the pathname of a Unix domain socket or the IP address
-and port number of a TCP port. The difference between the two
-directives is that a single <CODE>AppClass</CODE> directive both
-starts an application and sets up the association for communicating
-with it, while <CODE>ExternalAppClass</CODE> only defines the
-association. In the case of <CODE>AppClass</CODE>, the pathname
-used in the association is always the pathname of the application's
-executable; with <CODE>ExternalAppClass</CODE> the pathname is
-arbitrary.</P>
-
-<P>In order for an HTTP request to be processed by <CODE>mod_fastcgi</CODE>
-the request's handler must be <CODE>fastcgi-script</CODE> or the
-request's MIME type must be <CODE>application/x-httpd-fcgi</CODE>.
-Apache provides several ways to set the handler and MIME type
-of a request:</P>
-
-<UL>
-  <LI><CODE>SetHandler</CODE> (in the context of a <CODE>Location</CODE>
-  or <CODE>Directory</CODE> section or <CODE>.htaccess</CODE> file)
-  can associate the handler <CODE>fastcgi-script</CODE> with a
-  specific file, or all the files in a directory.
-  <LI><CODE>AddHandler</CODE> can associate the handler <CODE>fastcgi-script</CODE>
-  with files based on file extension.
-  <LI><CODE>ForceType</CODE> (in the context of a <CODE>Location</CODE>
-  or <CODE>Directory</CODE> section or <CODE>.htaccess</CODE> file)
-  can associate the MIME type <CODE>application/x-httpd-fcgi</CODE>
-  with a specific file, or all the files in a directory.
-  <LI><CODE>AddType</CODE> can associate the MIME type <CODE>application/x-httpd-fcgi</CODE>
-  with files based on file extension.
-  <P>&nbsp;
-</UL>
-
-<P>Refer to the documentation for <CODE>mod_mime</CODE> for more
-information on these directives, and to the documentation of the
-Apache core features for information on <CODE>Location</CODE>
-and <CODE>Directory</CODE> sections.</P>
-
-<P><CODE>mod_fastcgi</CODE> handles requests as follows:</P>
-
-<UL>
-  <LI><CODE>mod_fastcgi</CODE> retrieves the connection information
-  associated with the requested pathname.
-  <LI>if no connection information is associated with the pathname,
-  the server returns <CODE>404 Not Found</CODE>.
-  <LI><CODE>mod_fastcgi</CODE> connects to the FastCGI application
-  process.
-  <LI>if the connection attempt fails, the server returns <CODE>500
-  Server Error</CODE>.
-  <LI><CODE>mod_fastcgi</CODE> transmits the request to the FastCGI
-  application process, which generates a response.
-  <LI><CODE>mod_fastcgi</CODE> receives the application's response
-  and transforms it into an HTTP response. The server sends this
-  response back to the client.
-</UL>
-
-<P>The configuration examples below show some valid ways to configure
-<CODE>mod_fastcgi</CODE>.</P>
-
-<H2>Directives</H2>
-
-<UL>
-  <LI><A HREF="#AppClass">AppClass</A>
-  <LI><A HREF="#ExternalAppClass">ExternalAppClass</A>
-  <LI><A HREF="#FastCgiIpcDir">FastCgiIpcDir</A>
-  <LI><A HREF="#FCGIConfig">FCGIConfig</A>
-</UL>
-
-<P><HR ALIGN=LEFT><A NAME="AppClass"></A></P>
-
-<H2>AppClass</H2>
-
-<P><STRONG>Syntax:</STRONG> AppClass path-name <EM>[-appConnTimeout
-timeout] [-processes N] [-listen-queue-depth N] [-init-start-delay
-N] [-restart-delay N] [-priority N] [-port N] [-socket sock-name]
-[-initial-env name=value]<BR>
-</EM><STRONG>Context:</STRONG> srm.conf<BR>
-<STRONG>Module:</STRONG> mod_fastcgi</P>
-
-<P>The <CODE>AppClass</CODE> directive starts one or more FastCGI
-application processes, using the executable file <CODE>path-name</CODE>.
-Should any of these processes die, <CODE>mod_fastcgi</CODE> will
-write an error log entry and restart the faulty process.</P>
-
-<P>The optional parameters to the <CODE>ExternalAppClass</CODE>
-directive are as follows:</P>
-
-<UL>
-  <LI><B>appConnTimeout:</B> an integer representing a number of
-  seconds that the web server spends trying to connect to the FastCGI
-  application. If the connection is unsuccessful within that time
-  interval, the web server generates SERVER_ERROR response that
-  is sent back to the client. The default value is 15 seconds.
-  <LI><B>processes:</B> number of FastCGI processes that the Web
-  server will spawn, default 1.
-  <LI><B>listen-queue-depth:</B> depth of listen queue shared by
-  the processes, default 5. A deeper listen queue allows the server
-  to cope with transient load fluctuations without rejecting requests;
-  it does not increase throughput. Adding extra processes may increase
-  throughput, depending upon the application and the host.
-  <LI><B>init-start-delay:</B> minimum number of seconds between
-  the start of a process instance within this class and the last
-  (re)start of a proccess within the class. This delay decreases
-  the demand placed on a system at initialization. Default value
-  is 1 second.
-  <LI><B>restart-delay:</B> minimum number of seconds between restarts
-  of processes in this class. This delay prevents a broken application
-  from soaking up too much of the system. Default value is 5 seconds.
-  <LI><B>priority:</B> priority of FastCGI application processes,
-  as defined by the <CODE>setpriority</CODE> system call. The default
-  value is zero, i.e. same priority as the HTTP server. Negative
-  values are not allowed.
-  <LI><B>port:</B> TCP port number that the FastCGI application
-  process will listen on. Using this option makes the application
-  accessible from the another machine (as well as from this one.)
-  An argument to the <CODE>port</CODE> option should be a number
-  between 1 and 65535.
-  <LI><B>socket:</B> pathname of the Unix domain socket that the
-  FastCGI application process will listen on. The module creates
-  this socket within the directory specified by <CODE>FastCgiIpcDir</CODE>.
-  Using this option makes the application accessible to other Web
-  servers or applications (e.g. <CODE>cgi-fcgi</CODE>) on the same
-  machine or via multiple pathnames on this Web server (using <CODE>ExternalAppClass</CODE>.)
-  If neither the <CODE>-socket</CODE> nor the <CODE>-port</CODE>
-  options are given, the Web server generates a Unix domain socket
-  name itself.
-  <LI><B>initial-env:</B> a name-value pair in the initial environment
-  passed to the application processes. The argument has the form
-  <CODE>name=value</CODE>, with no whitespace allowed. You can
-  add several name-value pairs to the initial environment by using
-  this option several times. The default initial environment is
-  empty (no name-value pairs.)
-  <P>&nbsp;
-</UL>
-
-<P>The <CODE>-socket</CODE> and <CODE>-port</CODE> options are
-mutually exclusive. <CODE>path-name</CODE> must not equal the
-<CODE>path-name</CODE> supplied to an earlier <CODE>AppClass</CODE>
-or <CODE>ExternalAppClass</CODE> directive. Other errors possible
-in the <CODE>AppClass</CODE> directive include syntax errors,
-arguments out of range, and the file <CODE>path-name</CODE> being
-non-existent or not executable.</P>
-
-<P><A NAME="ExternalAppClass"></A></P>
-
-<H2>ExternalAppClass</H2>
-
-<P><STRONG>Syntax:</STRONG> ExternalAppClass path-name <EM>[-host
-host:port] [-socket sock-name] [-appConnTimeout timeout]<BR>
-</EM><STRONG>Context:</STRONG> srm.conf<BR>
-<STRONG>Module:</STRONG> mod_fastcgi</P>
-
-<P>The <CODE>ExternalAppClass</CODE> directive provides a connection
-a FastCGI application process that is listening to a specified
-TCP port or a UNIX domain socket. <CODE>ExternalAppClass</CODE>
-is most commonly used to communicate with a FastCGI application
-running on a different machine. This directive implies nothing
-about how the FastCGI application is managed (started, restarted,
-etc.). <CODE>path-name</CODE> simply provides an identifier for
-the connection.</P>
-
-<P>The optional parameters to the <CODE>ExternalAppClass</CODE>
-directive are as follows:</P>
-
-<UL>
-  <LI><B>host:</B> the host and port of the machine on which a
-  FastCGI process is running. The argument should be a single string,
-  containing the host IP address (either as a hostname to be resolved
-  via DNS or as a &quot;dotted quad&quot; such as &quot;123.96.248.182&quot;),
-  followed by a colon (&quot;:&quot;), followed by a port number
-  (an integer between 1 and 65535.)
-  <LI><B>socket:</B> full pathname of a Unix Domain socket accessible
-  from this Web server. Most commonly, the FastCGI application
-  listening on this socket would have been started by an <CODE>AppClass</CODE>
-  directive with the <CODE>-socket</CODE> option.
-  <LI><B>appConnTimeout:</B> an integer representing a number of
-  seconds that the web server spends trying to connect to FastCGI
-  application. If the connection is unsuccessful within that time
-  interval, the web server generates SERVER_ERROR response that
-  is sent back to the client. The provided value should be greater
-  than the one specified by the <CODE>startDelay</CODE> attribute.
-  The default value is 15 seconds.
-</UL>
-
-<P>Exactly one of the <CODE>port</CODE> and <CODE>socket</CODE>
-parameters must be supplied. <CODE>path-name</CODE> must not equal
-the <CODE>path-name</CODE> supplied to an earlier <CODE>AppClass</CODE>
-or <CODE>ExternalAppClass</CODE> directive. Other errors possible
-in the <CODE>ExternalAppClass</CODE> directive include syntax
-errors and arguments out of range.</P>
-
-<P><A NAME="FastCgiIpcDir"></A></P>
-
-<H2>FastCgiIpcDir</H2>
-
-<P><STRONG>Syntax:</STRONG> FastCgiIpcDir dir-path<BR>
-<STRONG>Context:</STRONG> srm.conf<BR>
-<STRONG>Module:</STRONG> mod_fastcgi</P>
-
-<P>The <CODE>FastCgiIpcDir</CODE> directive controls where <CODE>mod_fastcgi</CODE>
-creates Unix-domain sockets for communicating with the applications
-it manages.</P>
-
-<P>By default, <CODE>mod_fastcgi</CODE> creates the sockets in
-<CODE>/tmp</CODE>. The socket names have the form <CODE>OM_WS_n.pid</CODE>
-where <CODE>n</CODE> is a sequence number and <CODE>pid</CODE>
-is the process ID of the Apache parent process. If your system
-runs a periodic job to delete files from <CODE>/tmp</CODE>, and
-it deletes these files, your Web server won't be able to communicate
-with its FastCGI applications.</P>
-
-<P>To avoid this problem place a <CODE>FastCgiIpcDir</CODE> directive
-before the <CODE>AppClass</CODE> directives in your server configuration.
-Specify a directory that's readable, writeable, and searchable
-by the account you use for your Web server, but otherwise not
-accessible to anyone.</P>
-
-<P>Note 1 below describes platform-specific problems in moving
-the sockets out of <CODE>/tmp</CODE>; please read it.</P>
-
-<P>&nbsp;</P>
-
-<P><A NAME="FCGIConfig"></A></P>
-
-<H2>FCGIConfig</H2>
-
-<P><STRONG>Syntax:</STRONG> FCGIConfig <EM>[-maxProcesses max-procs]
-[-minProcesses min-procs] [-maxClassProcesses max-class-procs]
-[-killInterval kill-time] [-updateInterval update-time] [-gainValue
-gain] [-singleThreshhold thresh1] [-multiThreshhold threshN] [-startDelay
-delay-time] [-appConnTimeout timeout] [-processSlack slack] <BR>
-</EM><STRONG>Context:</STRONG> srm.conf<BR>
-<STRONG>Module:</STRONG> mod_fastcgi</P>
-
-<P>The <CODE>FCGIConfig</CODE> directive provides a set of configuration
-parameters that are used in governing the execution of the dynamic
-FastCGI applications. This includes limitations on process creation
-and killing policy. Current implementation of the latter computes
-a load factor for each dynamic FastCGI application and makes the
-decision whether to kill it or not based on the threshhold parameters
-specified above. This directive has no affect on the statically
-configured (i.e. via AppClass) FastCGI applications.</P>
-
-<P>The optional parameters to the <CODE>FCGIConfig</CODE> directive
-are as follows:</P>
-
-<UL>
-  <LI><B>maxProcesses:</B> a maximum number of all dynamic FastCGI
-  applications that are allowed to run on the system at any one
-  time. Any attempt to start another copy of any dynamic FastCGI
-  application will fail. A single parameter that sets the limit
-  of the number of processes has a default value of 50.
-  <LI><B>minProcesses:</B> a minimum number of the dynamic FastCGI
-  applications that can be running on the system at any one time
-  without being killed off by the process manager. This value is
-  used in the implementation of the killing policy for dynamic
-  fastcgi applications and is used to reduce the response time
-  during the spike of requests to FastCGI applications. The default
-  value for this parameter is 5 processes.
-  <LI><B>maxClassProcesses:</B> a maximum number of instances of
-  dynamic FastCGI application that are allowed to run for any one
-  FastCGI executable. This value is used to limit the number of
-  processes per each dynamic FastCGI application class. The default
-  value for this attribute is 10 processes.
-  <LI><B>killInterval:</B> a time value specified as a long which
-  indicates how often the killing policy should be implemented
-  by the process manager. The lower value would provide process
-  manager invoking killing policy at small time intervals, which
-  would be ideal for sites that have a high number of requests
-  to a large number of different FastCGI applications. A higher
-  number would be ideal for sites with low number of requests and
-  would result in process manager implementing a less aggressive
-  policy. The default value is 300 seconds.
-  <LI><B>updateInterval:</B> a long value that represents a time
-  intervals in which a statistical analysis should be made to determine
-  the future state of the dynamic FastCGI applications. This analysis
-  designates certain processes as VICTIMS and can be safely killed
-  by the process manager in its killing policy implementation.
-  The default value is 300 seconds.
-  <LI><B>gainValue:</B> a floating point value between 0 and 1
-  that is used as an exponent in the computation of the exponentially
-  decayed connection times load factor of the currently running
-  dynamic FastCGI application. Old values are scaled by (1-<B>gainValue</B>),
-  so making it smaller weights them more heavily compared to the
-  current value, which is scaled by <B>gainValue</B>. The default
-  value for this attribute is 0.5.
-  <LI><B>singleThreshhold:</B> a integer between 1 and 100 that
-  is used to determine whether the last instance of the FastCGI
-  application class should be terminated. If the process manager
-  computed load factor for the given application is lower than
-  specified threshhold, the last instance is terminated. In order
-  to make your executables run in the &quot;idle&quot; mode for
-  the long time, you would specify value closer to 1, however if
-  memory or CPU time is of primary concern, value closer to 100
-  would be more applicable. The default value is 10.
-  <LI><B>multiThreshhold:</B> a number between 1 and 100 that is
-  used to determine whether any one instance of the FastCGI application
-  class should be terminated. If the given applicaiton class has
-  more than one instance currently running, this attribute will
-  be used to decide whether one of them should be terminated and
-  if only one instance remains, <CODE>singleTHreshhold</CODE> is
-  used. The default value for this attribute is 50.
-  <LI><B>initial-env:</B> a name-value pair in the initial environment
-  passed to all of the dynamically invoked application processes.
-  The argument has the form <CODE>name=value</CODE>, with no whitespace
-  allowed. You can add several name-value pairs to the initial
-  environment by using this option several times. The default initial
-  environment is empty (no name-value pairs.)
-  <LI><B>init-start-delay:</B> minimum number of seconds between
-  the start of a process instance within this class and the last
-  (re)start of a proccess within the class. Default value is 1
-  second.
-  <LI><B>restart-delay:</B> minimum number of seconds between restarts
-  of processes in this class. This delay prevents a broken application
-  from soaking up too much of the system. Default value is 5 seconds.
-  <LI><B>startDelay:</B> an integer representing a number of seconds
-  that the web server waits in trying to connect to the FastCGI
-  application. If the connection is unsuccessful within that time
-  interval, a message CONN_TIMEOUT is sent to the process manager
-  to invoke a new copy of the given FastCGI application. The default
-  value is 3 seconds.
-  <LI><B>listen-queue-depth:</B> depth of listen queue shared by
-  the processes, default 5. A deeper listen queue allows the server
-  to cope with transient load fluctuations without rejecting requests;
-  it does not increase throughput. Adding extra processes may increase
-  throughput, depending upon the application and the host.
-  <LI><B>appConnTimeout:</B> an integer representing a number of
-  seconds that the web server spends trying to connect to FastCGI
-  application. If the connection is unsuccessful within that time
-  interval, the web server generates SERVER_ERROR response that
-  is sent back to the client. The provided value should be greater
-  than the one specified by the <CODE>startDelay</CODE> attribute.
-  The default value is 15 seconds.
-  <LI><B>processSlack:</B> a positive integer that represents a
-  value that is used by the process manager in its killing policy.
-  If the sum of all currently running FastCGI applications and
-  <CODE>processSlack</CODE> exceeds the value of <CODE>maxProcesses</CODE>
-  attribute, a process manager invokes the killing policy. This
-  measure is used to improve the performance at higher loads by
-  killing extra processes prior to achieving a highest possible
-  load. The value should reflect the value for <CODE>maxProcesses</CODE>
-  and provided as a default of 5.
-  <P>&nbsp;
-</UL>
-
-<P>If you supply two or more different values for the same attribute
-of the <CODE>FCGIConfig</CODE> directive, only the last value
-will be in effect. Any attributes that have not been supplied
-will take on the default values described above. Possible sources
-of errors include syntax errors and invalid arguments. <HR ALIGN=LEFT></P>
-
-<H2>Important notes</H2>
-
-<OL>
-  <LI>On some platforms, Unix-domain sockets don't work when stored
-  in non-local file systems. Digital UNIX 3.0 is known to have
-  this problem with NFS (fixed in Digital UNIX 3.2); Solaris 2.5
-  is known to have this problem with AFS. If <CODE>/tmp</CODE>
-  is part of a local file system you'll avoid this problem by leaving
-  the listening sockets in <CODE>/tmp</CODE> rather than using
-  the <CODE>FastCgiIpcDir</CODE> directive to put them somewhere
-  else.
-  <LI>Error logging by the <CODE>mod_fastcgi</CODE> process manager
-  corrupts the error log on some platforms, due to a bug in the
-  C library function <CODE>fopen</CODE>. For instance, SunOS 4.1.4
-  has the <CODE>fopen</CODE> bug and exhibits the error log corruption
-  problem. A corrupted error log makes it difficult to debug problems
-  on your Web server. You should apply the following patch to Apache
-  1.1.1 in order to eliminate the possibility of this problem:
-  <pre>% diff -c alloc.c alloc.c.orig *** alloc.c Mon Sep 23 17:45:34
-  1996 --- alloc.c.orig Mon Sep 23 17:43:16 1996 ***************
-  *** 765,784 **** FILE *pfopen(struct pool *a, char *name, char
-  *mode) { ! FILE *fd = NULL; block_alarms(); ! if (*mode == 'a')
-  { ! /* Work around faulty implementations of fopen */ ! int baseFlag
-  = (*(mode+1) == '+') ? O_RDWR : O_WRONLY; ! int desc = open(name,
-  baseFlag | O_APPEND | O_CREAT, ! S_IRUSR | S_IWUSR | S_IRGRP
-  | S_IWGRP | S_IROTH | S_IWOTH); ! if (desc &gt;= 0) { ! fd =
-  fdopen(desc, mode); ! } ! } else { ! fd = fopen(name, mode);
-  ! } if (fd != NULL) note_cleanups_for_file (a, fd); unblock_alarms();
-  return fd; --- 765,774 ---- FILE *pfopen(struct pool *a, char
-  *name, char *mode) { ! FILE *fd; block_alarms(); ! fd = fopen(name,
-  mode); if (fd != NULL) note_cleanups_for_file (a, fd); unblock_alarms();
-  return fd; </pre>
-  <LI>The <CODE>ScriptAlias</CODE> directive takes priority over
-  the <CODE>AddType</CODE> directive: A file located in a directory
-  that is the target of <CODE>ScriptAlias</CODE> is always handled
-  by the handler <CODE>cgi-handler</CODE> (<CODE>mod_cgi</CODE>.)
-  So don't put FastCGI applications in a <CODE>ScriptAlias</CODE>
-  directory -- the applications won't work properly!
-  <LI>The optional module <CODE>mod_env</CODE> provides two directives
-  (<CODE>PassEnv</CODE> and <CODE>SetEnv</CODE>) that are designed
-  for passing environment variables to CGI scripts. These directives
-  also work for passing per-request environment variables to FastCGI
-  applications. To pass initial environment variables you must
-  use the <CODE>-initial-env</CODE> option to <CODE>AppClass</CODE>.
-  <LI><CODE>mod_fastcgi</CODE> does not implement the Authorizer
-  or Filter roles described in the FastCGI specification. However,
-  you can approximate the Filter role using Apache's <CODE>Action</CODE>
-  directive to route requests to a FastCGI Responder. See the documentation
-  for <CODE>mod_actions</CODE> for information on the <CODE>Action</CODE>
-  directive.
-  <LI>For added security in executing FastCGI applications, you
-  can download an <CODE>fcgi-suexec</CODE> patch provided by Brian
-  Grossman. This patch is available via <A HREF="http://www.softhome.net/pub/users/brian/">http://www.SoftHome.net/pub/users/brian</A>.
-  <LI>See the <CODE><A HREF="README">README</A></CODE> file for
-  a complete list of known bugs in this version of <CODE>mod_fastcgi</CODE>.
-  <P>&nbsp;
-</OL>
-
-<H2>Notes on CGI response headers</H2>
-
-<P>You may have noticed that <CODE>mod_fastcgi</CODE> makes no
-provision for non-parsed-header scripts. There's a good reason
-for this: <CODE>mod_fastcgi</CODE> does not restrict the functionality
-of parsed-header scripts in any way. A parsed-header script can
-do anything that an &quot;nph&quot; script can do, and some things
-that an &quot;nph&quot; script can't do.</P>
-
-<P>To exploit the power of parsed-header scripts you need to understand
-the three standard CGI/1.1 response headers:</P>
-
-<P>&nbsp;</P>
-
-<UL>
-  <LI><CODE>Status:</CODE> an HTTP status line, e.g. <CODE>&quot;206
-  Partial Content&quot;</CODE>.
-  <LI><CODE>Location:</CODE> a URL or absolute path to content.
-  <LI><CODE>Content-type:</CODE> the media type of script-generated
-  response content.
-  <P>&nbsp;
-</UL>
-
-<P>Only certain combinations of these headers make sense:</P>
-
-<P>&nbsp;</P>
-
-<UL>
-  <LI>Each header may appear at most once in a response.
-  <LI>The <CODE>Status</CODE> and <CODE>Location</CODE> headers
-  are mutually exclusive, i.e. at most one may appear in a response.
-  If neither appears, the effect is as if <CODE>Status: 200 OK</CODE>
-  appeared, and a <CODE>Content-type</CODE> header must appear.
-  <LI>A <CODE>Content-type</CODE> header means that the script
-  will generate response content (e.g. an HTML document), and the
-  absence of a <CODE>Content-type</CODE> header means that the
-  script will not generate response content.
-  <LI>A <CODE>Location</CODE> header may only be generated in response
-  to a <CODE>GET</CODE> or <CODE>HEAD</CODE> request.
-  <P>&nbsp;
-</UL>
-
-<P>The <CODE>Location</CODE> header specifies a redirect. There
-are two kinds. If the <CODE>Location</CODE> value is a full URL
-(e.g. <CODE>http://www.fastcgi.com/servers/apache</CODE>), the
-effect is to generate an HTTP 302 response. If the <CODE>Location</CODE>
-value is an absolute path (e.g. <CODE>/servers/apache</CODE>),
-the effect is to execute a recursive request for that path within
-the server, and return the response of that request.</P>
-
-<P><CODE>Location</CODE> is optionally accompanied by <CODE>Content-type</CODE>.
-If the <CODE>Location</CODE> value is a full URL and no <CODE>Content-type</CODE>
-is specified, the Web server provides standardized content (of
-type <CODE>text/html</CODE>); if a <CODE>Content-type</CODE> is
-specified, the script provides the content. If the <CODE>Location</CODE>
-value is an absolute path then script-generated <CODE>Content-type</CODE>
-and content are ignored.</P>
-
-<P><CODE>mod_fastcgi</CODE> performs buffering of script-provided
-content, but content is not allowed to linger in buffers for more
-than a fraction of a second. Therefore &quot;server push&quot;
-scripts work correctly.</P>
-
-<P>&nbsp;</P>
-
-<H2>Configuration example</H2>
-
-<P>What follows is a minimal httpd.conf for Apache 1.2 and FastCGI
-Developer's Kit 1.5 (or higher). Use this configuration for initial
-testing with FastCGI. When you've verified that this configuration
-works, you can merge the FastCGI-specific aspects of this configuration
-with your own configuration.</P>
-
-<P>Directions:</P>
-
-<OL>
-  <LI>Change <CODE>$APACHE</CODE> to the path name of the directory
-  containing your Apache 1.2 kit, i.e. the directory containing
-  the Apache 1.2 README. For instance, you might change <CODE>$APACHE</CODE>
-  to <CODE>/udir/doe/apache_1.2</CODE>.
-  <P>Change <CODE>$FASTCGI</CODE> to the path name of the directory
-  containing your FastCGI Developer's Kit 1.5, i.e. the directory
-  containing the FastCGI Developer's Kit 1.5 README. For instance,
-  you might change <CODE>$FASTCGI</CODE> to <CODE>/udir/doe/fcgi-devel-kit</CODE>.
-  <P>Save the resulting file as <CODE>$APACHE/conf/httpd.conf</CODE>.
-  <LI>Build Apache 1.2 with <CODE>mod_fastcgi</CODE>. This creates
-  the <CODE>httpd</CODE> executable.
-  <P>Build the FastCGI Developer's Kit 1.5. This creates the <CODE>echo</CODE>
-  executable that you are going to run as a FastCGI application.
-  <LI>In a shell, cd to <CODE>$APACHE</CODE> and start httpd: <pre>%
-  src/httpd -f $APACHE/conf/httpd.conf </pre>
-  <LI>Use a browser to access the URL <pre>http://$YOUR_HOST:5556/examples/echo
-  </pre>where <CODE>$YOUR_HOST</CODE> is the IP address of the
-  host running httpd. Look for <CODE>STATE=TEXAS</CODE> in the
-  initial environment that <CODE>echo</CODE> displays. The request
-  counter should increment each time you reload the page.
-  <P>&nbsp;
-</OL>
-
-<PRE>
-# httpd.conf -- minimal for mod_fastcgi
-#
-# One config file is plenty
-ResourceConfig /dev/null
-AccessConfig   /dev/null
-
-# Not starting httpd as root, so Port must be larger than 1023
-Port 5556
-
-# This is what you'd add to the config if the server is to be
-# started as root.  Don't do this until you've verified that the
-# server works when started as non-root!  Don't use user/group nobody;
-# define a new user and group specifically for running the server.
-# User httpd
-# Group httpd
-
-# Configure just one idle httpd child process, to simplify debugging
-StartServers    1
-MinSpareServers 1
-MaxSpareServers 1
-
-# Tell httpd where it should live, turn on access and error logging
-ServerRoot     $APACHE
-ErrorLog       logs/error.log
-TransferLog    logs/access.log
-ScoreBoardFile logs/httpd.scoreboard
-
-# Tell httpd where to get documents
-DocumentRoot $FASTCGI
-
-# This is how you'd place the Unix-domain socket files in the logs
-# directory (you'd probably want to create a subdirectory for them.)
-# Don't do this until you've verified that everything works with
-# the socket files stored locally, in /tmp!
-# FastCgiIpcDir $APACHE/logs
-
-# Start the echo app
-AppClass $FASTCGI/examples/echo -initial-env STATE=TEXAS
-
-# Have mod_fastcgi handle requests for the echo app
-# (otherwise the server will return the app's binary as a file!)
-&lt;Location /examples/echo&gt;
-SetHandler fastcgi-script
-&lt;/Location&gt;
-
-# Start a FastCGI application that's accessible from other machines
-AppClass $FastCGI/examples/echo.fcg -port 8978
-&lt;Location /examples/echo.fcg&gt;
-SetHandler fastcgi-script
-&amp;lt/Location&gt;
-
-# Connect to &quot;remote&quot; app started above.  Since the app is actually
-# local, communication will take place using TCP loopback.
-# To test true remote operation, start one copy of this
-# Web server on one machine, then start another copy with
-# &quot;localhost&quot; in the line below changed to the host name of the first machine.
-ExternalAppClass $FASTCGI/examples/remote-echo -host localhost:8978
-&lt;Location /examples/remote-echo&gt;
-SetHandler fastcgi-script
-&amp;lt/Location&gt;
-
-# This is how you'd have mod_fastcgi handle any request for a file
-# whose name ends in .fcg:
-# AddHandler fastcgi-script fcg
-
-# End of httpd.conf</PRE>
-
-<HR ALIGN=LEFT>
-
-</BODY>
-</HTML>
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">
+<html>
+<!-- $Id: mod_fastcgi.html,v 1.6 1999/02/19 02:19:55 roberts Exp $ -->
+
+<head>
+<title>Apache module mod_fastcgi</title>
+</head>
+<!-- Background white, links blue (unvisited), navy (visited), red (active) -->
+
+<body BGCOLOR="#FFFFFF" TEXT="#000000" LINK="#0000FF" VLINK="#000080" ALINK="#FF0000">
+
+<p align="center"><img SRC="http://www.apache.org/docs/images/sub.gif"
+ALT="[APACHE FEATHER BANNER]" width="500" height="62"> </p>
+
+<h1 ALIGN="CENTER">Module mod_fastcgi</h1>
+
+<p>This 3<sup>rd</sup> party module provides support for the FastCGI protocol. &nbsp;
+FastCGI is a language independent, scalable, open extension to CGI that provides high
+performance and persistence without the limitations of server specific APIs.</p>
+
+<p>FastCGI applications are not limited to a particular development language (the protocol
+is open).&nbsp; FastCGI application libraries currently exist for Perl, C, Java, Python,
+and TCL.</p>
+
+<p>FastCGI applications use (TCP or Unix) sockets to communicate with the web server.
+&nbsp;This scalable architecture allows applications to run on the same platform as the
+web server or on many machines scattered across an enterprise network.</p>
+
+<p>FastCGI applications are portable to other web server platforms.&nbsp; FastCGI is
+supported either directly or through commercial extensions by most popular web servers.</p>
+
+<p>FastCGI applications are fast because they're persistent.&nbsp; There is no per-request
+startup and initialization overhead.&nbsp; This makes possible the development of
+applications which would otherwise be impractical within the CGI paradigm (e.g. a huge
+Perl script, or an application which requires a connection to one or more databases).
+&nbsp; </p>
+
+<p>For more information on FastCGI, go to the <a HREF="http://www.FastCGI.com/">FastCGI
+website</a>.&nbsp; To receive FastCGI related announcements and notifications of module
+updates, send mail to <a href="mailto:fastcgi-announce-request@idle.com">fastcgi-announce-request@idle.com</a>
+with &quot;subscribe&quot; in the Subject field.&nbsp; To participate in the discussion of
+<code>mod_fastcgi</code> and FastCGI application development, send mail to <a
+href="mailto:fastcgi-developers-request@idle.com">fastcgi-developers-request@idle.com</a>
+with &quot;subscribe&quot; in the Subject field.</p>
+
+<h2>Summary</h2>
+
+<p>For information about building and installing the module, see the <a href="../INSTALL">INSTALL</a>
+document that came with the distribution.</p>
+
+<p>FastCGI applications under <code>mod_fastcgi</code> are defined as one of three types:
+static, dynamic, or external.&nbsp; They're configured using the <a href="#fastcgiserver">FastCgiServer</a>,
+<a href="#FastCgiConfig">FastCgiConfig</a>, and <a href="#FastCgiExternalServer">FastCgiExternalServer</a>
+<a href="#directives">directives</a> respectively.</p>
+
+<p>FastCGI static and dynamic applications are spawned and managed by the FastCGI Process
+Manager, fcgi-pm.&nbsp; The process manager is spawned by Apache at server initialization.
+&nbsp; External applications are presumed to be started and managed independently.</p>
+
+<p>Apache must be configured to identify requests for FastCGI URIs.&nbsp; <code>mod_fastcgi</code>
+registers (with Apache) a handler type of <code>fastcgi-script</code> for this purpose.</p>
+
+<p>To configure Apache to handle all files (within the scope of the directive) as FastCGI
+applications (e.g. for a fcgi-bin directory):</p>
+
+<blockquote>
+  <p><code><a href="http://www.apache.org/docs/mod/mod_mime.html#sethandler">SetHandler</a>
+  fastcgi-script</code></p>
+</blockquote>
+
+<p>To configure Apache to handle all files (within the scope of&nbsp; the directive) with
+the specified extension(s) as FastCGI applications:</p>
+
+<blockquote>
+  <p><code><a href="http://www.apache.org/docs/mod/mod_mime.html#addhandler">AddHandler</a>
+  fastcgi-script .fcg .fcgi .fpl</code></p>
+</blockquote>
+
+<dl>
+  <p>Consult the Apache documentation for more information regarding these and other
+  directives which affect request handling (such as <code><a
+  href="http://www.apache.org/docs/mod/mod_actions.html#action">Action</a>).</code></p>
+  <p>Dynamic FastCGI applications require the <code>ExecCGI</code> option be enabled in the
+  application's directory.&nbsp; <code>ExecCGI</code> can be enabled using either the <a
+  href="http://www.apache.org/docs/mod/core.html#options"><code>Options</code></a> or <a
+  href="http://www.apache.org/docs/mod/mod_alias.html#scriptalias"><code>ScriptAlias</code></a>
+  directives.</p>
+  <h2>Notes</h2>
+  <p><code>mod_fastcgi</code> logs FastCGI application error (stderr) output to the server
+  log associated with the request.&nbsp; Errors reported by the FastCGI process manager,
+  fcgi-pm, are reported to the main server log (typically, logs/error_log).</p>
+  <p>To pass per-request environment variables to FastCGI applications, have a look at: <a
+  href="http://www.apache.org/docs/mod/mod_env.html"><code>mod_env</code></a> (<code>SetEnv</code>,
+  <code>PassEnv</code>, <code>UnSetEnv</code>), <a
+  href="http://www.apache.org/docs/mod/mod_setenvif.html"><code>mod_setenvif</code></a> (<code>BrowserMatch</code>,
+  <code>BrowserMatchNoCase</code>, <code>SetEnvIf</code>, <code>SetEnvIfNoCase</code>), and <a
+  href="http://www.apache.org/docs/mod/mod_rewrite.html"><code>mod_rewrite</code></a> (if
+  your feeling adventurous).</p>
+  <p>FastCGI application output is buffered by default.&nbsp; This is not the case for CGI
+  scripts (under Apache 1.3).&nbsp; To override the default behavior, use the -flush
+  option.&nbsp; Non-parsed header (nph-) scripts will be rejected by FastCGI simply as
+  warning the behavior is different (create a symbolic link to the script without the
+  &quot;nph-&quot; prefix if this poses a problem).</p>
+  <p>Redirects are handled similar to CGI.&nbsp; Location headers with values that begin
+  with &quot;/&quot; are treated as internal-redirects; otherwise, they are treated as
+  external redirects (302).</p>
+  <p>Session affinity (as well as distribution) should be achievable outside of <code>mod_fastcgi</code>
+  using <code>mod_rewrite</code>.&nbsp; If you get this working, please post the details to <a
+  href="mailto:fastcgi-developers@idle.com">fastcgi-developers@idle.com</a> so they can be
+  included future releases.</p>
+  <p>The FastCGI specification is not implemented in its entirety and I've deviated a bit as
+  well resulting in some Apache specific features.&nbsp; The Filter and Log Roles are not
+  supported.&nbsp; The Filter Role has no place in Apache until the output of one handler
+  can be piped into another (Apache 2.0 is expected to allow this).&nbsp; The Log Role has
+  some value, but I just haven't implemented it (if you have interest speak up).&nbsp;
+  Multiplexed requests are not supported. &nbsp; The FastCGI application library which
+  provides the FastCGI protocol support within FastCGI applications does not currently
+  support it (and thus doesn't have to be supported here).&nbsp; This may become a higher
+  priority when <code>mod_fastcgi</code> is ported to NT.&nbsp; I don't believe any existing
+  FastCGI server implementation supports these features.</p>
+  <p>The Authorizer Role (in its three Apache specific variations) sends nearly all of the
+  standard environment variables typically available to CGI/FastCGI request handlers
+  including some explicitly precluded by the FastCGI specification; I didn't see the point
+  to leaving them out.&nbsp; All headers returned by a FastCGI authentication application in
+  a successful response (Status: 200) are passed to subprocesses (CGI/FastCGI invocations)
+  as environment variables rather than just those prefixed by &quot;<code>Variable-</code>&quot;
+  as the FastCGI specification calls for; I didn't see the point in leaving them out
+  either.&nbsp; Custom responses from FastCGI authentication applications for authentication
+  failures are not (yet?) supported.&nbsp; <code>mod_fastcgi</code> sets up the (Apache
+  specific) environment variable &quot;FCGI_APACHE_ROLE&quot; to indicate which Apache
+  authorizer phase is being performed.</p>
+  <h2><a name="directives">Directives</a></h2>
+  <ul>
+    <li><a HREF="#FastCgiServer"><code>FastCgiServer</code></a></li>
+    <li><code><a HREF="#FastCgiConfig">FastCgiConfig</a></code></li>
+    <li><a HREF="#FastCgiExternalServer"><code>FastCgiExternalServer</code></a></li>
+    <li><code><a HREF="#FastCgiIpcDir">FastCgiIpcDir</a></code></li>
+    <li><a href="#FastCgiSuexec"><code>FastCgiSuexec</code></a></li>
+    <li><a href="#FastCgiAuthenticator"><code>FastCgiAuthenticator</code></a></li>
+    <li><a href="#FastCgiAuthenticatorAuthoritative"><code>FastCgiAuthenticatorAuthoritative</code></a></li>
+    <li><a href="#FastCgiAuthorizer"><code>FastCgiAuthorizer</code></a></li>
+    <li><a href="#FastCgiAuthorizerAuthoritative"><code>FastCgiAuthorizerAuthoritative</code></a></li>
+    <li><a href="#FastCgiAccessChecker"><code>FastCgiAccessChecker</code></a></li>
+    <li><a href="#FastCgiAccessCheckerAuthoritative"><code>FastCgiAccessCheckerAuthoritative</code></a></li>
+  </ul>
+  <dd>&nbsp;</dd>
+</dl>
+
+<dl>
+  <hr>
+  <h2><a name="FastCgiServer">FastCgiServer</a></h2>
+<!-- %plaintext &lt;?INDEX {\tt FastCgiServer} directive&gt; -->
+  <table border="0">
+    <tr>
+      <td><a HREF="http://www.apache.org/docs/mod/directive-dict.html#Syntax" REL="Help"><strong>Syntax:</strong></a></td>
+      <td><code>FastCgiServer <em>filename</em> <em>option option ...</em></code></td>
+    </tr>
+    <tr>
+      <td><a HREF="http://www.apache.org/docs/mod/directive-dict.html#Context" REL="Help"><strong>Context:</strong></a></td>
+      <td>server config</td>
+    </tr>
+  </table>
+  <p>The <code>FastCgiServer</code> directive defines <em>filename</em> as a static FastCGI
+  application.&nbsp; If the filename does not begin with a slash (/) then it is assumed to
+  be relative to the <a href="http://www.apache.org/docs/mod/core.html#serverroot">ServerRoot</a>.
+  </p>
+  <p>By default, the Process Manager will start one instance of the application with the
+  default configuration specified (in parenthesis) below.&nbsp; Should a static application
+  instance die for any reason <code>mod_fastcgi</code> will spawn another to replace it and
+  log the event.</p>
+  <p><em>Option</em> can be one of (case insensitive):</p>
+  <dt><code><b>-appConnTimeout <em>n</em></b>&nbsp;(15 seconds)</code></dt>
+  <dd>The number of seconds to wait for a connection to the FastCGI application to complete.
+    If the timeout expires, a&nbsp; SERVER_ERROR results.&nbsp; This is the amount of time
+    used in a <code>select()</code> to write to the file descriptor returned by a non-blocking
+    <code>connect().</code>&nbsp; Unix sockets appear to be handled differently than TCP
+    sockets on many platforms.&nbsp; TCP sockets will become writeable as soon as a slot in
+    the listen-queue is obtained (the three-way handshake completes), but before the
+    connection is <code>accept()</code>ed by the application.&nbsp; Unix sockets appear to
+    need the connection to be <code>accept()</code>ed before becoming writeable.</dd>
+  <dt><code><b>-initial-env <em>name=value</b> none</em></code></dt>
+  <dd>A name-value pair to be passed in the initial environment when instances of the
+    application are spawned.&nbsp; No white space is allowed and the equals sign is mandatory
+    (i.e. use &quot;-initial-env name=&quot; to define a variable with an empty value). &nbsp;
+    The option can be used repeatedly.</dd>
+  <dt><code><b>-init-start-delay <em>n</b>&nbsp;</em>(1 second)</code></dt>
+  <dd>The minimum number of seconds between the spawning of instances of this application.
+    &nbsp; This delay decreases the demand placed on the system at server initialization.</dd>
+  <dt><code><strong>-flush</strong>&nbsp;<em>none</em></code></dt>
+  <dd>Force a write to the client as data is received from the application.&nbsp; By default, <code>mod_fastcgi</code>
+    buffers data in order to free the application as quickly as possible.</dd>
+  <dt><code><b>-listen-queue-depth <em>n</em></b>&nbsp;(5)</code></dt>
+  <dd>The depth of listen() queue (also known as the backlog) shared by all of the instances
+    of this application.&nbsp; A deeper listen queue allows the server to cope with transient
+    load fluctuations without rejecting requests; it does not increase throughput. &nbsp;
+    Adding additional application instances may increase throughput/performance, depending
+    upon the application and the host. </dd>
+  <dt><code><b>-processes <em>n</em> </b>(1)</code></dt>
+  <dd>The number of instances of the application to spawn at server initialization. </dd>
+  <dt><code><b>-priority <em>n</em></b> (0)</code></dt>
+  <dd>The process priority to be assigned to the application instances (using <code>setpriority()</code>).</dd>
+  <dt><code><b>-port <em>n</b> none</em></code></dt>
+  <dd>The TCP port number (1-65535) the application will use for communication with the web
+    server.&nbsp; This option makes the application accessible from other machines on the
+    network (as well as this one).&nbsp; The <code>-socket</code> and <code>-port</code>
+    options are mutually exclusive.</dd>
+  <dt><code><b>-restart-delay<em> n</em></b>&nbsp;(5 seconds)</code></dt>
+  <dd>The minimum number of seconds between the respawning of failed instances of this
+    application.&nbsp; This delay prevents a broken application from soaking up too much of
+    the system.</dd>
+  <dt><code><b>-socket<em> filename</em>&nbsp;</b><em>gen'd</em></code></dt>
+  <dd>The filename of the Unix domain socket that the application will use for communication
+    with the web server.&nbsp; The module creates the socket within the directory specified by
+    <code>FastCgiIpcDir</code>.&nbsp; This option makes the application accessible to other
+    applications (e.g. <code>cgi-fcgi</code>) on the same machine or via an external FastCGI
+    application definition (<code>FastCgiExternalServer</code>).&nbsp; If neither the <code>-socket</code>
+    nor the <code>-port</code> options are given, the module generates a Unix domain socket
+    filename.&nbsp; The <code>-socket</code> and <code>-port</code> options are mutually
+    exclusive.</dd>
+</dl>
+
+<dl>
+  <hr>
+  <h2><a NAME="FastCgiConfig">FastCgiConfig</a></h2>
+<!-- %plaintext &lt;?INDEX {\tt FastCgiConfig} directive&gt; -->
+  <table border="0">
+    <tr>
+      <td><a HREF="http://www.apache.org/docs/mod/directive-dict.html#Syntax" REL="Help"><strong>Syntax:</strong></a></td>
+      <td><code>FastCgiConfig <em>option option ...</em></code></td>
+    </tr>
+    <tr>
+      <td><a HREF="http://www.apache.org/docs/mod/directive-dict.html#Context" REL="Help"><strong>Context:</strong></a></td>
+      <td>server config</td>
+    </tr>
+  </table>
+  <p>The <code>FastCgiConfig</code> directive defines the default parameters for dynamic
+  FastCGI applications.&nbsp; It currently has a &quot;server config&quot; context, which
+  means there can be only one FastCgiConfig directive.&nbsp; Eventually it will have a
+  &quot;directory&quot; context.&nbsp; This directive does not affect static or external
+  applications in any way.</p>
+  <p>Dynamic applications are not started at server initialization, but upon demand. &nbsp;
+  If the demand is heavy, additional application instances are started.&nbsp; As the demand
+  fades, application instances are killed off.&nbsp; Many of the options govern this
+  process.</p>
+  <p><em>Option</em> can be one of (case insensitive):</p>
+  <dt><code><b>-appConnTimeout <em>n</em></b>&nbsp;(15 seconds)</code></dt>
+  <dd>The number of seconds to wait for a connection to the FastCGI application to complete.
+    If the timeout expires, a&nbsp; SERVER_ERROR results.&nbsp; The <code>startDelay</code>
+    must be smaller than <code>appConnTimeout</code> to be effective.&nbsp; This is the amount
+    of time used in a <code>select()</code> to write to the file descriptor returned by a
+    non-blocking <code>connect().</code>&nbsp; Unix sockets appear to be handled differently
+    than TCP sockets on many platforms.&nbsp; TCP sockets will become writeable as soon as a
+    slot in the listen-queue is obtained (the three-way handshake completes), but before the
+    connection is <code>accept()</code>ed by the application.&nbsp; Unix sockets appear to
+    need the connection to be <code>accept()</code>ed before becoming writeable.</dd>
+  <dt><code><strong>-autoUpdate</strong> <em>none</em></code></dt>
+  <dd>This option causes mod_fastcgi to check the age of the application on disk before
+    processing each request.&nbsp; If the application is more recent, the process manager is
+    notified and all running instances of the application are killed off.&nbsp; In general,
+    its preferred that this type of functionality be built-in to the application (e.g. every
+    100th request it checks to see if there's a newer version on disk and exits if so). &nbsp;
+    There may be an outstanding problem (bug) when this option is used with <code>-restart</code>.</dd>
+  <dt><code><b>-gainValue <em>n</em></b> (0.5)</code></dt>
+  <dd>A floating point value between 0 and 1 that is used as an exponent in the computation of
+    the exponentially decayed connection times load factor of the currently running dynamic
+    FastCGI applications.&nbsp; Old values are scaled by (1 -<code> gainValue</code>), so
+    making it smaller weights them more heavily compared to the current value, which is scaled
+    by <code>gainValue</code>.</dd>
+  <dt><code><b>-initial-env <em>name=value</b> none</em></code></dt>
+  <dd>A name-value pair to be passed in the initial environment when instances of the
+    application are spawned.&nbsp; No white space is allowed and the equals sign is mandatory
+    (i.e. use &quot;-initial-env name=&quot; to define a variable with an empty value). &nbsp;
+    The option can be used repeatedly.</dd>
+  <dt><code><b>-init-start-delay <em>n</b>&nbsp;</em>(1 second)</code></dt>
+  <dd>The minimum number of seconds between the spawning of instances of this application.
+    &nbsp; This delay decreases the demand placed on the system at server initialization.</dd>
+  <dt><code><b>-killInterval <em>n</em></b> (300 seconds)</code></dt>
+  <dd>The killInterval determines how often the dynamic application instance killing policy is
+    implemented within the process manager.&nbsp; Lower numbers result in a more aggressive
+    policy, higher numbers a less aggressive policy.</dd>
+  <dt><code><b>-listen-queue-depth <em>n</em></b>&nbsp;(5)</code></dt>
+  <dd>The depth of listen() queue (also known as the backlog) shared by all of the instances
+    of this application.&nbsp; A deeper listen queue allows the server to cope with transient
+    load fluctuations without rejecting requests; it does not increase throughput. &nbsp;
+    Adding additional application instances may increase throughput/performance, depending
+    upon the application and the host. </dd>
+  <dt><code><b>-maxClassProcesses <em>n</em></b> (10)</code></dt>
+  <dd>The maximum number of dynamic FastCGI application instances allowed to run for any one
+    FastCGI application.</dd>
+  <dt><code><b>-maxProcesses <em>n</em></b> (50)</code></dt>
+  <dd>The maximum total number of dynamic FastCGI application instances allowed to run at any
+    one time.</dd>
+  <dt><code><b>-minProcesses <em>n</em></b> (5)</code></dt>
+  <dd>The minimum total number of dynamic FastCGI application instances allowed to run at any
+    one time without being killed off by the process manager (due to lack of demand).</dd>
+  <dt><code><b>-multiThreshhold <em>n</b> </em>(50)</code></dt>
+  <dd>An integer between 1 and 100 used to determine whether any one instance of a FastCGI
+    application should be terminated.&nbsp; If the application has more than one instance
+    currently running, this attribute will be used to decide whether one of them should be
+    terminated.&nbsp; If only one instance remains, <code>singleTHreshhold</code> is used
+    instead.</dd>
+  <dt><code><b>-priority <em>n</em></b> (0)</code></dt>
+  <dd>The process priority to be assigned to the application instances (using <code>setpriority()</code>).</dd>
+  <dt><code><b>-processSlack <em>n</em></b> (5 seconds)</code></dt>
+  <dd>If the sum of all currently running dynamic FastCGI applications and exceeds <code>maxProcesses
+    - processSlack</code>, the process manager invokes the killing policy.&nbsp; This is to
+    improve performance at higher loads by killing the some of&nbsp; the most inactive
+    application instances before reaching <code>maxProcesses</code>.</dd>
+  <dt><code><strong>-restart</strong> <em>none</em></code></dt>
+  <dd>This option causes the process manager to restart dynamic applications upon failure
+    (similar to static applications).</dd>
+  <dt><code><b>-restart-delay<em> n</em></b>&nbsp;(5 seconds)</code></dt>
+  <dd>The minimum number of seconds between the respawning of failed instances of this
+    application.&nbsp; This delay prevents a broken application from soaking up too much of
+    the system.</dd>
+  <dt><code><b>-singleThreshhold <em>n</em></b> (10)</code></dt>
+  <dd>An integer between 1 and 100 used to determine whether the last instance of a FastCGI
+    application can be terminated.&nbsp; If the process manager computed load factor for the
+    application is lower than the specified threshold, the last instance is terminated. &nbsp;
+    In order to make your executables run in the &quot;idle&quot; mode for the long time, you
+    would specify value closer to 1, however if memory or CPU time is of primary concern, a
+    value closer to 100 would be more applicable.</dd>
+  <dt><code><b>-startDelay <em>n</em></b> (3 seconds)</code></dt>
+  <dd>The number of seconds the web server waits patiently while trying to connect to a
+    dynamic FastCGI application.&nbsp; If the interval expires, the process manager is
+    notified with hope it will start another instance of the application.&nbsp; The <code>startDelay</code>
+    must be smaller than <code>appConnTimeout</code> to be effective.</dd>
+  <dt><code><b>-updateInterval <em>n</em></b>&nbsp; (300 seconds)</code></dt>
+  <dd>The updateInterval determines how often statistical analysis is performed to determine
+    the fate of dynamic FastCGI applications.</dd>
+  <dt>&nbsp;</dt>
+  <hr>
+  <h2><a name="FastCgiExternalServer">FastCgiExternalServer</a></h2>
+<!-- %plaintext &lt;?INDEX {\tt FastCgiConfig} directive&gt; -->
+  <table border="0">
+    <tr>
+      <td><a HREF="http://www.apache.org/docs/mod/directive-dict.html#Syntax" REL="Help"><strong>Syntax:</strong></a></td>
+      <td><code>FastCgiExternalServer <em>filename</em> <em>-host hostname:port [-appConnTimeout
+      n]</em></code></td>
+    </tr>
+    <tr>
+      <td></td>
+      <td><code>FastCgiExternalServer <em>filename</em> <em>-socket filename [-appConnTimeout n]</em></code></td>
+    </tr>
+    <tr>
+      <td><a HREF="http://www.apache.org/docs/mod/directive-dict.html#Context" REL="Help"><strong>Context:</strong></a></td>
+      <td>server config</td>
+    </tr>
+  </table>
+  <p>The <code>FastCgiExternalServer</code> directive defines <em>filename</em> as an
+  external FastCGI application.&nbsp; If the filename does not begin with a slash (/) then
+  it is assumed to be relative to the <a
+  href="http://www.apache.org/docs/mod/core.html#serverroot">ServerRoot</a>. </p>
+  <p>External FastCGI applications are not started by the process manager, they are presumed
+  to be started and managed &quot;external&quot; to Apache and mod_fastcgi.&nbsp; The
+  FastCGI devkit provides a simple tool for starting FastCGI applications independent of the
+  server.</p>
+  <dt><code><b>-appConnTimeout <em>n</em></b>&nbsp;(15 seconds)</code></dt>
+  <dd>The number of seconds to wait for a connection to the FastCGI application to complete.
+    If the timeout expires, a&nbsp; SERVER_ERROR results.&nbsp; This is the amount of time
+    used in a <code>select()</code> to write to the file descriptor returned by a non-blocking
+    <code>connect().</code>&nbsp; Unix sockets appear to be handled differently than TCP
+    sockets on many platforms.&nbsp; TCP sockets will become writeable as soon as a slot in
+    the listen-queue is obtained (the three-way handshake completes), but before the
+    connection is <code>accept()</code>ed by the application.&nbsp; Unix sockets appear to
+    need the connection to be <code>accept()</code>ed before becoming writeable.</dd>
+  <dt><code><strong>-flush</strong>&nbsp;<em>none</em></code></dt>
+  <dd>Force a write to the client as data is received from the application.&nbsp; By default, <code>mod_fastcgi</code>
+    buffers data in order to free the application as quickly as possible.</dd>
+  <dt><code><b>-host <em>hostname:port</b> none</em></code></dt>
+  <dd>The hostname or IP address and TCP port number (1-65535) the application uses for
+    communication with the web server. The <code>-socket</code> and <code>-host</code> options
+    are mutually exclusive.</dd>
+  <dt><code><b>-socket<em> filename</em>&nbsp;</b><em>none</em></code></dt>
+  <dd>The filename of the Unix domain socket the application uses for communication with the
+    web server.&nbsp; The filename is relative to the <code>FastCgiIpcDir</code>.&nbsp; The <code>-socket</code>
+    and <code>-port</code> options are mutually exclusive.</dd>
+  <dt>&nbsp;</dt>
+  <hr>
+  <h2><a name="FastCgiIpcDir">FastCgiIpcDir</a></h2>
+<!-- %plaintext &lt;?INDEX {\tt FastCgiConfig} directive&gt; -->
+  <table border="0">
+    <tr>
+      <td><a HREF="http://www.apache.org/docs/mod/directive-dict.html#Syntax" REL="Help"><strong>Syntax:</strong></a></td>
+      <td><code>FastCgiIpcDir <em>directory</em></code></td>
+    </tr>
+    <tr>
+      <td><a href="http://www.apache.org/docs/mod/directive-dict.html#Default"><strong>Default:</strong></a></td>
+      <td><code>FastCgiIpcDir /tmp/fcgi</code></td>
+    </tr>
+    <tr>
+      <td><a HREF="http://www.apache.org/docs/mod/directive-dict.html#Context" REL="Help"><strong>Context:</strong></a></td>
+      <td>server config</td>
+    </tr>
+  </table>
+  <p>The <code>FastCgiIpcDir</code> directive specifies <em>directory</em> as the place to
+  store (and find, in the case of external FastCGI applications) the Unix socket files used
+  for communication between the applications and the web server.&nbsp; If the directory does
+  not begin with a slash (/) then it is assumed to be relative to the <a
+  href="http://www.apache.org/docs/mod/core.html#serverroot">ServerRoot</a>. &nbsp; If the
+  directory doesn't exist, an attempt is made to create it with appropriate
+  permissions.&nbsp; Do not specify a directory that is not on a local filesystem!&nbsp; If
+  you use the default directory (or another directory within <code>/tmp</code>), <code>mod_fastcgi</code>
+  will break if your system periodically deletes files from <code>/tmp</code>.</p>
+  <p>The <code>FastCgiIpcDir</code> directive must precede any <a href="#FastCgiServer"><code>FastCgiServer</code></a>
+  or <a href="#FastCgiExternalServer"><code>FastCgiExternalServer</code></a> directives
+  (which make use of Unix sockets). The directory must be readable, writeable, and
+  executable (searchable) by the web server, but otherwise should not be accessible to
+  anyone.</p>
+  <hr>
+  <h2><a name="FastCgiSuexec">FastCgiSuexec</a></h2>
+<!-- %plaintext &lt;?INDEX {\tt FastCgiConfig} directive&gt; -->
+  <table border="0">
+    <tr>
+      <td><a HREF="http://www.apache.org/docs/mod/directive-dict.html#Syntax" REL="Help"><strong>Syntax:</strong></a></td>
+      <td><code>FastCgiSuexec <em>On | Off | filename</em></code></td>
+    </tr>
+    <tr>
+      <td><a href="http://www.apache.org/docs/mod/directive-dict.html#Default"><strong>Default:</strong></a></td>
+      <td><code>FastCgiSuexec Off<em> </em></code></td>
+    </tr>
+    <tr>
+      <td><a HREF="http://www.apache.org/docs/mod/directive-dict.html#Context" REL="Help"><strong>Context:</strong></a></td>
+      <td>server config</td>
+    </tr>
+  </table>
+  <p>The <code>FastCgiSuexec</code> directive is used to enable support for an
+  suexec-wrapper.&nbsp; <code>FastCgiSuexec</code> requires suexec be enabled in Apache (for
+  CGI).&nbsp; To use the same suexec-wrapper in use by Apache, set <code>FastCgiSuexec</code>
+  to <em>On</em>.&nbsp; To use a different suexec-wrapper, specify the <em>filename</em> of
+  the suexec-wrapper.&nbsp; If the filename does not begin with a slash (/) then it is
+  assumed to be relative to the <a
+  href="http://www.apache.org/docs/mod/core.html#serverroot">ServerRoot</a>.</p>
+  <p>When <code>FastCgiSuexec</code> is enabled, the location of static or external FastCGI
+  application definitions is important.&nbsp; They inherit their user and group from the <code>User</code>
+  and <code>Group</code> directives in the virtual server in which they were defined.&nbsp; <code>User</code>
+  and <code>Group</code> directives should precede FastCGI application definitions. &nbsp;
+  Note that this does <em>not</em> limit the FastCGI application to the virtual server in
+  which they were defined, the application is allowed to service requests from any virtual
+  server with the same user and group.&nbsp; If a request is received for a FastCGI
+  application without an existing matching definition running with the correct user and
+  group, a dynamic instance of the application is started with the correct user and group.
+  &nbsp; This can lead to multiple copies of the same application running with different
+  user/group.&nbsp; If this is a problem, preclude navigation to the application from other
+  virtual servers or configure the virtual servers with the same User and Group.</p>
+  <p>See the Apache documentation for more information about suexec (make sure you fully
+  understand the security implications).</p>
+  <hr>
+  <h2><a name="FastCgiAuthenticator">FastCgiAuthenticator</a></h2>
+<!-- %plaintext &lt;?INDEX {\tt FastCgiConfig} directive&gt; -->
+  <table border="0">
+    <tr>
+      <td><a HREF="http://www.apache.org/docs/mod/directive-dict.html#Syntax" REL="Help"><strong>Syntax:</strong></a></td>
+      <td><code>FastCgiAuthenticator <em>filename</em></code></td>
+    </tr>
+    <tr>
+      <td><a HREF="http://www.apache.org/docs/mod/directive-dict.html#Context" REL="Help"><strong>Context:</strong></a></td>
+      <td>directory</td>
+    </tr>
+  </table>
+  <p>The <code>FastCgiAuthenticator</code> directive is used to define a FastCGI application
+  as a per-directory authenticator.&nbsp; Authenticators verify the requestor is who he says
+  he is by matching the provided username and password against a list or database of known
+  users and passwords.&nbsp; FastCGI based authenticators are useful primarily when the user
+  database is maintained within an existing independent program or resides on a machine
+  other than the web server.&nbsp; </p>
+  <p>If the FastCGI application <em>filename</em> does not have a corresponding static or
+  external server definition, it is started as a dynamic FastCGI application.&nbsp; If the
+  filename does not begin with a slash (/) then it is assumed to be relative to the <a
+  href="http://www.apache.org/docs/mod/core.html#serverroot">ServerRoot</a>.</p>
+  <p><code>FastCgiAuthenticator</code> is used within <a
+  href="http://www.apache.org/docs/mod/core.html#directory"><code>Directory</code></a> or <a
+  href="http://www.apache.org/docs/mod/core.html#location"><code>Location</code></a>
+  containers and must include an <a href="http://www.apache.org/docs/mod/core.html#authtype"><code>AuthType</code></a>
+  and <a href="http://www.apache.org/docs/mod/core.html#authname"><code>AuthName</code></a>
+  directive. &nbsp; Only the <code>Basic</code> user authentication type is supported.&nbsp;
+  It must be accompanied by a <a href="http://www.apache.org/docs/mod/core.html#require"><code>require</code></a>
+  or <code><a href="#FastCgiAuthorizer">FastCgiAuthorizer</a></code> directive in order to
+  work correctly.</p>
+</dl>
+
+<blockquote>
+  <code><p>&lt;Directory htdocs/protected&gt;<br>
+  AuthType Basic<br>
+  AuthName ProtectedRealm<br>
+  FastCgiAuthenticator fcgi-bin/authenticator<br>
+  require valid-user<br>
+  &lt;/Directory&gt;</code></p>
+</blockquote>
+
+<p><code>mod_fastcgi</code> sends nearly all of the standard environment variables
+typically available to CGI/FastCGI request handlers.&nbsp; All headers returned by a
+FastCGI authentication application in a successful response (Status: 200) are passed to
+subprocesses (CGI/FastCGI invocations) as environment variables.&nbsp; All headers
+returned in an unsuccessful response are passed on to the client.&nbsp; <code>mod_fastcgi</code>
+sets the environment variable &quot;FCGI_APACHE_ROLE&quot; to &quot;AUTHENTICATOR&quot; to
+indicate which (Apache specific) authorizer phase is being performed.</p>
+
+<hr>
+
+<h2><a name="FastCgiAuthenticatorAuthoritative">FastCgiAuthenticatorAuthoritative</a></h2>
+<!-- %plaintext &lt;?INDEX {\tt FastCgiConfig} directive&gt; -->
+
+<table border="0">
+  <tr>
+    <td><a HREF="http://www.apache.org/docs/mod/directive-dict.html#Syntax" REL="Help"><strong>Syntax:</strong></a></td>
+    <td><code>FastCgiAuthenticatorAuthoritative <em>On | Off</em></code></td>
+  </tr>
+  <tr>
+    <td><a href="http://www.apache.org/docs/mod/directive-dict.html#Default"><strong>Default:</strong></a></td>
+    <td><code>FastCgiAuthenticatorAuthoritative On</code></td>
+  </tr>
+  <tr>
+    <td><a HREF="http://www.apache.org/docs/mod/directive-dict.html#Context" REL="Help"><strong>Context:</strong></a></td>
+    <td>directory</td>
+  </tr>
+</table>
+
+<p>Setting the <code>FastCgiAuthenticatorAuthoritative</code> directive explicitly to <em>Off</em>
+allows authentication to be passed on to lower level modules (as defined in the <code>Configuration</code>
+and <code>modules.c</code> files) if the FastCGI application fails to authenticate the
+user. </p>
+
+<p>A common use for this is in conjunction with a well protected <a
+href="http://www.apache.org/docs/mod/mod_auth.html#authuserfile"><code>AuthUserFile</code></a>
+containing a few (administration related) users.&nbsp; </p>
+
+<p>By default, control is not passed on and an unknown user will result in an
+Authorization Required reply.&nbsp; Disabling the default should be carefully considered.</p>
+
+<hr>
+
+<h2><a name="FastCgiAuthorizer">FastCgiAuthorizer</a></h2>
+<!-- %plaintext &lt;?INDEX {\tt FastCgiConfig} directive&gt; -->
+
+<table border="0">
+  <tr>
+    <td><a HREF="http://www.apache.org/docs/mod/directive-dict.html#Syntax" REL="Help"><strong>Syntax:</strong></a></td>
+    <td><code>FastCgiAuthorizer<em> filename</em></code></td>
+  </tr>
+  <tr>
+    <td><a HREF="http://www.apache.org/docs/mod/directive-dict.html#Context" REL="Help"><strong>Context:</strong></a></td>
+    <td>directory</td>
+  </tr>
+</table>
+
+<dl>
+  <p>The <code>FastCgiAuthorizer</code> directive is used to define a FastCGI application as
+  a per-directory authorizer.&nbsp; Authorizers validate whether an authenticated requestor
+  is allowed access to the requested resource.&nbsp; FastCGI based authorizers are useful
+  primarily when there is a dynamic component to the authorization decision such as a time
+  of day or whether or not the user has paid his bills.&nbsp; </p>
+  <p>If the FastCGI application <em>filename</em> does not have a corresponding static or
+  external server definition, it is started as a dynamic FastCGI application.&nbsp; If the
+  filename does not begin with a slash (/) then it is assumed to be relative to the <a
+  href="http://www.apache.org/docs/mod/core.html#serverroot">ServerRoot</a>.</p>
+  <p><code>FastCgiAuthorizer</code> is used within <a
+  href="http://www.apache.org/docs/mod/core.html#directory"><code>Directory</code></a> or <a
+  href="http://www.apache.org/docs/mod/core.html#location"><code>Location</code></a>
+  containers and must include an <a href="http://www.apache.org/docs/mod/core.html#authtype"><code>AuthType</code></a>
+  and <a href="http://www.apache.org/docs/mod/core.html#authname"><code>AuthName</code></a>
+  directive. &nbsp; It must be accompanied by an authentication directive such as <a
+  href="#FastCgiAuthenticator"><code>FastCgiAuthenticator</code></a>, <a
+  href="http://www.apache.org/docs/mod/mod_auth.html#authuserfile"><code>AuthUserFile</code></a>,
+  <a href="http://www.apache.org/docs/mod/mod_auth_db.html#authdbuserfile"><code>AuthDBUserFile</code></a>
+  or <a href="http://www.apache.org/docs/mod/mod_auth_dbm.html#authdbmuserfile"><code>AuthDBMUserFile</code></a>
+  in order to work correctly.</p>
+</dl>
+
+<blockquote>
+  <code><p>&lt;Directory htdocs/protected&gt;<br>
+  AuthType Basic<br>
+  AuthName ProtectedRealm<br>
+  AuthDBMUserFile conf/authentication-database<br>
+  FastCgiAuthorizer fcgi-bin/authorizer<br>
+  &lt;/Directory&gt;</code></p>
+</blockquote>
+
+<p><code>mod_fastcgi</code> sends nearly all of the standard environment variables
+typically available to CGI/FastCGI request handlers.&nbsp; All headers returned by a
+FastCGI authorizer application in a successful response (Status: 200) are passed to
+subprocesses (CGI/FastCGI invocations) as environment variables.&nbsp; All headers
+returned in an unsuccessful response are passed on to the client.&nbsp; <code>mod_fastcgi</code>
+sets the environment variable &quot;FCGI_APACHE_ROLE&quot; to &quot;AUTHORIZER&quot; to
+indicate which (Apache specific) authorizer phase is being performed.</p>
+
+<hr>
+
+<h2><a name="FastCgiAuthorizerAuthoritative">FastCgiAuthorizerAuthoritative</a></h2>
+<!-- %plaintext &lt;?INDEX {\tt FastCgiConfig} directive&gt; -->
+
+<table border="0">
+  <tr>
+    <td><a HREF="http://www.apache.org/docs/mod/directive-dict.html#Syntax" REL="Help"><strong>Syntax:</strong></a></td>
+    <td><code>FastCgiAuthorizerAuthoritative <em>On | Off</em></code></td>
+  </tr>
+  <tr>
+    <td><a href="http://www.apache.org/docs/mod/directive-dict.html#Default"><strong>Default:</strong></a></td>
+    <td><code>FastCgiAuthorizerAuthoritative On</code></td>
+  </tr>
+  <tr>
+    <td><a HREF="http://www.apache.org/docs/mod/directive-dict.html#Context" REL="Help"><strong>Context:</strong></a></td>
+    <td>directory</td>
+  </tr>
+</table>
+
+<p>Setting the <code>FastCgiAuthorizerAuthoritative</code> directive explicitly to <em>Off</em>
+allows authorization to be passed on to lower level modules (as defined in the <code>Configuration</code>
+and <code>modules.c</code> files) if the FastCGI application fails to authorize the user. </p>
+
+<p>By default, control is not passed on and an unauthorized user will result in an
+Authorization Required reply.&nbsp; Disabling the default should be carefully considered.</p>
+
+<hr>
+
+<h2><a name="FastCgiAccessChecker">FastCgiAccessChecker</a></h2>
+<!-- %plaintext &lt;?INDEX {\tt FastCgiConfig} directive&gt; -->
+
+<table border="0">
+  <tr>
+    <td><a HREF="http://www.apache.org/docs/mod/directive-dict.html#Syntax" REL="Help"><strong>Syntax:</strong></a></td>
+    <td><code>FastCgiAccessChecker<em> filename</em></code></td>
+  </tr>
+  <tr>
+    <td><a HREF="http://www.apache.org/docs/mod/directive-dict.html#Context" REL="Help"><strong>Context:</strong></a></td>
+    <td>directory</td>
+  </tr>
+</table>
+
+<dl>
+  <p>The <code>FastCgiAccessChecker</code> (suggestions for a better name are welcome)
+  directive is used to define a FastCGI application as a per-directory access
+  validator.&nbsp; The Apache Access phase precede user authentication and thus the decision
+  to (dis)allow access to the requested resource is based on the HTTP headers submitted with
+  the request.&nbsp; FastCGI based authorizers are useful primarily when there is a dynamic
+  component to the access validation decision such as a time of day or whether or not a
+  domain has paid his bills.&nbsp; </p>
+  <p>If the FastCGI application <em>filename</em> does not have a corresponding static or
+  external server definition, it is started as a dynamic FastCGI application.&nbsp; If the
+  filename does not begin with a slash (/) then it is assumed to be relative to the <a
+  href="http://www.apache.org/docs/mod/core.html#serverroot">ServerRoot</a>.</p>
+  <p><code>FastCgiAccessChecker</code> is used within <a
+  href="http://www.apache.org/docs/mod/core.html#directory"><code>Directory</code></a> or <a
+  href="http://www.apache.org/docs/mod/core.html#location"><code>Location</code></a>
+  containers.</p>
+</dl>
+
+<blockquote>
+  <code><p>&lt;Directory htdocs/protected&gt;<br>
+  FastCgiAccessChecker fcgi-bin/access-checker<br>
+  &lt;/Directory&gt;</code></p>
+</blockquote>
+
+<p><code>mod_fastcgi</code> sends nearly all of the standard environment variables
+typically available to CGI/FastCGI request handlers.&nbsp; All headers returned by a
+FastCGI access-checker application in a successful response (Status: 200) are passed to
+subprocesses (CGI/FastCGI invocations) as environment variables.&nbsp; All headers
+returned in an unsuccessful response are passed on to the client.&nbsp; <code>mod_fastcgi</code>
+sets the environment variable &quot;FCGI_APACHE_ROLE&quot; to &quot;ACCESS_CHECKER&quot;
+to indicate which (Apache specific) authorizer phase is being performed.</p>
+
+<hr>
+
+<h2><a name="FastCgiAccessCheckerAuthoritative">FastCgiAccessCheckerAuthoritative</a></h2>
+<!-- %plaintext &lt;?INDEX {\tt FastCgiConfig} directive&gt; -->
+
+<table border="0">
+  <tr>
+    <td><a HREF="http://www.apache.org/docs/mod/directive-dict.html#Syntax" REL="Help"><strong>Syntax:</strong></a></td>
+    <td><code>FastCgiAccessCheckerAuthoritative <em>On | Off</em></code></td>
+  </tr>
+  <tr>
+    <td><a href="http://www.apache.org/docs/mod/directive-dict.html#Default"><strong>Default:</strong></a></td>
+    <td><code>FastCgiAccessCheckerAuthoritative On</code></td>
+  </tr>
+  <tr>
+    <td><a HREF="http://www.apache.org/docs/mod/directive-dict.html#Context" REL="Help"><strong>Context:</strong></a></td>
+    <td>directory</td>
+  </tr>
+</table>
+
+<p>Setting the <code>FastCgiAccessCheckerAuthoritative</code> directive explicitly to <em>Off</em>
+allows access checking to be passed on to lower level modules (as defined in the <code>Configuration</code>
+and <code>modules.c</code> files) if the FastCGI application fails to allow access. </p>
+
+<p>By default, control is not passed on and a failed access check will result in a
+Forbidden reply.&nbsp; Disabling the default should be carefully considered.</p>
+
+<hr>
+
+<h3 ALIGN="CENTER"><a href="http://www.FastCGI.com/">www.FastCGI.com</a></h3>
+</body>
+</html>
