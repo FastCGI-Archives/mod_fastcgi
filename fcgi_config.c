@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_config.c,v 1.10 1999/08/15 20:45:33 roberts Exp $
+ * $Id: fcgi_config.c,v 1.11 1999/08/15 21:18:04 roberts Exp $
  */
 
 #include "fcgi.h"
@@ -109,10 +109,9 @@ static const char *get_pass_header(pool *p, const char **arg, array_header **arr
     }
 
     header = (const char **)ap_push_array(*array);
-
     *header = ap_getword_conf(p, arg);
-    if (!*header)
-        return "\"\"";
+
+    return header ? NULL : "\"\"";
 }
 
 /*******************************************************************************
