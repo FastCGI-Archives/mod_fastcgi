@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.45 1998/08/06 04:12:53 roberts Exp $
+ *  $Id: mod_fastcgi.c,v 1.46 1998/08/24 12:42:45 roberts Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -113,6 +113,7 @@ typedef gid_t long;
 #if APACHE_RELEASE >= 1030000
 #if MODULE_MAGIC_NUMBER >= 19980713
 #include "ap_compat.h"
+#include "ap_config.h"
 #else
 #include "compat.h"
 #endif
