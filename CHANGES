@@ -1,5 +1,8 @@
 2.2.11
 
+ *) SIGUSR2 is no longer blocked in the process manager and the fastcgi 
+    applications it spawns. [ryans@amazon.com]
+
  *) Added support for the -flush argument to FastCgiConfig. 
     Eric Sit [esit@alum.mit.edu]
 

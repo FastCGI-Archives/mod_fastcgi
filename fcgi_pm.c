@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_pm.c,v 1.57 2001/05/31 13:16:38 robs Exp $
+ * $Id: fcgi_pm.c,v 1.58 2001/08/24 01:47:22 robs Exp $
  */
 
 
@@ -1312,11 +1312,6 @@ static void setup_signals(void)
     sigset_t mask;
     struct sigaction sa;
 
-    /* Ignore USR2 */
-    sigemptyset(&mask);
-    sigaddset(&mask, SIGUSR2);
-    sigprocmask(SIG_BLOCK, &mask, NULL);
-    
     /* Setup handlers */
 
     sa.sa_handler = signal_handler;
