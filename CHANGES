@@ -1,5 +1,14 @@
 2.2.11
 
+ *) Eliminate the use of locks to assist in the clean shutdown of
+    applications.  Instead, it is assumed that applications handle
+    termination signals properly (this is now embedded in the C
+    application lib).
+
+ *) Fix Win32 process termination.  Proper operation requires the use of
+    an updated application lib (termination is now signalled with an
+	Event and handled by specialized thread).
+
  *) Docs cleanup.  Andrew Benham [adsb@bigfoot.com]
 
  *) Added code so if the last instance of a dynamic application died without

@@ -1,8 +1,12 @@
 /*
- * $Id: fcgi_util.c,v 1.16 2000/11/12 15:13:24 robs Exp $
+ * $Id: fcgi_util.c,v 1.17 2001/03/26 15:35:40 robs Exp $
  */
 
 #include "fcgi.h"
+
+#ifdef WIN32
+#pragma warning( disable : 4100 )
+#endif
  
 /*******************************************************************************
  * Compute printable MD5 hash. Pool p is used for scratch as well as for
@@ -37,16 +41,6 @@ fcgi_util_socket_make_path_absolute(pool * const p,
         const char * parent_dir = dynamic ? fcgi_dynamic_dir : fcgi_socket_dir;
         return (const char *) ap_make_full_path(p, parent_dir, file);
     }
-}
-
-/*******************************************************************************
- * Allocate a new string from pool p with the name of a Unix/Domain socket's
- * lock file (used by dynamic only).
- */
-const char *
-fcgi_util_socket_get_lock_filename(pool *p, const char *socket_path)
-{
-    return ap_pstrcat(p, socket_path, ".lock", NULL);
 }
 
 #ifndef WIN32
@@ -283,16 +277,10 @@ fcgi_util_fs_get(const char *ePath, const char *user, const char *group)
 }
 
 const char *
-fcgi_util_fs_is_path_ok(pool * const p, const char * const fs_path, 
-        struct stat *finfo, const uid_t uid, const gid_t gid)
+fcgi_util_fs_is_path_ok(pool * const p, const char * const fs_path, struct stat *finfo)
 {
     const char *err;
 
-    /* If a wrapper is in use, let the wrapper determine what it can
-     * and can't execute */
-    if (fcgi_wrapper)
-        return NULL;
-    
     if (finfo == NULL) {
         finfo = (struct stat *)ap_palloc(p, sizeof(struct stat));	        
         if (stat(fs_path, finfo) < 0)
@@ -310,17 +298,21 @@ fcgi_util_fs_is_path_ok(pool * const p, const char * const fs_path,
     if (S_ISDIR(finfo->st_mode)) 
         return ap_psprintf(p, "script is a directory!");
     
+    /* Let the wrapper determine what it can and can't execute */
+    if (! fcgi_wrapper)
+    {
 #ifdef WIN32
-    err = fcgi_util_check_access(p, fs_path, finfo, _S_IEXEC, fcgi_user_id, fcgi_group_id);
+        err = fcgi_util_check_access(p, fs_path, finfo, _S_IEXEC, fcgi_user_id, fcgi_group_id);
 #else
-    err = fcgi_util_check_access(p, fs_path, finfo, X_OK, fcgi_user_id, fcgi_group_id);
+        err = fcgi_util_check_access(p, fs_path, finfo, X_OK, fcgi_user_id, fcgi_group_id);
 #endif
-    if (err) {
-        return ap_psprintf(p,
-            "access for server (uid %ld, gid %ld) not allowed: %s",
-            (long)fcgi_user_id, (long)fcgi_group_id, err);
+        if (err) {
+            return ap_psprintf(p,
+                "access for server (uid %ld, gid %ld) not allowed: %s",
+                (long)fcgi_user_id, (long)fcgi_group_id, err);
+        }
     }
-
+    
     return NULL;
 }
 
@@ -343,12 +335,13 @@ fcgi_util_fs_new(pool *p)
     s->restartOnExit = FALSE;
     s->directive = APP_CLASS_UNKNOWN;
     s->processPriority = FCGI_DEFAULT_PRIORITY;
+    s->envp = &fcgi_empty_env;
+    
 #ifdef WIN32
-    s->listenFd = (int)INVALID_HANDLE_VALUE;
+    s->listenFd = (int) INVALID_HANDLE_VALUE;
 #else
     s->listenFd = -2;
 #endif
-    s->envp = &fcgi_empty_env;
 
     return s;
 }
@@ -414,56 +407,13 @@ fcgi_util_fs_create_procs(pool *p, int num)
     for (i = 0; i < num; i++) {
 #ifdef WIN32
         proc[i].handle = INVALID_HANDLE_VALUE;
+        proc[i].terminationEvent = INVALID_HANDLE_VALUE;
 #endif
         proc[i].pid = 0;
-        proc[i].state = STATE_READY;
+        proc[i].state = FCGI_READY;
     }
     return proc;
 }
-
-/*
- *----------------------------------------------------------------------
- *
- * fcgi_util_lock_fd
- *
- *      Provide file locking via fcntl(2) function call.  This
- *      code has been borrowed from Stevens "Advanced Unix
- *      Programming", page 370.
- *
- * Inputs:
- *      File descriptor to be locked, offsets within the file.
- *
- * Results:
- *      0 on successful locking, -1 otherwise
- *
- * Side effects:
- *      File pointed to by file descriptor is locked or unlocked.
- *      Provided macros allow for both blocking and non-blocking
- *      behavior.
- *
- *----------------------------------------------------------------------
- */
-
-#ifndef WIN32
-int 
-fcgi_util_lock_fd(int fd, int cmd, int type, off_t offset, int whence, off_t len)
-{
-    int res = 0;
-    struct flock lock;
-
-    lock.l_type = type;       /* F_RDLCK, F_WRLCK, F_UNLCK */
-    lock.l_start = offset;    /* byte offset, relative to whence */
-    lock.l_whence = whence;   /* SEEK_SET, SEET_CUR, SEEK_END */
-    lock.l_len = len;         /* # of bytes, (0 indicates to EOF) */
-
-    /* Don't be fooled into thinking we've set a lock when we've
-       merely caught a signal.  */
-
-    /* This is OK only if there is a hard_timeout() in effect! */
-    while ((res = fcntl(fd, cmd, &lock)) == -1 && errno == EINTR);
-    return res;
-}
-#endif    
 
 int fcgi_util_gettimeofday(struct timeval *Time) {
 #ifdef WIN32
@@ -486,94 +436,4 @@ int fcgi_util_gettimeofday(struct timeval *Time) {
 #endif
 }
 
-#ifdef WIN32
 
-/*
- * We allow only one writer at a time and a writer can proceed only
- * when there are no readers.
- *
- * @@@ For named pipes we could lock only the process we're going to waste.
- */
-
-FcgiRWLock * fcgi_rdwr_create() 
-{
-	FcgiRWLock *newlock = NULL;
-
-	newlock = (FcgiRWLock *) malloc(sizeof(FcgiRWLock));
-	ap_assert(newlock);
-
-	newlock->write_lock = CreateEvent(NULL, FALSE, TRUE, NULL);
-    newlock->mutex = CreateMutex(NULL, FALSE, NULL);
-	newlock->counter = 0;
-
-	return newlock;
-}
-
-void fcgi_rdwr_destroy(FcgiRWLock *lock) 
-{
-	CloseHandle(lock->write_lock);
-    CloseHandle(lock->mutex);
-	free(lock);
-}
-
-int fcgi_rdwr_lock(FcgiRWLock *lock, int type) 
-{
-	if (type == WRITER)
-    {
-		WaitForSingleObject(lock->write_lock, INFINITE);
-    }
-    else 
-    {
-        WaitForSingleObject(lock->mutex, INFINITE);
-        if (lock->counter == 0)
-        {
-		    WaitForSingleObject(lock->write_lock, INFINITE);
-	    }
-        ++lock->counter;
-        ReleaseMutex(lock->mutex);
-    }
-
-	return 0;
-}
-
-int fcgi_rdwr_unlock(FcgiRWLock *lock, int type) 
-{
-	if (type == WRITER)
-    {
-        SetEvent(lock->write_lock);
-    }
-    else
-    {
-        WaitForSingleObject(lock->mutex, INFINITE);
-        --lock->counter;
-        if (lock->counter == 0) 
-        {
-		    SetEvent(lock->write_lock);
-        }
-        ReleaseMutex(lock->mutex);
-    }
-
-	return 0;
-}
-
-int fcgi_rdwr_try_lock(FcgiRWLock *lock, int type) 
-{
-    DWORD rc;
-
-	if (type == WRITER)
-    {
-		rc = WaitForSingleObject(lock->write_lock, 0);
-        if (rc == WAIT_TIMEOUT || rc == WAIT_FAILED)
-        {
-            return -1;
-        }
-    }
-    else
-    {
-        ap_assert(0);
-    }
-
-    return 0;
-}
-    
-#endif

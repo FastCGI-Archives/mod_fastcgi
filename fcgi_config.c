@@ -1,9 +1,12 @@
 /*
- * $Id: fcgi_config.c,v 1.25 2001/02/19 06:00:09 robs Exp $
+ * $Id: fcgi_config.c,v 1.26 2001/03/26 15:35:39 robs Exp $
  */
 
 #include "fcgi.h"
 
+#ifdef WIN32 
+#pragma warning( disable : 4100 4706 )
+#endif
 
 /*******************************************************************************
  * Get the next configuration directive argument, & return an in_addr and port.
@@ -64,6 +67,30 @@ static const char *get_u_short(pool *p, const char **arg,
 
 	*num = (u_short) tmp;
 
+    return NULL;
+}
+
+static const char *get_int(pool *p, const char **arg, int *num, int min)
+{
+    char *cp;
+    const char *val = ap_getword_conf(p, arg);
+
+    if (*val == '\0')
+    {
+        return "\"\"";
+    }
+
+    *num = (int) strtol(val, &cp, 10);
+
+    if (*cp != '\0')
+    {
+        return ap_pstrcat(p, "can't parse ", "\"", val, "\"", NULL);
+    }
+    else if (*num < min)
+    {
+        return ap_psprintf(p, "\"%d\" must be >= %d", *num, min);
+    }
+            
     return NULL;
 }
 
@@ -466,6 +493,12 @@ const char *fcgi_config_new_static_server(cmd_parms *cmd, void *dummy, const cha
     char **envp = ap_pcalloc(tp, sizeof(char *) * (MAX_INIT_ENV_VARS + 3));
     unsigned int envc = 0;
 
+#ifdef WIN32
+    HANDLE mutex = ap_create_mutex(NULL);
+    
+    SetHandleInformation(mutex, HANDLE_FLAG_INHERIT, TRUE);
+#endif
+
     if (*fs_path == '\0')
         return "AppClass requires a pathname!?";
 
@@ -495,8 +528,7 @@ const char *fcgi_config_new_static_server(cmd_parms *cmd, void *dummy, const cha
         }
     }
 
-    err = fcgi_util_fs_is_path_ok(tp, fs_path, NULL, cmd->server->server_uid,
-                          cmd->server->server_gid);
+    err = fcgi_util_fs_is_path_ok(tp, fs_path, NULL);
     if (err != NULL) {
         return ap_psprintf(tp, "%s: \"%s\" %s", name, fs_path, err);
     }
@@ -511,6 +543,8 @@ const char *fcgi_config_new_static_server(cmd_parms *cmd, void *dummy, const cha
     // TCP FastCGI applications require SystemRoot be present in the environment
     // Put it in both for consistency to the application
     fcgi_config_set_env_var(tp, envp, &envc, "SystemRoot");
+
+    s->mutex_env_string = ap_psprintf(p, "_FCGI_MUTEX_=%ld", mutex);;
 #else
     if (fcgi_wrapper) {
         struct passwd *pw;
@@ -552,7 +586,7 @@ const char *fcgi_config_new_static_server(cmd_parms *cmd, void *dummy, const cha
                 return invalid_value(tp, name, fs_path, option, err);
         }
         else if (strcasecmp(option, "-init-start-delay") == 0) {
-            if ((err = get_u_int(tp, &arg, &s->initStartDelay, 0)))
+            if ((err = get_int(tp, &arg, &s->initStartDelay, 0)))
                 return invalid_value(tp, name, fs_path, option, err);
         }
         else if (strcasecmp(option, "-priority") == 0) {
@@ -602,7 +636,7 @@ const char *fcgi_config_new_static_server(cmd_parms *cmd, void *dummy, const cha
                 name, fs_path);
     }
 
-    /* Move env array to a surviving pool, leave an extra slot for WIN32 _FCGI_MUTEX_ */
+    /* Move env array to a surviving pool */
     ++envc;
     s->envp = (char **)ap_palloc(p, sizeof(char *) * ++envc);
     memcpy(s->envp, envp, sizeof(char *) * envc);
@@ -783,11 +817,11 @@ const char *fcgi_config_set_config(cmd_parms *cmd, void *dummy, const char *arg)
                 return invalid_value(tp, name, NULL, option, err);
         }
         else if (strcasecmp(option, "-minProcesses") == 0) {
-            if ((err = get_u_int(tp, &arg, &dynamicMinProcs, 0)))
+            if ((err = get_int(tp, &arg, &dynamicMinProcs, 0)))
                 return invalid_value(tp, name, NULL, option, err);
         }
         else if (strcasecmp(option, "-maxClassProcesses") == 0) {
-            if ((err = get_u_int(tp, &arg, &dynamicMaxClassProcs, 1)))
+            if ((err = get_int(tp, &arg, &dynamicMaxClassProcs, 1)))
                 return invalid_value(tp, name, NULL, option, err);
         }
         else if (strcasecmp(option, "-killInterval") == 0) {
@@ -803,13 +837,15 @@ const char *fcgi_config_set_config(cmd_parms *cmd, void *dummy, const char *arg)
                 return invalid_value(tp, name, NULL, option, err);
         }
         else if ((strcasecmp(option, "-singleThreshold") == 0)
-		|| (strcasecmp(option, "-singleThreshhold") == 0)) {
-            if ((err = get_u_int(tp, &arg, &dynamicThreshold1, 0)))
+		    || (strcasecmp(option, "-singleThreshhold") == 0)) 
+        {
+            if ((err = get_int(tp, &arg, &dynamicThreshold1, 0)))
                 return invalid_value(tp, name, NULL, option, err);
         }
         else if ((strcasecmp(option, "-multiThreshold") == 0)
-		|| (strcasecmp(option, "-multiThreshhold") == 0)) {
-            if ((err = get_u_int(tp, &arg, &dynamicThresholdN, 0)))
+		    || (strcasecmp(option, "-multiThreshhold") == 0)) 
+        {
+            if ((err = get_int(tp, &arg, &dynamicThresholdN, 0)))
                 return invalid_value(tp, name, NULL, option, err);
         }
         else if (strcasecmp(option, "-startDelay") == 0) {
@@ -892,7 +928,7 @@ const char *fcgi_config_new_auth_server(cmd_parms * const cmd,
 
     /* Make sure its already configured or at least a candidate for dynamic */
     if (fcgi_util_fs_get_by_id(auth_server, uid, gid) == NULL) {
-        const char *err = fcgi_util_fs_is_path_ok(tp, auth_server, NULL, uid, gid);
+        const char *err = fcgi_util_fs_is_path_ok(tp, auth_server, NULL);
         if (err)
             return ap_psprintf(tp, "%s: \"%s\" %s", cmd->cmd->name, auth_server, err);
     }

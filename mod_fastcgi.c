@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.107 2001/03/05 18:19:59 robs Exp $
+ *  $Id: mod_fastcgi.c,v 1.108 2001/03/26 15:35:40 robs Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -73,7 +73,7 @@
 
 #ifndef timersub
 #define	timersub(a, b, result)                              \
-do {                                                        \
+do {                                                  \
     (result)->tv_sec = (a)->tv_sec - (b)->tv_sec;           \
     (result)->tv_usec = (a)->tv_usec - (b)->tv_usec;        \
     if ((result)->tv_usec < 0) {                            \
@@ -105,6 +105,7 @@ char *fcgi_dynamic_dir = NULL;            /* directory for the dynamic
                                                   * fastcgi apps' sockets */
 
 #ifdef WIN32
+#pragma warning( disable : 4706 4100 4127)
 fcgi_pm_job *fcgi_dynamic_mbox = NULL;
 HANDLE *fcgi_dynamic_mbox_mutex = NULL;
 HANDLE fcgi_pm_thread = INVALID_HANDLE_VALUE;
@@ -113,13 +114,13 @@ HANDLE fcgi_pm_thread = INVALID_HANDLE_VALUE;
 char *fcgi_empty_env = NULL;
 
 u_int dynamicMaxProcs = FCGI_DEFAULT_MAX_PROCS;
-u_int dynamicMinProcs = FCGI_DEFAULT_MIN_PROCS;
-u_int dynamicMaxClassProcs = FCGI_DEFAULT_MAX_CLASS_PROCS;
+int   dynamicMinProcs = FCGI_DEFAULT_MIN_PROCS;
+int dynamicMaxClassProcs = FCGI_DEFAULT_MAX_CLASS_PROCS;
 u_int dynamicKillInterval = FCGI_DEFAULT_KILL_INTERVAL;
 u_int dynamicUpdateInterval = FCGI_DEFAULT_UPDATE_INTERVAL;
 float dynamicGain = FCGI_DEFAULT_GAIN;
-u_int dynamicThreshold1 = FCGI_DEFAULT_THRESHOLD_1;
-u_int dynamicThresholdN = FCGI_DEFAULT_THRESHOLD_N;
+int dynamicThreshold1 = FCGI_DEFAULT_THRESHOLD_1;
+int dynamicThresholdN = FCGI_DEFAULT_THRESHOLD_N;
 u_int dynamicPleaseStartDelay = FCGI_DEFAULT_START_PROCESS_DELAY;
 u_int dynamicAppConnectTimeout = FCGI_DEFAULT_APP_CONN_TIMEOUT;
 char **dynamicEnvp = &fcgi_empty_env;
@@ -135,7 +136,7 @@ u_int dynamic_idle_timeout = FCGI_DEFAULT_IDLE_TIMEOUT;
 /*******************************************************************************
  * Construct a message and write it to the pm_pipe.
  */
-static void send_to_pm(pool * const p, const char id, const char * const fs_path,
+static void send_to_pm(const char id, const char * const fs_path,
      const char *user, const char * const group, const unsigned long q_usec,
      const unsigned long req_usec)
 {
@@ -157,7 +158,7 @@ static void send_to_pm(pool * const p, const char id, const char * const fs_path
 
     switch(id) {
 
-    case PLEASE_START:
+    case FCGI_START:
 #ifdef WIN32
         job->id = id;
         job->fs_path = strdup(fs_path);
@@ -170,7 +171,7 @@ static void send_to_pm(pool * const p, const char id, const char * const fs_path
 #endif
         break;
 
-    case CONN_TIMEOUT:
+    case FCGI_TIMEOUT:
 #ifdef WIN32
         job->id = id;
         job->fs_path = strdup(fs_path);
@@ -183,7 +184,7 @@ static void send_to_pm(pool * const p, const char id, const char * const fs_path
 #endif
         break;
 
-    case REQ_COMPLETE:
+    case FCGI_COMPLETE:
 #ifdef WIN32
         job->id = id;
         job->fs_path = strdup(fs_path);
@@ -282,7 +283,7 @@ static void init_module(server_rec *s, pool *p)
 #endif
 }
 
-static void fcgi_child_init(server_rec *server_conf, pool *p)
+static void fcgi_child_init(server_rec *dc0, pool *dc1)
 {
 #ifdef WIN32
     /* Create the Event Handlers */
@@ -297,8 +298,8 @@ static void fcgi_child_init(server_rec *server_conf, pool *p)
     return;
 }
 
-static void fcgi_child_exit(server_rec *server_conf, pool *p) {
-
+static void fcgi_child_exit(server_rec *dc0, pool *dc1) 
+{
 #ifdef WIN32
     /* Signaling the PM thread tp exit*/
     SetEvent(fcgi_event_handles[TERM_EVENT]);
@@ -734,17 +735,8 @@ static void close_connection_to_fs(fcgi_request *fr)
         ap_pclosesocket(rp, fr->fd);
     }
 
-    if (fr->dynamic) {
-#ifdef WIN32
-        if (fr->lockFd != NULL) {
-            fcgi_rdwr_unlock(fr->lockFd, READER);
-        }
-#else
-        if (fr->lockFd >= 0) {
-            ap_pclosef(rp, fr->lockFd);
-        }
-#endif
-
+    if (fr->dynamic) 
+    {
         if (fr->keepReadingFromFcgiApp == FALSE) {
             /* XXX REQ_COMPLETE is only sent for requests which complete
              * normally WRT the fcgi app.  There is no data sent for
@@ -763,7 +755,7 @@ static void close_connection_to_fs(fcgi_request *fr)
                 timersub(&fr->queueTime, &fr->startTime, &qtime);
                 timersub(&fr->completeTime, &fr->queueTime, &rtime);
                 
-                send_to_pm(rp, REQ_COMPLETE, fr->fs_path,
+                send_to_pm(FCGI_COMPLETE, fr->fs_path,
                     fr->user, fr->group,
                     qtime.tv_sec * 1000000 + qtime.tv_usec,
                     rtime.tv_sec * 1000000 + rtime.tv_usec);
@@ -773,11 +765,6 @@ static void close_connection_to_fs(fcgi_request *fr)
 }
 
 #ifdef WIN32
-
-static void lock_cleanup(void * data)
-{
-    fcgi_rdwr_unlock((FcgiRWLock *) data, READER);
-}
 
 static int set_nonblocking(SOCKET fd, int nonblocking)
 {
@@ -829,7 +816,8 @@ static int open_connection_to_fs(fcgi_request *fr)
 #endif
 
     /* Create the connection point */
-    if (fr->dynamic) {
+    if (fr->dynamic) 
+    {
         socket_path = fcgi_util_socket_hash_filename(rp, fr->fs_path, fr->user, fr->group);
         socket_path = fcgi_util_socket_make_path_absolute(rp, socket_path, 1);
 
@@ -843,7 +831,9 @@ static int open_connection_to_fs(fcgi_request *fr)
             return FCGI_FAILED;
         }
 #endif
-    } else {
+    } 
+    else 
+    {
 #ifdef WIN32
         if (fr->fs->dest_addr != NULL) {
             socket_addr = fr->fs->dest_addr;
@@ -860,80 +850,76 @@ static int open_connection_to_fs(fcgi_request *fr)
         socket_addr_len = fr->fs->socket_addr_len;
     }
 
-    /* Dynamic app's lockfile handling */
-    if (fr->dynamic) {
-#ifndef WIN32
-        const char *lockFileName = fcgi_util_socket_get_lock_filename(rp, socket_path);
-        struct stat  lstbuf;
-#endif
-        struct stat  bstbuf;
-        int          result = 0;
-
-        do {
+    if (fr->dynamic)
+    {
 #ifdef WIN32
-            if (fr->fs != NULL)
+        if (fr->fs && fr->fs->restartTime)
 #else
-            if (stat(lockFileName, &lstbuf) == 0 &&	S_ISREG(lstbuf.st_mode))
+        struct stat sock_stat;
+        
+        if (stat(socket_path, &sock_stat) == 0)
 #endif
+        {
+            // It exists
+            if (dynamicAutoUpdate) 
             {
-                if (dynamicAutoUpdate && (stat(fr->fs_path, &bstbuf) == 0)
-#ifdef WIN32
-                    && ((fr->fs->restartTime > 0) && (fr->fs->restartTime < bstbuf.st_mtime)))
-#else
-                    && (lstbuf.st_mtime < bstbuf.st_mtime)) 
-#endif
+                struct stat app_stat;
+        
+                /* TODO: follow sym links */
+        
+                if (stat(fr->fs_path, &app_stat) == 0)
                 {
-                    struct timeval tv = {1, 0};
-
-                    /* Its already running, but there's a newer one,
-                     * ask the process manager to start it.
-                     * it will notice that the binary is newer,
-                     * and do a restart instead.
-                     */
-                    send_to_pm(rp, PLEASE_START, fr->fs_path, fr->user, fr->group, 0, 0);
-
-                    /* Avoid sleep/alarm interactions */
-                    ap_select(0, NULL, NULL, NULL, &tv);
-                }
 #ifdef WIN32
-                fr->lockFd = fr->fs->dynamic_lock;
-                result = 1;
+                    if (fr->fs->restartTime < app_stat.st_mtime)
 #else
-                fr->lockFd = ap_popenf(rp, lockFileName, O_APPEND, 0);
-                result = (fr->lockFd < 0) ? (0) : (1);
+                    if (sock_stat.st_mtime < app_stat.st_mtime)
 #endif
-            } else {
-                struct timeval tv = {1, 0};
-
-                send_to_pm(rp, PLEASE_START, fr->fs_path, fr->user, fr->group, 0, 0);
+                    {
+#ifndef WIN32
+                        struct timeval tv = {1, 0};
+#endif
+                        /* 
+                         * There's a newer one, request a restart.
+                         */
+                        send_to_pm(FCGI_RESTART, fr->fs_path, fr->user, fr->group, 0, 0);
 
 #ifdef WIN32
-                Sleep(0);
+                        Sleep(1000);
 #else
+                        /* Avoid sleep/alarm interactions */
+                        ap_select(0, NULL, NULL, NULL, &tv);
+#endif
+                    }
+                }
+            }
+        }
+        else
+        {
+            send_to_pm(FCGI_START, fr->fs_path, fr->user, fr->group, 0, 0);
+        
+            /* Wait until it looks like its running */
+
+            for (;;)
+            {
+#ifdef WIN32
+                Sleep(1000);
+
+                fr->fs = fcgi_util_fs_get_by_id(fr->fs_path, 0, 0);
+
+                if (fr->fs && fr->fs->restartTime)
+#else
+                struct timeval tv = {1, 0};
+                
                 /* Avoid sleep/alarm interactions */
                 ap_select(0, NULL, NULL, NULL, &tv);
+
+                if (stat(socket_path, &sock_stat) == 0)
 #endif
+                {
+                    break;
+                }
             }
-#ifdef WIN32
-            fr->fs = fcgi_util_fs_get_by_id(fr->fs_path, 0, 0);
-#endif
-        } while (result != 1);
-
-        /* Block until we get a shared (non-exclusive) read Lock */
-        if (fcgi_wait_for_shared_read_lock(fr->lockFd) < 0) {
-            ap_log_rerror(FCGI_LOG_ERR, r,
-                "FastCGI: failed to connect to server \"%s\": "
-                "can't obtain shared read lock", fr->fs_path);
-            return FCGI_FAILED;
         }
-
-#ifdef WIN32
-        ap_block_alarms();
-        ap_register_cleanup(rp, (void *) fr->lockFd, lock_cleanup, ap_null_cleanup);
-        ap_unblock_alarms();
-#endif
-
-        FCGIDBG2("got_dynamic_shared_read_lock: %s", fr->fs_path);
     }
 
 #ifdef WIN32
@@ -985,7 +971,9 @@ static int open_connection_to_fs(fcgi_request *fr)
                 break; 
             }
 
-            if (GetLastError() != ERROR_PIPE_BUSY) {
+            if (GetLastError() != ERROR_PIPE_BUSY 
+                && GetLastError() != ERROR_FILE_NOT_FOUND) 
+            {
                 ap_log_rerror(FCGI_LOG_ERR, r,
                     "FastCGI: failed to connect to server \"%s\": "
                     "CreateFile() failed", fr->fs_path);
@@ -996,7 +984,7 @@ static int open_connection_to_fs(fcgi_request *fr)
             ready = WaitNamedPipe(socket_path, interval);
 
             if (fr->dynamic && !ready) {
-                send_to_pm(rp, CONN_TIMEOUT, fr->fs_path, fr->user, fr->group, 0, 0);
+                send_to_pm(FCGI_TIMEOUT, fr->fs_path, fr->user, fr->group, 0, 0);
             }
 
             if (fcgi_util_gettimeofday(&fr->queueTime) < 0) {
@@ -1126,7 +1114,7 @@ static int open_connection_to_fs(fcgi_request *fr)
                 break;
 
             /* select() timed out */
-            send_to_pm(rp, CONN_TIMEOUT, fr->fs_path, fr->user, fr->group, 0, 0);
+            send_to_pm(FCGI_TIMEOUT, fr->fs_path, fr->user, fr->group, 0, 0);
         } while ((fr->queueTime.tv_sec - fr->startTime.tv_sec) < (int)dynamicAppConnectTimeout);
 
         /* XXX These can be moved down when dynamic vars live is a struct */
@@ -1412,7 +1400,7 @@ static int do_work(request_rec *r, fcgi_request *fr)
                     struct timeval idle_time;
                     timersub(&fr->queueTime, &dynamic_last_activity_time, &idle_time);
                     if (idle_time.tv_sec > idle_timeout) {
-                        send_to_pm(rp, CONN_TIMEOUT, fr->fs_path, fr->user, fr->group, 0, 0);
+                        send_to_pm(FCGI_TIMEOUT, fr->fs_path, fr->user, fr->group, 0, 0);
                         ap_log_rerror(FCGI_LOG_ERR_NOERRNO, r,
                             "FastCGI: comm with (dynamic) server \"%s\" aborted: (first read) idle timeout (%d sec)",
                             fr->fs_path, idle_timeout);
@@ -1430,7 +1418,7 @@ static int do_work(request_rec *r, fcgi_request *fr)
                 }
                 else {
                     /* Killed time somewhere.. client read? */
-                    send_to_pm(rp, CONN_TIMEOUT, fr->fs_path, fr->user, fr->group, 0, 0);
+                    send_to_pm(FCGI_TIMEOUT, fr->fs_path, fr->user, fr->group, 0, 0);
                     dynamic_first_read = qwait.tv_sec / dynamicPleaseStartDelay + 1;
                     timeOut.tv_sec = dynamic_first_read * dynamicPleaseStartDelay;
                     timeOut.tv_usec = 100000;  /* fudge for select() slop */
@@ -1458,12 +1446,21 @@ static int do_work(request_rec *r, fcgi_request *fr)
             else {
                 int stopTime = time(NULL) + timeOut.tv_sec;
 
-                if (BufferLength(fr->serverOutputBuffer) == 0) {
+                if (BufferLength(fr->serverOutputBuffer) == 0) 
+                {
                     status = 0;
 
-                    while ((timeOut.tv_sec != 0) && (time(NULL) <= stopTime)) {
-                        if (PeekNamedPipe((HANDLE) fr->fd,NULL, 0, NULL, &bytesavail, NULL) &&
-                            bytesavail > 0) 
+                    while ((timeOut.tv_sec != 0) && (time(NULL) <= stopTime)) 
+                    {
+                        BOOL ok = PeekNamedPipe((HANDLE) fr->fd,NULL, 0, NULL, &bytesavail, NULL);
+                        if (! ok) 
+                        {
+                            ap_log_rerror(FCGI_LOG_ERR, r,
+                                "FastCGI: comm with sever \"%s\" aborted: PeekNamedPipe() failed",
+                                fr->fs_path);
+                            return server_error(fr);
+                        }
+                        if (bytesavail > 0) 
                         {
                             status =1;
                             break;
@@ -1491,7 +1488,7 @@ static int do_work(request_rec *r, fcgi_request *fr)
 
                     timersub(&fr->queueTime, &fr->startTime, &qwait);
 
-                    send_to_pm(rp, CONN_TIMEOUT, fr->fs_path, fr->user, fr->group, 0, 0);
+                    send_to_pm(FCGI_TIMEOUT, fr->fs_path, fr->user, fr->group, 0, 0);
 
                     dynamic_first_read = qwait.tv_sec / dynamicPleaseStartDelay + 1;
                 }
@@ -1672,7 +1669,7 @@ static fcgi_request *create_fcgi_request(request_rec * const r, const char *fs_p
     if (fs == NULL) {
         /* Its a request for a dynamic FastCGI application */
         const char * const err =
-            fcgi_util_fs_is_path_ok(p, fs_path, my_finfo, r->server->server_uid, r->server->server_gid);
+            fcgi_util_fs_is_path_ok(p, fs_path, my_finfo);
 
         if (err) {
             ap_log_rerror(FCGI_LOG_ERR_NOERRNO, r, "FastCGI: invalid (dynamic) server \"%s\": %s", fs_path, err);

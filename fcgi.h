@@ -1,9 +1,13 @@
 /*
- * $Id: fcgi.h,v 1.29 2001/03/05 15:45:16 robs Exp $
+ * $Id: fcgi.h,v 1.30 2001/03/26 15:35:38 robs Exp $
  */
 
 #ifndef FCGI_H
 #define FCGI_H
+
+#ifdef WIN32
+#pragma warning( disable : 4115 ) 
+#endif
 
 /* Apache header files */
 #include "httpd.h"
@@ -28,6 +32,7 @@
 
 #ifdef WIN32
 #include "multithread.h"
+#pragma warning( default : 4115)
 #else
 #include <sys/un.h>
 #endif
@@ -53,13 +58,6 @@ typedef struct {
 #define TERM_EVENT 1   /* termination event */
 #define WAKE_EVENT 2   /* notification of child Fserver dieing */
 
-/* Reader/Writer lock structure for NT */
-typedef struct _FcgiRWLock {
-    HANDLE write_lock;
-    HANDLE mutex;
-    long counter;          /* number of readers */
-} FcgiRWLock;
-
 typedef struct _fcgi_pm_job {
     char id;
     char *fs_path;
@@ -71,22 +69,25 @@ typedef struct _fcgi_pm_job {
 } fcgi_pm_job;
 #endif
 
+enum { 
+    FCGI_RUNNING,             /* currently running */
+    FCGI_START,               /* needs to be started by PM */
+    FCGI_VICTIM,              /* SIGTERM was sent by PM */
+    FCGI_KILLED,              /* a wait() collected VICTIM */
+    FCGI_READY                /* empty cell, init state */
+} process_state;
+
 /*
  * ServerProcess holds data for each process associated with
  * a class.  It is embedded in fcgi_server below.
  */
 typedef struct _FcgiProcessInfo {
 #ifdef WIN32
-    HANDLE handle;            /* handle of associated process */
+    HANDLE handle;                   /* process handle */
+    HANDLE terminationEvent;         /* Event used to signal process termination */
 #endif
     pid_t pid;                       /* pid of associated process */
-    enum {STATE_STARTED,             /* currently running */
-          STATE_NEEDS_STARTING,      /* needs to be started by PM */
-          STATE_KILL,                /* kill() is needed */
-          STATE_VICTIM,              /* SIGTERM was sent by PM */
-          STATE_KILLED,              /* a wait() collected VICTIM */
-          STATE_READY}               /* empty cell, init state */
-          state;                     /* state of the process */
+    enum process_state state;        /* state of the process */
 } ServerProcess;
 
 /*
@@ -120,6 +121,7 @@ typedef struct _FastCgiServerInfo {
 #ifdef WIN32
     struct sockaddr *dest_addr;     /* for local apps on NT need socket address */
                                     /* bound to localhost */
+    const char *mutex_env_string;   /* string holding the accept mutex handle */
 #endif
     int socket_addr_len;            /* Length of socket */
     enum {APP_CLASS_UNKNOWN,
@@ -159,11 +161,6 @@ typedef struct _FastCgiServerInfo {
     u_long totalQueueTime;          /* microseconds spent by the web server
                                      * waiting to connect to the fastcgi app
                                      * since the last dynamicUpdateInterval. */
-#ifdef WIN32
-    FcgiRWLock *dynamic_lock;       /* dynamic server lock */
-    HANDLE hPipeMutex;
-#endif
-
     struct _FastCgiServerInfo *next;
 } fcgi_server;
 
@@ -211,11 +208,6 @@ typedef struct {
     struct timeval startTime;       /* dynamic app's connect() attempt start time */
     struct timeval queueTime;       /* dynamic app's connect() complete time */
     struct timeval completeTime;    /* dynamic app's connection close() time */
-#ifdef WIN32
-    FcgiRWLock *lockFd;             /* dynamic app's reader/writer lock */
-#else
-    int lockFd;                     /* dynamic app's lockfile file descriptor */
-#endif
     int keepReadingFromFcgiApp;     /* still more to read from fcgi app? */
     const char *user;               /* user used to invoke app (suexec) */
     const char *group;              /* group used to invoke app (suexec) */
@@ -232,9 +224,10 @@ typedef struct {
 #define SCAN_CGI_SRV_REDIRECT   -3
 
 /* Opcodes for Server->ProcMgr communication */
-#define PLEASE_START 83        /* 'S' - start */
-#define CONN_TIMEOUT 84        /* 'T' - timeout */
-#define REQ_COMPLETE 67        /* 'C' - complete */
+#define FCGI_START    83        /* 'S' - start */
+#define FCGI_RESTART  82        /* 'R' - restart */
+#define FCGI_TIMEOUT  84        /* 'T' - timeout */
+#define FCGI_COMPLETE 67        /* 'C' - complete */
 
 /* Authorizer types, for auth directives handling */
 #define FCGI_AUTH_TYPE_AUTHENTICATOR  0
@@ -409,32 +402,10 @@ void fcgi_buf_get_to_array(Buffer *buf,array_header *arr, size_t len);
  * fcgi_util.c
  */
 
-/* Set a shared read lock, wait until you have it.  */
-#ifdef WIN32
-#define fcgi_wait_for_shared_read_lock(fd) fcgi_rdwr_lock(fd, READER)
-#else
-#define fcgi_wait_for_shared_read_lock(fd) fcgi_util_lock_fd((fd), F_SETLKW, F_RDLCK, 0, SEEK_SET, 0)
-#endif
-
-/* Set an exclusive write lock, no wait, failure->errno==EACCES.  */
-#ifdef WIN32
-#define fcgi_get_exclusive_write_lock_no_wait(fd) fcgi_rdwr_try_lock(fd, WRITER)
-#else
-#define fcgi_get_exclusive_write_lock_no_wait(fd) fcgi_util_lock_fd(fd, F_SETLK, F_WRLCK, 0, SEEK_SET, 0)
-#endif
-
-/* Set a shared write lock, wait until you have it.  */
-#ifdef WIN32
-#define fcgi_wait_for_shared_write_lock(fd) fcgi_rdwr_lock(fd, WRITER)
-#else
-#define fcgi_wait_for_shared_write_lock(fd) fcgi_util_lock_fd(fd, F_SETLKW, F_WRLCK, 0, SEEK_SET, 0)
-#endif
-
 char *fcgi_util_socket_hash_filename(pool *p, const char *path,
     const char *user, const char *group);
 const char *fcgi_util_socket_make_path_absolute(pool * const p,
     const char *const file, const int dynamic);
-const char *fcgi_util_socket_get_lock_filename(pool *p, const char *socket_path);
 #ifndef WIN32
 const char *fcgi_util_socket_make_domain_addr(pool *p, struct sockaddr_un **socket_addr,
     int *socket_addr_len, const char *socket_path);
@@ -446,23 +417,15 @@ const char *fcgi_util_check_access(pool *tp,
     const int mode, const uid_t uid, const gid_t gid);
 fcgi_server *fcgi_util_fs_get_by_id(const char *ePath, uid_t uid, gid_t gid);
 fcgi_server *fcgi_util_fs_get(const char *ePath, const char *user, const char *group);
-const char *fcgi_util_fs_is_path_ok(pool * const p, const char * const fs_path,
-    struct stat *finfo, const uid_t uid, const gid_t gid);
+const char *fcgi_util_fs_is_path_ok(pool * const p, const char * const fs_path, struct stat *finfo);
 fcgi_server *fcgi_util_fs_new(pool *p);
 void fcgi_util_fs_add(fcgi_server *s);
 const char *fcgi_util_fs_set_uid_n_gid(pool *p, fcgi_server *s, uid_t uid, gid_t gid);
 ServerProcess *fcgi_util_fs_create_procs(pool *p, int num);
-int fcgi_util_lock_fd(int fd, int cmd, int type, off_t offset, int whence, off_t len);
 
 int fcgi_util_gettimeofday(struct timeval *);
 
 #ifdef WIN32
-FcgiRWLock * fcgi_rdwr_create(void);
-void fcgi_rdwr_destroy(FcgiRWLock *);
-int fcgi_rdwr_lock(FcgiRWLock *, int);
-int fcgi_rdwr_try_lock(FcgiRWLock *, int);
-int fcgi_rdwr_unlock(FcgiRWLock *, int);
-
 int fcgi_pm_add_job(fcgi_pm_job *new_job);
 #endif
 
@@ -504,13 +467,13 @@ extern fcgi_pm_job *fcgi_dynamic_mbox;
 #endif
 
 extern u_int dynamicMaxProcs;
-extern u_int dynamicMinProcs;
-extern u_int dynamicMaxClassProcs;
+extern int dynamicMinProcs;
+extern int dynamicMaxClassProcs;
 extern u_int dynamicKillInterval;
 extern u_int dynamicUpdateInterval;
 extern float dynamicGain;
-extern u_int dynamicThreshold1;
-extern u_int dynamicThresholdN;
+extern int dynamicThreshold1;
+extern int dynamicThresholdN;
 extern u_int dynamicPleaseStartDelay;
 extern u_int dynamicAppConnectTimeout;
 extern char **dynamicEnvp;
