@@ -2,7 +2,7 @@
 
  *) Don't invoke suexec when the user/group for the fastcgi application
     is the same as the apache main server.  This is consistent with 
-    apache's suexec handling.
+    apache's suexec handling.  Suggested by Nikolaus Rath [Nikolaus@rath.org].
 
  *) Reset the apache drop dead timer upon successful read or writes
     to/from the client.  This eliminates timeouts that were occuring
