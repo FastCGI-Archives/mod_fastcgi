@@ -1,5 +1,10 @@
 Changes with mod_fastcgi 2.2.2
 
+ *) Added support for blocking connect()s by setting appConnTimeout to 0.
+    Non-blocking connect()s (the default) can be troublesome on some platforms.
+    Its expected that blocking connect()s will become the default (and
+    non-blocking connect()s will become optional) in the next release.
+
  *) Dump a compile time error if the version of Apache is too old.
 
  *) Wrap the SIGPIPE handler manipulation code such that it is only applicable

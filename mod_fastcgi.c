@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.72 1999/05/31 02:10:57 roberts Exp $
+ *  $Id: mod_fastcgi.c,v 1.73 1999/06/07 05:24:50 roberts Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -777,12 +777,14 @@ static const char *open_connection_to_fs(fcgi_request *fr)
             "larger FD_SETSIZE", fr->fd, FD_SETSIZE);
     }
     
-    /* Set the socket non-blocking in order to govern our connect() wait */
-    if ((fd_flags = fcntl(fr->fd, F_GETFL, 0)) < 0)
-        return "fcntl(F_GETFL) failed";
-    if (fcntl(fr->fd, F_SETFL, fd_flags | O_NONBLOCK) < 0)
-        return "fcntl(F_SETFL) failed";
-
+    /* If appConnectTimeout is non-zero, setup do a non-blocking connect */
+    if ((fr->dynamic && dynamicAppConnectTimeout) || (!fr->dynamic && fr->fs->appConnectTimeout)) {
+        if ((fd_flags = fcntl(fr->fd, F_GETFL, 0)) < 0)
+            return "fcntl(F_GETFL) failed";
+        if (fcntl(fr->fd, F_SETFL, fd_flags | O_NONBLOCK) < 0)
+            return "fcntl(F_SETFL) failed";
+    }    
+                                                                          
     if (fr->dynamic && gettimeofday(&fr->startTime, NULL) < 0)
         return "gettimeofday() failed";
 
@@ -802,6 +804,8 @@ static const char *open_connection_to_fs(fcgi_request *fr)
     if (errno != EINPROGRESS)
         return "connect() failed";
 
+    /* The connect() is non-blocking */
+    
     errno = 0;
 
     if (fr->dynamic) {
@@ -866,9 +870,11 @@ static const char *open_connection_to_fs(fcgi_request *fr)
         return "select() error - THIS CAN'T HAPPEN!";
 
 ConnectionComplete:
-    /* Return to blocking mode */
-    if ((fcntl(fr->fd, F_SETFL, fd_flags)) < 0)
-        return "fcntl(F_SETFL) failed";
+    /* Return to blocking mode if it was set up */
+    if ((fr->dynamic && dynamicAppConnectTimeout) || (!fr->dynamic && fr->fs->appConnectTimeout)) {
+        if ((fcntl(fr->fd, F_SETFL, fd_flags)) < 0)
+            return "fcntl(F_SETFL) failed";
+    }    
         
 #ifdef TCP_NODELAY
     if (socket_addr->sa_family == AF_INET) {
@@ -882,6 +888,15 @@ ConnectionComplete:
     if (fr->dynamic) {
         if (gettimeofday(&(fr->queueTime),NULL) < 0)
             return "gettimeofday() failed";
+        
+        /* Improvise the non-blocking connect() CONN_TIMEOUT handling */
+        if (dynamicAppConnectTimeout == 0) {
+            int queue_wait_sec = fr->queueTime.tv_sec - fr->startTime.tv_sec;
+            if (queue_wait_sec > dynamicPleaseStartDelay) {
+                send_to_pm(rp, CONN_TIMEOUT, fr->fs_path, fr->user, fr->group,
+                    (unsigned long)queue_wait_sec*1000000, 0, 0);
+            }
+        }
     }
     
     return NULL;

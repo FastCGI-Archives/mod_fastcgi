@@ -1,6 +1,6 @@
 <!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">
 <html>
-<!-- $Id: mod_fastcgi.html,v 1.10 1999/04/24 03:43:38 roberts Exp $ -->
+<!-- $Id: mod_fastcgi.html,v 1.11 1999/06/07 05:24:52 roberts Exp $ -->
 
 <head>
 <title>Apache module mod_fastcgi</title>
@@ -185,7 +185,10 @@ the specified extension(s) as FastCGI applications:</p>
     sockets on many platforms.&nbsp; TCP sockets will become writeable as soon as a slot in
     the listen-queue is obtained (the three-way handshake completes), but before the
     connection is <code>accept()</code>ed by the application.&nbsp; Unix sockets appear to
-    need the connection to be <code>accept()</code>ed before becoming writeable.</dd>
+    need the connection to be <code>accept()</code>ed before becoming writeable.&nbsp; If set
+    to 0, a blocking <code>connect()</code> is used and the timeout is OS dependent.
+    &nbsp; Non-blocking <code>connect()</code>s can be troublesome and will likely become
+    optional rather than the default in the next release.</dd>
   <dt><code><b>-initial-env <em>name[=value</b><strong>]</strong> none</em></code></dt>
   <dd>A name-value pair to be passed in the initial environment when instances of the
     application are spawned.&nbsp; To pass a variable from the Apache environment, don't
@@ -261,7 +264,10 @@ the specified extension(s) as FastCGI applications:</p>
     than TCP sockets on many platforms.&nbsp; TCP sockets will become writeable as soon as a
     slot in the listen-queue is obtained (the three-way handshake completes), but before the
     connection is <code>accept()</code>ed by the application.&nbsp; Unix sockets appear to
-    need the connection to be <code>accept()</code>ed before becoming writeable.</dd>
+    need the connection to be <code>accept()</code>ed before becoming writeable.&nbsp; If set
+    to 0, a blocking <code>connect()</code> is used and the timeout is OS dependent.
+    &nbsp; Non-blocking <code>connect()</code>s can be troublesome and will likely become
+    optional rather than the default in the next release.</dd>
   <dt><code><strong>-autoUpdate</strong> <em>none</em></code></dt>
   <dd>This option causes mod_fastcgi to check the age of the application on disk before
     processing each request.&nbsp; If the application is more recent, the process manager is
