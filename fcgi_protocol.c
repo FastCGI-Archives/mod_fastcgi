@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_protocol.c,v 1.9 1999/09/10 04:37:40 roberts Exp $
+ * $Id: fcgi_protocol.c,v 1.10 1999/09/24 02:26:28 roberts Exp $
  */
 
 
@@ -51,7 +51,7 @@ static void build_begin_request(int role, int keepConnection,
 void fcgi_protocol_queue_begin_request(fcgi_request *fr)
 {
     FCGI_BeginRequestBody body;
-    u_int bodySize = sizeof(FCGI_BeginRequestBody);
+    int bodySize = sizeof(FCGI_BeginRequestBody);
 
     /* We should be the first ones to use this buffer */
     ap_assert(BufferLength(fr->serverOutputBuffer) == 0);
@@ -388,7 +388,7 @@ int fcgi_protocol_dequeue(pool *p, fcgi_request *fr)
 
                         /* Move any leftovers down */
                         if (*start_of_line && start_of_line != fr->fs_stderr) {
-                            int move_len = strlen(start_of_line);
+                            size_t move_len = strlen(start_of_line);
 
                             memmove(fr->fs_stderr, start_of_line, move_len);
                             *(fr->fs_stderr + move_len) = '\0';
