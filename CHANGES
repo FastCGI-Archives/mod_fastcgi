@@ -1,5 +1,7 @@
 Changes with mod_fastcgi 2.2.2
 
+ *) Cleanup some debug macros.
+
  *) Improved script stderr handling.  [based on suggestions by 
     David Birnbaum <davidb@chelsea.net>]
     

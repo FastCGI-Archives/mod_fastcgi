@@ -1,5 +1,5 @@
 /* 
- * $Id: fcgi.h,v 1.7 1999/02/25 02:49:12 roberts Exp $
+ * $Id: fcgi.h,v 1.8 1999/04/22 03:57:31 roberts Exp $
  */
 
 #ifndef FCGI_H
@@ -209,11 +209,11 @@ typedef struct
 #define	FCGI_LOG_DEBUG_NOERRNO    __FILE__,__LINE__,APLOG_DEBUG|APLOG_NOERRNO
 
 #ifdef FCGI_DEBUG
-#define FCGIDBG1(a)          ap_log_error(FCGI_LOG_DEBUG,NULL,a);
-#define FCGIDBG2(a,b)        ap_log_error(FCGI_LOG_DEBUG,NULL,a,b);
-#define FCGIDBG3(a,b,c)      ap_log_error(FCGI_LOG_DEBUG,NULL,a,b,c);
-#define FCGIDBG4(a,b,c,d)    ap_log_error(FCGI_LOG_DEBUG,NULL,a,b,c,d);
-#define FCGIDBG5(a,b,c,d,e)  ap_log_error(FCGI_LOG_DEBUG,NULL,a,b,c,d,e);
+#define FCGIDBG1(a)          ap_log_error(FCGI_LOG_DEBUG,fcgi_apache_main_server,a);
+#define FCGIDBG2(a,b)        ap_log_error(FCGI_LOG_DEBUG,fcgi_apache_main_server,a,b);
+#define FCGIDBG3(a,b,c)      ap_log_error(FCGI_LOG_DEBUG,fcgi_apache_main_server,a,b,c);
+#define FCGIDBG4(a,b,c,d)    ap_log_error(FCGI_LOG_DEBUG,fcgi_apache_main_server,a,b,c,d);
+#define FCGIDBG5(a,b,c,d,e)  ap_log_error(FCGI_LOG_DEBUG,fcgi_apache_main_server,a,b,c,d,e);
 #else
 #define FCGIDBG1(a)
 #define FCGIDBG2(a,b)

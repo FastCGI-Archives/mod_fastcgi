@@ -1,5 +1,5 @@
 /*
- * $Id: mod_fastcgi.h,v 1.13 1999/04/22 03:28:07 roberts Exp $
+ * $Id: mod_fastcgi.h,v 1.14 1999/04/22 03:57:31 roberts Exp $
  */
 
 #ifndef MOD_FASTCGI_H
@@ -71,8 +71,6 @@
 #define DEFAULT_SOCK_DIR "/tmp/fcgi"       /* Default dir for Unix/Domain sockets */
 
 #define FCGI_MAGIC_TYPE "application/x-httpd-fcgi"
-
-#undef FCGI_DEBUG
 
 #ifndef PATH_MAX
 #define PATH_MAX (1024)
