@@ -1,3 +1,8 @@
+Changes with mod_fastcgi 2.2.1
+
+ *) Fix an obvious copy-n-paste error in open_connection_to_fs() 
+    if TCP_NODELAY was defined (Don Locrasto [locrasto@iceminer.com]).
+
 Changes with mod_fastcgi 2.2.0
 
  *) Serious rewrite of mod_fastcgi.html.  An example conf will have

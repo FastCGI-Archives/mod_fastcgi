@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.62 1999/02/17 04:28:32 roy Exp $
+ *  $Id: mod_fastcgi.c,v 1.63 1999/02/20 05:16:57 roberts Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -842,7 +842,7 @@ ConnectionComplete:
         return "fcntl(F_SETFL) failed";
         
 #ifdef TCP_NODELAY
-    if (socket_addr.sa_family == AF_INET) {
+    if (socket_addr->sa_family == AF_INET) {
         /* We shouldn't be sending small packets and there's no application
          * level ack of the data we send, so disable Nagle */
         int set = 1;
