@@ -1,5 +1,9 @@
 2.4.1
 
+ *) Prevent the use of all but the "auth" directives from being used
+    anywhere but in global scope.  Prevent more than one instance
+    of the FastCgiWrapper directive.
+
  *) Return NOT_FOUND (404) or FORBIDDEN (403) instead of 
     INTERNAL_SERVER_ERROR (500) when there are configuration issues
     or the script does't exist.  Suggested by Jeff Lawson [bovine@ud.com].

@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_config.c,v 1.46 2002/12/23 03:13:15 robs Exp $
+ * $Id: fcgi_config.c,v 1.47 2003/02/04 00:54:11 robs Exp $
  */
 
 #define CORE_PRIVATE
@@ -454,6 +454,12 @@ const char *fcgi_config_set_socket_dir(cmd_parms *cmd, void *dummy, const char *
     const char *err;
     char * arg_nc;
 
+    err = ap_check_cmd_context(cmd, GLOBAL_ONLY);
+    if (err)
+    {
+        return err;
+    }
+
     if (fcgi_socket_dir) {
         return ap_psprintf(tp, "%s %s: already defined as \"%s\"",
                         name, arg, fcgi_socket_dir);
@@ -522,6 +528,18 @@ const char *fcgi_config_set_wrapper(cmd_parms *cmd, void *dummy, const char *arg
     pool * const tp = cmd->temp_pool;
     char * wrapper = NULL;
 
+    err = ap_check_cmd_context(cmd, GLOBAL_ONLY);
+    if (err)
+    {
+        return err;
+    }
+
+    if (fcgi_wrapper)
+    {
+        return ap_psprintf(tp, "%s was already set to \"%s\"",
+                           name, fcgi_wrapper);
+    }
+
     err = fcgi_config_set_fcgi_uid_n_gid(1);
     if (err != NULL)
         return ap_psprintf(tp, "%s %s: %s", name, arg, err);
@@ -584,6 +602,12 @@ const char *fcgi_config_new_static_server(cmd_parms *cmd, void *dummy, const cha
 #ifdef WIN32
     HANDLE mutex;
 #endif
+
+    err = ap_check_cmd_context(cmd, GLOBAL_ONLY);
+    if (err)
+    {
+        return err;
+    }
 
     if (*fs_path == '\0')
         return "AppClass requires a pathname!?";
@@ -822,6 +846,12 @@ const char *fcgi_config_new_external_server(cmd_parms *cmd, void *dummy, const c
     char *fs_path = ap_getword_conf(p, &arg);
     const char *option, *err;
 
+    err = ap_check_cmd_context(cmd, GLOBAL_ONLY);
+    if (err)
+    {
+        return err;
+    }
+
     if (!*fs_path) {
         return ap_pstrcat(tp, name, " requires a path and either a -socket or -host option", NULL);
     }
@@ -1008,6 +1038,12 @@ const char *fcgi_config_set_config(cmd_parms *cmd, void *dummy, const char *arg)
     /* Allocate temp storage for an initial environment */
     unsigned int envc = 0;
     char **envp = (char **)ap_pcalloc(tp, sizeof(char *) * (MAX_INIT_ENV_VARS + 3));
+
+    err = ap_check_cmd_context(cmd, GLOBAL_ONLY);
+    if (err)
+    {
+        return err;
+    }
 
     /* Parse the directive arguments */
     while (*arg) {
