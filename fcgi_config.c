@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_config.c,v 1.19 2000/04/27 15:14:27 robs Exp $
+ * $Id: fcgi_config.c,v 1.20 2000/04/28 13:41:03 robs Exp $
  */
 
 #include "fcgi.h"
@@ -109,6 +109,24 @@ static const char *get_float(pool *p, const char **arg,
     return NULL;
 }
 
+static const char *set_env_var(pool *p, char **envp, int *envc, char * var)
+{
+    if (*envc >= MAX_INIT_ENV_VARS) {
+        return "too many variables, must be <= MAX_INIT_ENV_VARS";
+    }
+
+    if (strchr(var, '=') == NULL) {
+        *(envp + *envc) = ap_pstrcat(p, var, "=", getenv(var), NULL);
+    }
+    else {
+        *(envp + *envc) = var;
+    }
+
+    (*envc)++;
+
+    return NULL;
+}
+
 /*******************************************************************************
  * Get the next configuration directive argument, & add it to an env array.
  * The pool arg should be permanent storage.
@@ -117,20 +135,11 @@ static const char *get_env_var(pool *p, const char **arg, char **envp, int *envc
 {
     char * const val = ap_getword_conf(p, arg);
 
-    if (*val == '\0')
+    if (*val == '\0') {
         return "\"\"";
+    }
 
-    if (*envc >= MAX_INIT_ENV_VARS)
-        return "too many variables, must be <= MAX_INIT_ENV_VARS";
-
-    if (strchr(val, '=') == NULL)
-        *(envp + *envc) = ap_pstrcat(p, val, "=", getenv(val), NULL);
-    else
-        *(envp + *envc) = val;
-
-    (*envc)++;
-
-    return NULL;
+    return set_env_var(p, envp, envc, val);
 }
 
 static const char *get_pass_header(pool *p, const char **arg, array_header **array)
@@ -454,7 +463,7 @@ const char *fcgi_config_new_static_server(cmd_parms *cmd, void *dummy, const cha
     const char *option, *err;
 
     /* Allocate temp storage for the array of initial environment variables */
-    char **envp = ap_pcalloc(tp, sizeof(char *) * (MAX_INIT_ENV_VARS + 1));
+    char **envp = ap_pcalloc(tp, sizeof(char *) * (MAX_INIT_ENV_VARS + 3));
     int envc = 0;
 
     if (*fs_path == '\0')
@@ -500,7 +509,11 @@ const char *fcgi_config_new_static_server(cmd_parms *cmd, void *dummy, const cha
     s->restartOnExit = TRUE;
     s->numProcesses = 1;
 
-#ifndef WIN32
+#ifdef WIN32
+    // TCP FastCGI applications require SystemRoot be present in the environment
+    // Put it in both for consistency to the application
+    set_env_var(tp, envp, &envc, "SystemRoot");
+#else
     if (fcgi_suexec) {
         struct passwd *pw;
         struct group  *gr;
@@ -591,11 +604,10 @@ const char *fcgi_config_new_static_server(cmd_parms *cmd, void *dummy, const cha
                 name, fs_path);
     }
 
-    /* If -intial-env option was used, move env array to a surviving pool */
-    if (envc++) {
-        s->envp = (char **)ap_palloc(p, sizeof(char *) * envc);
-        memcpy(s->envp, envp, sizeof(char *) * envc);
-    }
+    /* Move env array to a surviving pool, leave an extra slot for WIN32 _FCGI_MUTEX_ */
+    ++envc;
+    s->envp = (char **)ap_palloc(p, sizeof(char *) * ++envc);
+    memcpy(s->envp, envp, sizeof(char *) * envc);
 
     /* Initialize process structs */
     s->procs = fcgi_util_fs_create_procs(p, s->numProcesses);
@@ -764,7 +776,13 @@ const char *fcgi_config_set_config(cmd_parms *cmd, void *dummy, const char *arg)
 
     /* Allocate temp storage for an initial environment */
     int envc = 0;
-    char **envp = (char **)ap_pcalloc(tp, sizeof(char *) * (MAX_INIT_ENV_VARS + 1));
+    char **envp = (char **)ap_pcalloc(tp, sizeof(char *) * (MAX_INIT_ENV_VARS + 3));
+
+#ifdef WIN32
+    // TCP FastCGI applications require SystemRoot be present in the environment
+    // Put it in both for consistency to the application
+    set_env_var(tp, envp, &envc, "SystemRoot");
+#endif
 
     /* Parse the directive arguments */
     while (*arg) {
@@ -849,11 +867,10 @@ const char *fcgi_config_set_config(cmd_parms *cmd, void *dummy, const char *arg)
         }
     } /* while */
 
-    /* If -intial-env option was used, move env array to a surviving pool */
-    if (envc++) {
-        dynamicEnvp = (char **)ap_palloc(p, sizeof(char *) * envc);
-        memcpy(dynamicEnvp, envp, sizeof(char *) * envc);
-    }
+    /* Move env array to a surviving pool, leave an extra slot for WIN32 _FCGI_MUTEX_ */
+    ++envc;
+    dynamicEnvp = (char **)ap_palloc(p, sizeof(char *) * ++envc);
+    memcpy(dynamicEnvp, envp, sizeof(char *) * envc);
 
     return NULL;
 }

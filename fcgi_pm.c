@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_pm.c,v 1.25 2000/04/28 06:16:31 robs Exp $
+ * $Id: fcgi_pm.c,v 1.26 2000/04/28 13:41:03 robs Exp $
  */
 
 
@@ -682,6 +682,7 @@ static void dynamic_read_msgs(int read_ready)
             int fd;
             const char *err, *lockPath;
 #endif
+            const char **envp;
 
             /* Create a perm subpool to hold the new server data,
              * we can destroy it if something doesn't pan out */
@@ -818,18 +819,11 @@ static void dynamic_read_msgs(int read_ready)
 
             SetHandleInformation(hPipeMutex, HANDLE_FLAG_INHERIT, TRUE);
 
-            if ((s->envp != NULL) && (*s->envp)) {
-                const char **cur = s->envp;
-
-                while (*cur != NULL)
-                    cur++;
-                *cur = ap_psprintf(fcgi_config_pool, "_FCGI_MUTEX_=%d", (int)hPipeMutex);
+            envp = s->envp;
+            while (*envp != NULL) {
+                ++envp;
             }
-            else {
-                s->envp = (char **)ap_palloc(fcgi_config_pool, sizeof(char *) * 2);
-                s->envp[0] = ap_psprintf(fcgi_config_pool, "_FCGI_MUTEX_=%d", (int)hPipeMutex);
-                s->envp[1] = NULL;
-            }
+            *envp = ap_psprintf(fcgi_config_pool, "_FCGI_MUTEX_=%d", (int)hPipeMutex);
 
             /* Create the application lock */
             if ((s->dynamic_lock = fcgi_rdwr_create()) == NULL) {
@@ -1193,16 +1187,19 @@ static void dynamic_kill_idle_fs_procs(void)
 }
 
 #ifdef WIN32
+
+// This is a little bogus, there's gotta be a better way to do this
+#define FCGI_PROC_WAIT_TIME 100
+
 void child_wait_thread(void *dummy) {
     fcgi_server *s;
     DWORD dwRet = WAIT_TIMEOUT;
     int numChildren;
     int i;
-    int sleepseconds = min(dynamicKillInterval, dynamicUpdateInterval);
+    int waited;
 
     while (!bTimeToDie) {
-		if (fcgi_servers == NULL)
-			sleep(sleepseconds);
+        waited = 0;
 
         for (s = fcgi_servers; s != NULL; s = s->next) {
             if (s->directive == APP_CLASS_EXTERNAL || s->listenFd < 0) {
@@ -1219,7 +1216,9 @@ void child_wait_thread(void *dummy) {
                 if (s->procs[i].pid != INVALID_HANDLE_VALUE) {
                     /* timeout is currently set for 100 miliecond */ 
                     /* it may need t longer or user customizable */
-                    dwRet = WaitForSingleObject(s->procs[i].pid, 100);
+                    dwRet = WaitForSingleObject(s->procs[i].pid, FCGI_PROC_WAIT_TIME);
+
+                    waited = 1;
 
                     if (dwRet != WAIT_TIMEOUT) {
                         /* a child fs has died */
@@ -1259,7 +1258,7 @@ void child_wait_thread(void *dummy) {
                 }
             }
         }
-		Sleep(0);
+        Sleep(waited ? 0 : FCGI_PROC_WAIT_TIME);
     }
 }
 #endif
@@ -1352,6 +1351,7 @@ void fcgi_pm_main(void *dummy)
         if (s->socket_path) {
             SECURITY_ATTRIBUTES sa;
             HANDLE hPipeMutex;
+            const char **envp;
 
             sa.nLength = sizeof(sa);
             sa.lpSecurityDescriptor = NULL;
@@ -1378,18 +1378,11 @@ void fcgi_pm_main(void *dummy)
 
             SetHandleInformation(hPipeMutex, HANDLE_FLAG_INHERIT, TRUE);
 
-            if (s->envp && *s->envp) {
-                const char **cur = s->envp;
-
-                while (*cur != NULL)
-                    cur++;
-                *cur = ap_psprintf(fcgi_config_pool, "_FCGI_MUTEX_=%d", (int)hPipeMutex);
+            envp = s->envp;
+            while (*envp != NULL) {
+                ++envp;
             }
-            else {
-                s->envp = (char **)ap_palloc(fcgi_config_pool, sizeof(char *) * 2);
-                s->envp[0] = ap_psprintf(fcgi_config_pool, "_FCGI_MUTEX_=%d", (int)hPipeMutex);
-                s->envp[1] = NULL;
-            }
+            *envp = ap_psprintf(fcgi_config_pool, "_FCGI_MUTEX_=%d", (int)hPipeMutex);
         }
         else
 #endif
