@@ -1,6 +1,6 @@
 <!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">
 <html>
-<!-- $Id: mod_fastcgi.html,v 1.7 1999/02/24 04:38:05 roberts Exp $ -->
+<!-- $Id: mod_fastcgi.html,v 1.8 1999/02/25 03:32:22 roberts Exp $ -->
 
 <head>
 <title>Apache module mod_fastcgi</title>
@@ -107,30 +107,36 @@ the specified extension(s) as FastCGI applications:</p>
   <p>Session affinity (as well as distribution) should be achievable outside of <code>mod_fastcgi</code>
   using <code>mod_rewrite</code>.&nbsp; If you get this working, please post the details to <a
   href="mailto:fastcgi-developers@idle.com">fastcgi-developers@idle.com</a> so they can be
-  included future releases.</p>
+  included here.</p>
+  <h2>FastCGI Specification Compliance</h2>
   <p>The FastCGI specification is not implemented in its entirety and I've deviated a bit as
-  well resulting in some Apache specific features.&nbsp; The Filter and Log Roles are not
-  supported.&nbsp; The Filter Role has no place in Apache until the output of one handler
-  can be piped into another (Apache 2.0 is expected to allow this).&nbsp; The Log Role has
-  some value, but I just haven't implemented it (if you have interest speak up).&nbsp;
-  Multiplexed requests are not supported. &nbsp; The FastCGI application library which
+  well resulting in some Apache specific features.</p>
+  <p>The Filter and Log Roles are not supported.&nbsp; The Filter Role has no place in
+  Apache until the output of one handler can be piped into another (Apache 2.0 is expected
+  to support this).&nbsp; The Log Role has some value, but I just haven't implemented it (if
+  you have interest in it speak up).&nbsp; </p>
+  <p>Multiplexed requests are not supported. &nbsp; The FastCGI application library which
   provides the FastCGI protocol support within FastCGI applications does not currently
   support it (and thus doesn't have to be supported here).&nbsp; This may become a higher
-  priority when <code>mod_fastcgi</code> is ported to NT.&nbsp; I don't believe any existing
-  FastCGI server implementation supports these features.</p>
-  <p>The Authorizer Role (in its three Apache specific variations) sends nearly all of the
-  standard environment variables typically available to CGI/FastCGI request handlers
-  including some explicitly precluded by the FastCGI specification; I didn't see the point
-  to leaving them out.&nbsp; All headers returned by a FastCGI authentication application in
-  a successful response (Status: 200) are passed to subprocesses (CGI/FastCGI invocations)
-  as environment variables rather than just those prefixed by &quot;<code>Variable-</code>&quot;
-  as the FastCGI specification calls for; I didn't see the point in leaving them out
-  either.&nbsp; FastCGI specification compliant behaviour can be obtained by using the
-  &quot;<code>-compat</code>&quot; option to the Auth server directives.</p>
-  <p>Custom responses from FastCGI authentication applications for authentication failures
-  are not (yet?) supported.&nbsp; <code>mod_fastcgi</code> sets up the (Apache specific)
-  environment variable &quot;FCGI_APACHE_ROLE&quot; to indicate which Apache authorizer
-  phase is being performed.</p>
+  priority when <code>mod_fastcgi</code> is ported to NT (Apache is threaded on NT).&nbsp; </p>
+  <p>I don't believe any other existing FastCGI server implementation supports these
+  features.</p>
+  <p>The Authorizer Role has three variations corresponding to each three related Apache
+  specific request handling phases:&nbsp; Authentication, Authorization, and Access Control.
+  &nbsp; <code>mod_fastcgi</code> sets up the (Apache specific) environment variable
+  &quot;FCGI_APACHE_ROLE&quot; to indicate which Apache authorizer phase is being performed.</p>
+  <p><code>mod_fastcgi</code> sends nearly all of the standard environment variables
+  typically available to CGI/FastCGI request handlers including some explicitly precluded by
+  the FastCGI specification; I didn't see the point to leaving them out.&nbsp; All headers
+  returned by a FastCGI authentication application in a successful response (Status: 200)
+  are passed to subprocesses (CGI/FastCGI invocations) as environment variables rather than
+  just those prefixed by &quot;<code>Variable-</code>&quot; as the FastCGI specification
+  calls for; I didn't see the point in leaving them out either.&nbsp; FastCGI specification
+  compliant authorizer behaviour can be obtained by using the &quot;<code>-compat</code>&quot;
+  option to the Auth server directives.</p>
+  <p>Custom failure responses from FastCGI authorizer applications are not (yet?)
+  supported.&nbsp; See the <a href="http://www.apache.org/docs/mod/core.html#errordocument">ErrorDocument</a>
+  directive for a workaround (a FastCGI application can serve the document).</p>
   <h2><a name="directives">Directives</a></h2>
   <ul>
     <li><a HREF="#FastCgiServer"><code>FastCgiServer</code></a></li>
