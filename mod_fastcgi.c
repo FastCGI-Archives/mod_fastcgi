@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.92 2000/05/10 05:15:48 robs Exp $
+ *  $Id: mod_fastcgi.c,v 1.93 2000/05/24 15:09:39 robs Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -909,8 +909,10 @@ static const char *open_connection_to_fs(fcgi_request *fr)
                             FILE_SHARE_READ | FILE_SHARE_WRITE, NULL,
                             OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 
-        if ((HANDLE)fr->fd == INVALID_HANDLE_VALUE)
+        if ((HANDLE)fr->fd == INVALID_HANDLE_VALUE) {
+            errno = GetLastError();
             return "CreateFile() failed";
+        }
 
         ap_note_cleanups_for_h(rp, (HANDLE)fr->fd);
 

@@ -1,5 +1,5 @@
 Changes with mod_fastcgi 2.2.5
- 
+
  *) (Win32) Add support for interpretter scripts.
 
  *) (Win32) Fix named pipe handling (problems with large responses).
