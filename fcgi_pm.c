@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_pm.c,v 1.76 2002/08/20 02:36:15 robs Exp $
+ * $Id: fcgi_pm.c,v 1.77 2002/08/20 03:01:43 robs Exp $
  */
 
 
@@ -7,6 +7,7 @@
 
 #if defined(APACHE2) && !defined(WIN32)
 #include <pwd.h>
+#include "unixd.h"
 #endif
 
 #ifdef _HPUX_SOURCE
@@ -680,7 +681,7 @@ CLEANUP:
 #ifndef WIN32
 static void reduce_privileges(void)
 {
-    char *name;
+    const char *name;
 
     if (geteuid() != 0)
         return;
@@ -742,7 +743,8 @@ static void reduce_privileges(void)
  */
 static void change_process_name(const char * const name)
 {
-    strncpy(ap_server_argv0, name, strlen(ap_server_argv0));
+    /* under Apache2, ap_server_argv0 is const */
+    strncpy((char *) ap_server_argv0, name, strlen(ap_server_argv0));
 }
 #endif /* !WIN32 */
 
