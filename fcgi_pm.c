@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_pm.c,v 1.59 2001/08/24 02:04:45 robs Exp $
+ * $Id: fcgi_pm.c,v 1.60 2001/08/24 02:14:17 robs Exp $
  */
 
 
@@ -250,7 +250,7 @@ static int init_listen_sock(fcgi_server * fs)
 #ifndef WIN32
 static int caughtSigTerm = FALSE;
 static int caughtSigChld = FALSE;
-static int caughtSigUsr2 = FALSE;
+static int caughtSigAlarm = FALSE;
 
 static void signal_handler(int signo)
 {
@@ -265,7 +265,7 @@ static void signal_handler(int signo)
     } else if(signo == SIGCHLD) {
         caughtSigChld = TRUE;
     } else if(signo == SIGALRM) {
-        caughtSigUsr2 = TRUE;
+        caughtSigAlarm = TRUE;
     }
 }
 #endif
@@ -1518,7 +1518,7 @@ void fcgi_pm_main(void *dummy)
         if(caughtSigTerm) {
             goto ProcessSigTerm;
         }
-        if((!caughtSigChld) && (!caughtSigUsr2)) {
+        if((!caughtSigChld) && (!caughtSigAlarm)) {
             fd_set rfds;
 
             alarm(sleepSeconds);
@@ -1531,8 +1531,8 @@ void fcgi_pm_main(void *dummy)
         }
         callWaitPid = caughtSigChld;
         caughtSigChld = FALSE;
-        callDynamicProcs = caughtSigUsr2;
-        caughtSigUsr2 = FALSE;
+        callDynamicProcs = caughtSigAlarm;
+        caughtSigAlarm = FALSE;
 
         now = time(NULL);
 
