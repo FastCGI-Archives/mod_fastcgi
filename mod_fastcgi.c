@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.136 2002/07/29 00:07:28 robs Exp $
+ *  $Id: mod_fastcgi.c,v 1.137 2002/09/04 03:23:33 robs Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -458,6 +458,122 @@ static char *get_header_line(char *start, int continuation)
     return end;
 }
 
+#ifdef WIN32
+
+static int set_nonblocking(const fcgi_request * fr, int nonblocking)
+{
+    if (fr->using_npipe_io) 
+    {
+        if (nonblocking)
+        {
+            DWORD mode = PIPE_NOWAIT | PIPE_READMODE_BYTE;
+            if (SetNamedPipeHandleState((HANDLE) fr->fd, &mode, NULL, NULL) == 0)
+            {
+		        ap_log_rerror(FCGI_LOG_ERR, fr->r,
+                    "FastCGI: SetNamedPipeHandleState() failed");
+                return -1;
+            }
+        }
+    }
+    else  
+    {
+        unsigned long ioctl_arg = (nonblocking) ? 1 : 0;
+        if (ioctlsocket(fr->fd, FIONBIO, &ioctl_arg) != 0)
+        {
+            errno = WSAGetLastError();
+            ap_log_rerror(FCGI_LOG_ERR_ERRNO, fr->r, 
+                "FastCGI: ioctlsocket() failed");
+            return -1;
+        }
+    }
+
+    return 0;
+}
+
+#else
+
+static int set_nonblocking(const fcgi_request * fr, int nonblocking)
+{
+    int nb_flag = 0;
+    int fd_flags = fcntl(fr->fd, F_GETFL, 0);
+
+    if (fd_flags < 0) return -1;
+
+#if defined(O_NONBLOCK)
+    nb_flag = O_NONBLOCK;
+#elif defined(O_NDELAY)
+    nb_flag = O_NDELAY;
+#elif defined(FNDELAY)
+    nb_flag = FNDELAY;
+#else
+#error "TODO - don't read from app until all data from client is posted."
+#endif
+
+    fd_flags = (nonblocking) ? (fd_flags | nb_flag) : (fd_flags & ~nb_flag);
+
+    return fcntl(fr->fd, F_SETFL, fd_flags);
+}
+
+#endif
+
+/*******************************************************************************
+ * Close the connection to the FastCGI server.  This is normally called by
+ * do_work(), but may also be called as in request pool cleanup.
+ */
+static void close_connection_to_fs(fcgi_request *fr)
+{
+#ifdef WIN32
+
+    if (fr->fd != INVALID_SOCKET)
+    {
+        set_nonblocking(fr, FALSE);
+
+        if (fr->using_npipe_io)
+        {
+            CloseHandle((HANDLE) fr->fd);
+        }
+        else
+        {
+            /* abort the connection entirely */
+            struct linger linger = {0, 0};
+            setsockopt(fr->fd, SOL_SOCKET, SO_LINGER, (void *) &linger, sizeof(linger)); 
+            closesocket(fr->fd);
+        }
+
+        fr->fd = INVALID_SOCKET;
+
+#else /* ! WIN32 */
+
+    if (fr->fd >= 0) 
+    {
+        struct linger linger = {0, 0};
+        set_nonblocking(fr, FALSE);
+        /* abort the connection entirely */
+        setsockopt(fr->fd, SOL_SOCKET, SO_LINGER, &linger, sizeof(linger)); 
+        close(fr->fd);
+        fr->fd = -1;
+
+#endif /* ! WIN32 */
+
+        if (fr->dynamic && fr->keepReadingFromFcgiApp == FALSE) 
+        {
+            /* XXX FCGI_REQUEST_COMPLETE_JOB is only sent for requests which complete
+             * normally WRT the fcgi app.  There is no data sent for
+             * connect() timeouts or requests which complete abnormally.
+             * KillDynamicProcs() and RemoveRecords() need to be looked at
+             * to be sure they can reasonably handle these cases before
+             * sending these sort of stats - theres some funk in there.
+             */
+            if (fcgi_util_ticks(&fr->completeTime) < 0) 
+            {
+                /* there's no point to aborting the request, just log it */
+                ap_log_error(FCGI_LOG_ERR, fr->r->server, "FastCGI: can't get time of day");
+            }
+        }
+    }
+}
+
+
 /*
  *----------------------------------------------------------------------
  *
@@ -652,8 +768,14 @@ static const char *process_headers(request_rec *r, fcgi_request *fr)
     /* We need to reinstate our timeout, send_http_header() kill()s it */
     ap_hard_timeout("FastCGI request processing", r);
 
-    if (r->header_only)
+    if (r->header_only) {
+        /* we've got all we want from the server */
+        close_connection_to_fs(fr);
+        fr->exitStatusSet = 1;
+        fcgi_buf_reset(fr->clientOutputBuffer);
+        fcgi_buf_reset(fr->serverOutputBuffer);
         return NULL;
+    }
 
     len = fr->header->nelts - (next - fr->header->elts);
     ap_assert(len >= 0);
@@ -853,120 +975,6 @@ static void send_request_complete(fcgi_request *fr)
     }
 }
 
-#ifdef WIN32
-
-static int set_nonblocking(const fcgi_request * fr, int nonblocking)
-{
-    if (fr->using_npipe_io) 
-    {
-        if (nonblocking)
-        {
-            DWORD mode = PIPE_NOWAIT | PIPE_READMODE_BYTE;
-            if (SetNamedPipeHandleState((HANDLE) fr->fd, &mode, NULL, NULL) == 0)
-            {
-		        ap_log_rerror(FCGI_LOG_ERR, fr->r,
-                    "FastCGI: SetNamedPipeHandleState() failed");
-                return -1;
-            }
-        }
-    }
-    else  
-    {
-        unsigned long ioctl_arg = (nonblocking) ? 1 : 0;
-        if (ioctlsocket(fr->fd, FIONBIO, &ioctl_arg) != 0)
-        {
-            errno = WSAGetLastError();
-            ap_log_rerror(FCGI_LOG_ERR_ERRNO, fr->r, 
-                "FastCGI: ioctlsocket() failed");
-            return -1;
-        }
-    }
-
-    return 0;
-}
-
-#else
-
-static int set_nonblocking(const fcgi_request * fr, int nonblocking)
-{
-    int nb_flag = 0;
-    int fd_flags = fcntl(fr->fd, F_GETFL, 0);
-
-    if (fd_flags < 0) return -1;
-
-#if defined(O_NONBLOCK)
-    nb_flag = O_NONBLOCK;
-#elif defined(O_NDELAY)
-    nb_flag = O_NDELAY;
-#elif defined(FNDELAY)
-    nb_flag = FNDELAY;
-#else
-#error "TODO - don't read from app until all data from client is posted."
-#endif
-
-    fd_flags = (nonblocking) ? (fd_flags | nb_flag) : (fd_flags & ~nb_flag);
-
-    return fcntl(fr->fd, F_SETFL, fd_flags);
-}
-
-#endif
-
-/*******************************************************************************
- * Close the connection to the FastCGI server.  This is normally called by
- * do_work(), but may also be called as in request pool cleanup.
- */
-static void close_connection_to_fs(fcgi_request *fr)
-{
-#ifdef WIN32
-
-    if (fr->fd != INVALID_SOCKET)
-    {
-        set_nonblocking(fr, FALSE);
-
-        if (fr->using_npipe_io)
-        {
-            CloseHandle((HANDLE) fr->fd);
-        }
-        else
-        {
-            /* abort the connection entirely */
-            struct linger linger = {0, 0};
-            setsockopt(fr->fd, SOL_SOCKET, SO_LINGER, (void *) &linger, sizeof(linger)); 
-            closesocket(fr->fd);
-        }
-
-        fr->fd = INVALID_SOCKET;
-
-#else /* ! WIN32 */
-
-    if (fr->fd >= 0) 
-    {
-        struct linger linger = {0, 0};
-        set_nonblocking(fr, FALSE);
-        /* abort the connection entirely */
-        setsockopt(fr->fd, SOL_SOCKET, SO_LINGER, &linger, sizeof(linger)); 
-        close(fr->fd);
-        fr->fd = -1;
-
-#endif /* ! WIN32 */
-
-        if (fr->dynamic && fr->keepReadingFromFcgiApp == FALSE) 
-        {
-            /* XXX FCGI_REQUEST_COMPLETE_JOB is only sent for requests which complete
-             * normally WRT the fcgi app.  There is no data sent for
-             * connect() timeouts or requests which complete abnormally.
-             * KillDynamicProcs() and RemoveRecords() need to be looked at
-             * to be sure they can reasonably handle these cases before
-             * sending these sort of stats - theres some funk in there.
-             */
-            if (fcgi_util_ticks(&fr->completeTime) < 0) 
-            {
-                /* there's no point to aborting the request, just log it */
-                ap_log_error(FCGI_LOG_ERR, fr->r->server, "FastCGI: can't get time of day");
-            }
-        }
-    }
-}
 
 /*******************************************************************************
  * Connect to the FastCGI server.

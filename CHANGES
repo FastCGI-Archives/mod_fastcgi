@@ -1,5 +1,8 @@
 2.2.13
 
+ *) Fix HEAD request handling.  Based on a patch by 
+    Chris Lightfoot [chris@ex-parrot.com]
+
  *) [*nix] When autoupdate is enabled touch the socket when restarting
     the processes to prevent further requests.  
     Eckebrecht von Pappenheim [evp@heise.de]
