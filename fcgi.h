@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi.h,v 1.35 2002/02/28 22:52:50 robs Exp $
+ * $Id: fcgi.h,v 1.36 2002/03/12 13:06:29 robs Exp $
  */
 
 #ifndef FCGI_H
@@ -21,9 +21,8 @@
 #include "http_conf_globals.h"
 #include "util_md5.h"
 
-#if MODULE_MAGIC_NUMBER < 19980806
-#error "This version of mod_fastcgi is incompatible with Apache versions 1.3.1 and earlier."
-#error "Please upgrade, or try the last Apache 1.2 compatible release, mod_fastcgi 2.0.18 (no DSO support)."
+#if MODULE_MAGIC_NUMBER < 19990320
+#error "This version of mod_fastcgi is incompatible with Apache versions older than 1.3.6."
 #endif
 
 #ifndef NO_WRITEV
@@ -188,9 +187,6 @@ typedef struct {
     table *authHeaders;          /* headers received from an auth fs */
     int auth_compat;             /* whether the auth request is spec compat */
     table *saved_subprocess_env; /* subprocess_env before auth handling */
-#if defined(SIGPIPE) && MODULE_MAGIC_NUMBER < 19990320
-    void (*apache_sigpipe_handler)(int);
-#endif
     int expectingClientContent;     /* >0 => more content, <=0 => no more */
     array_header *header;
     char *fs_stderr;
@@ -381,14 +377,15 @@ void fcgi_buf_reset(Buffer *bufPtr);
 Buffer *fcgi_buf_new(pool *p, int size);
 void BufferDelete(Buffer *bufPtr);
 
-#ifdef WIN32
-int fcgi_buf_add_fd(Buffer *buf, SOCKET fd);
-int fcgi_buf_get_to_fd(Buffer *bufPtr, SOCKET fd);
-#else
-int fcgi_buf_add_fd(Buffer *buf, int fd);
-int fcgi_buf_get_to_fd(Buffer *bufPtr, int fd);
+#ifndef WIN32
+typedef int SOCKET;
 #endif
 
+int fcgi_buf_socket_recv(Buffer *b, SOCKET socket);
+int fcgi_buf_socket_send(Buffer *b, SOCKET socket);
+
+void fcgi_buf_added(Buffer * const b, const unsigned int len);
+void fcgi_buf_removed(Buffer * const b, unsigned int len);
 void fcgi_buf_get_block_info(Buffer *bufPtr, char **beginPtr, int *countPtr);
 void fcgi_buf_toss(Buffer *bufPtr, int count);
 void fcgi_buf_get_free_block_info(Buffer *bufPtr, char **endPtr, int *countPtr);

@@ -1,5 +1,11 @@
 2.2.13
 
+ *) Require the Apache version 1.3.6 or later to eliminate some signal
+    handling funk.
+
+ *) [WIN32] Use asyncronous io with named pipes instead of polled
+    nonblocking io.  This should eliminate the last of the npipe issues.
+
  *) Handle an application returning a complete and valid response without 
     having consumed all of the data sent to it.
 

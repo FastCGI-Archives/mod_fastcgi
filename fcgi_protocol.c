@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_protocol.c,v 1.21 2001/11/20 01:52:37 robs Exp $
+ * $Id: fcgi_protocol.c,v 1.22 2002/03/12 13:06:29 robs Exp $
  */
 
 
@@ -359,6 +359,7 @@ int fcgi_protocol_dequeue(pool *p, fcgi_request *fr)
                             break;
                         default:
                             /* Toss data on the floor */
+                            fcgi_buf_removed(fr->serverInputBuffer, len);
                             break;
                     }
                     fr->dataLen -= len;

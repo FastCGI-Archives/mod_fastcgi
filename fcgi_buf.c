@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_buf.c,v 1.14 2002/03/04 22:20:57 robs Exp $
+ * $Id: fcgi_buf.c,v 1.15 2002/03/12 13:06:29 robs Exp $
  */
 
 #include "fcgi.h"
@@ -48,65 +48,102 @@ Buffer *fcgi_buf_new(pool *p, int size)
     return buf;
 }
 
-#ifdef WIN32
-
-static int fd_read(SOCKET fd, char *buf, int len)
+void fcgi_buf_removed(Buffer * const b, unsigned int len)
 {
-    DWORD bytes_read;
-    
-    ap_assert(len);
+    b->length -= len;
+    b->begin += len;
 
-    // HACK - we don't know if its a pipe or socket..
-    if (ReadFile((HANDLE) fd, buf, len, &bytes_read, NULL)) 
+    if (b->length == 0)
     {
-        return (int) bytes_read;
+        b->begin = b->end = b->data;
     }
-    else
+    else if (b->begin >= b->data + b->size)
     {
-        int rv = GetLastError();
-
-        if (rv == ERROR_PIPE_NOT_CONNECTED) 
-        {
-            return 0;
-        }
-        else if (rv == ERROR_INVALID_PARAMETER) 
-        {
-            // Then it must be a real socket
-
-            WSASetLastError(ERROR_SUCCESS);
-
-            rv = recv(fd, buf, len, 0);
-            if (rv == SOCKET_ERROR) 
-            {
-                errno = WSAGetLastError();
-                return -1;
-            }
-
-            return rv;
-        }
-        else 
-        {
-            errno = rv;
-            return -1;
-        }
+        b->begin -= b->size;
     }
 }
 
-#else
-
-static int fd_read(int fd, char * buf, int len)
+void fcgi_buf_added(Buffer * const b, const unsigned int len)
 {
-    int bytes_read;
+    b->length += len;
+    b->end += len;
 
-    ap_assert(len);
+    if (b->end >= b->data + b->size)
+    {
+        b->end -= b->size;
+    }
+}
 
-    do {
-        bytes_read = read(fd, buf, len);
-    } while (bytes_read == -1 && errno == EINTR);
+#ifdef WIN32
+
+static int socket_recv(SOCKET fd, char *buf, int len)
+{
+    int bytes_read = recv(fd, buf, len, 0);
+
+    if (bytes_read == SOCKET_ERROR) 
+    {
+        return -1;
+    }
     return bytes_read;
 }
 
+static int socket_send(SOCKET fd, char * buf, int len)
+{
+    int bytes_sent = send(fd, buf, len, 0);
+
+    if (bytes_sent == SOCKET_ERROR) 
+    {
+        return -1;
+    }
+    return bytes_sent;
+}
+
+#else /* !WIN32 */
+
+static int socket_recv(int fd, char * buf, int len)
+{
+    int bytes_read;
+
+    do {
+        bytes_read = read(fd, buf, len);
+
+        if (bytes_read < 0)
+        {
+#ifdef EWOULDBLOCK
+            ap_assert(errno != EWOULDBLOCK);
 #endif
+#ifdef EAGAIN
+            ap_assert(errno != EAGAIN);
+#endif
+        }
+    } while (bytes_read == -1 && errno == EINTR);
+
+    return bytes_read;
+}
+
+static int socket_send(int fd, char * buf, int len)
+{
+    int bytes_sent;
+
+    do {
+        bytes_sent = write(fd, buf, len);
+
+        if (bytes_sent < 0)
+        {
+#ifdef EWOULDBLOCK
+            ap_assert(errno != EWOULDBLOCK);
+#endif
+#ifdef EAGAIN
+            ap_assert(errno != EAGAIN);
+#endif
+        }
+    } 
+    while (bytes_sent == -1 && errno == EINTR);
+
+    return bytes_sent;
+}
+
+#endif /* !WIN32 */
 
 /*******************************************************************************
  * Read from an open file descriptor into buffer.
@@ -120,11 +157,7 @@ static int fd_read(int fd, char * buf, int len)
  *      =0 EOF reached
  *      >0 successful read or no room in buffer (NOT # of bytes read)
  */
-#ifdef WIN32
-int fcgi_buf_add_fd(Buffer *buf, SOCKET fd)
-#else
-int fcgi_buf_add_fd(Buffer *buf, int fd)
-#endif
+int fcgi_buf_socket_recv(Buffer *buf, SOCKET fd)
 {
     int len;
 
@@ -141,25 +174,18 @@ int fcgi_buf_add_fd(Buffer *buf, int fd)
     len = min(buf->size - buf->length, buf->data + buf->size - buf->end);
 
 #ifndef NO_WRITEV
-    /* assume there is a readv() if there is a writev() */
-    if (len == buf->size - buf->length) {
-        /* its not wrapped, use read() instead of readv() */
+
+    /* assume there is a readv() since there is a writev() */
+    if (len == buf->size - buf->length) 
+    {
 #endif
 
-    len = fd_read(fd, buf->end, len);
+        len = socket_recv(fd, buf->end, len);
 
-    if (len <= 0)
-        return len;
-
-    buf->end += len;
-    buf->length += len;
-
-    if (buf->end == (buf->data + buf->size)) {
-        /* the buffer needs to be wrapped */
-        buf->end = buf->data;
 #ifndef NO_WRITEV
-    }
-    } else {
+    } 
+    else 
+    {
         /* the buffer is wrapped, use readv() */
         struct iovec vec[2];
 
@@ -172,149 +198,20 @@ int fcgi_buf_add_fd(Buffer *buf, int fd)
         ap_assert(vec[1].iov_len);
 
         do
-        len = readv(fd, vec, 2);
-        while (len == -1 && errno == EINTR);
-
-        if (len <= 0)
-            return len;
-
-        buf->end += len;
-        if (buf->end >= (buf->data + buf->size))
-            buf->end -= buf->size;
-
-        buf->length += len;
-    }
-
-#else
-        if (buf->length < buf->size) {
-            /* There's still more buffer space to read into. */
-
-            fd_set  read_set;
-            int     status;
-            int     numFDs = fd + 1;
-            struct timeval timeOut;
-           
-            FD_ZERO(&read_set);
-            FD_SET(fd, &read_set);
-
-            timeOut.tv_sec = 0;
-            timeOut.tv_usec = 0;
-
-            status = ap_select(numFDs, &read_set, NULL, NULL, &timeOut);
-
-            if (status < 0) {
-#ifdef WIN32
-                // More hackery
-                if (WSAGetLastError() == WSAENOTSOCK)
-                {
-                    DWORD bytesavail=0;
-                    if (PeekNamedPipe((HANDLE) fd, NULL, 0, NULL, &bytesavail, NULL)) 
-                    {
-                        if (bytesavail > 0)
-                        {
-                            len = fd_read(fd, buf->end, buf->size - buf->length);
-
-                            if (len <= 0)
-                                return len;
-
-                            buf->end += len;
-                            buf->length += len;
-                        }
-                        return len;
-                    } 
-                }
-#endif
-                return status;  /* error, errno is set */
-            }
-
-            if (status > 0 && FD_ISSET(fd, &read_set)) {
-
-                len = fd_read(fd, buf->end, buf->size - buf->length);
-
-                if (len <= 0)
-                    return len;
-
-                buf->end += len;
-                buf->length += len;
-            }
+        {
+            len = readv(fd, vec, 2);
         }
+        while (len == -1 && errno == EINTR);
     }
 #endif
+
+    if (len <= 0) return len;
+
+    fcgi_buf_added(buf, len);
 
     return len;     /* this may not contain the number of bytes read */
 }
 
-#ifdef WIN32
-
-static int fd_write(SOCKET fd, char * buf, int len)
-{
-    DWORD bytes_sent;
-    
-    // HACK - We don't know if its a pipe or socket..
-    if (WriteFile((HANDLE) fd, buf, len, &bytes_sent, NULL)) 
-    {
-        return (int) bytes_sent;
-    }
-    else
-    {        
-        int rv = GetLastError();
-
-        if (rv == ERROR_INVALID_PARAMETER) 
-        {
-            // Then it must be a real socket..
-
-            SetLastError(ERROR_SUCCESS);
-
-            rv = send(fd, buf, len, 0);
-
-            if (rv == SOCKET_ERROR) 
-            {
-                rv = WSAGetLastError();
-                if (rv == WSAEWOULDBLOCK) 
-                {
-                    return 0;;
-                }
-                else 
-                {
-                    errno = rv;
-                    return -1;
-                }
-            }
-
-            return rv;
-        }
-        else if (rv == WSAEWOULDBLOCK) 
-        {
-            return 0;
-        }
-        else 
-        {
-            errno = rv;
-            return -1;
-        }
-    }
-}
-
-#else
-
-static int fd_write(int fd, char * buf, int len)
-{
-    int bytes_sent;
-
-    do {
-        bytes_sent = write(fd, buf, len);
-
-#ifdef EWOULDBLOCK
-        if (bytes_sent == -1 && errno == EWOULDBLOCK) {
-            bytes_sent = 0;
-        }
-#endif
-    } while (bytes_sent == -1 && errno == EINTR);
-
-    return bytes_sent;
-}
-
-#endif
 
 /*******************************************************************************
  * Write from the buffer to an open file descriptor.
@@ -328,11 +225,7 @@ static int fd_write(int fd, char * buf, int len)
  *      =0 if no bytes were written
  *      >0 successful write
  */
-#ifdef WIN32
-int fcgi_buf_get_to_fd(Buffer *buf, SOCKET fd)
-#else
-int fcgi_buf_get_to_fd(Buffer *buf, int fd)
-#endif
+int fcgi_buf_socket_send(Buffer *buf, SOCKET fd)
 {
     int len;
 
@@ -344,26 +237,16 @@ int fcgi_buf_get_to_fd(Buffer *buf, int fd)
     len = min(buf->length, buf->data + buf->size - buf->begin);
 
 #ifndef NO_WRITEV
-    if (len == buf->length) {
-        /* the buffer is not wrapped, we don't need to use writev() */
+    if (len == buf->length) 
+    {
 #endif
 
-    len = fd_write(fd, buf->begin, len);
-
-    if (len <= 0)
-        goto Return;
-
-    buf->begin += len;
-    buf->length -= len;
-
-    if (buf->begin == buf->data + buf->size) {
-        /* the buffer needs to be wrapped */
-        buf->begin = buf->data;
+        len = socket_send(fd, buf->begin, len);
 
 #ifndef NO_WRITEV
-    }
-    } else {
-        /* the buffer is wrapped, use writev() */
+    } 
+    else 
+    {
         struct iovec vec[2];
 
         vec[0].iov_base = buf->begin;
@@ -372,63 +255,16 @@ int fcgi_buf_get_to_fd(Buffer *buf, int fd)
         vec[1].iov_len = buf->length - len;
 
         do
-        len = writev(fd, vec, 2);
-        while (len == -1 && errno == EINTR);
-
-        if (len <= 0)
-            goto Return;
-
-        buf->begin += len;
-        buf->length -= len;
-
-        if (buf->begin >= buf->data + buf->size)
-            buf->begin -= buf->size;
-    }
-#else
-        if (buf->length > 0) {
-            /* there's still more data to write */
-
-            fd_set  write_set;
-            int     status;
-            int     numFDs = fd + 1;
-            struct timeval timeOut;
-
-            FD_ZERO(&write_set);
-            FD_SET(fd, &write_set);
-
-            timeOut.tv_sec = 0;
-            timeOut.tv_usec = 0;
-
-            status = ap_select(numFDs, NULL, &write_set, NULL, &timeOut);
-
-            if (status < 0) {
-                len = status;  /* error, errno is set */
-                goto Return;
-            }
-
-            if (status > 0 && FD_ISSET(fd, &write_set)) {
-                int len2;
-
-                len2 = fd_write(fd, buf->begin, buf->length);
-
-                if (len2 < 0) {
-                    len = len2;
-                    goto Return;
-                }
-
-                if (len2 > 0) {
-                    buf->begin += len2;
-                    buf->length -= len2;
-                    len += len2;
-                }
-            }
+        {
+            len = writev(fd, vec, 2);
         }
+        while (len == -1 && errno == EINTR);
     }
 #endif
 
-Return:
-    if (buf->length == 0)
-        buf->begin = buf->end = buf->data;
+    if (len <= 0) return len;
+
+    fcgi_buf_removed(buf, len);
 
     return len;
 }

@@ -3,7 +3,7 @@
  *
  *      Apache server module for FastCGI.
  *
- *  $Id: mod_fastcgi.c,v 1.127 2002/03/05 18:18:47 robs Exp $
+ *  $Id: mod_fastcgi.c,v 1.128 2002/03/12 13:06:29 robs Exp $
  *
  *  Copyright (c) 1995-1996 Open Market, Inc.
  *
@@ -1054,7 +1054,7 @@ static int open_connection_to_fs(fcgi_request *fr)
                 FILE_SHARE_READ | FILE_SHARE_WRITE, 
                 NULL,                  // no security attributes
                 OPEN_EXISTING,         // opens existing pipe 
-                FILE_ATTRIBUTE_NORMAL, // default attributes 
+                FILE_FLAG_OVERLAPPED, 
                 NULL);                 // no template file 
 
             if (fr->fd != (SOCKET) INVALID_HANDLE_VALUE) {
@@ -1305,69 +1305,6 @@ static void sink_client_data(fcgi_request *fr)
 	while (ap_get_client_block(fr->r, base, size) > 0);
 }
 
-
-static int server_error(fcgi_request *fr)
-{
-    int rv;
-    request_rec *r = fr->r;
-
-    if (! fr->exitStatusSet
-        && fcgi_buf_add_fd(fr->serverInputBuffer, fr->fd) > 0
-        && fcgi_protocol_dequeue(r->pool, fr) == OK
-        && fr->parseHeader == SCAN_CGI_READING_HEADERS) 
-    {
-        process_headers(r, fr);
-    }
-
-#if defined(SIGPIPE) && MODULE_MAGIC_NUMBER < 19990320
-    /* Make sure we leave with Apache's sigpipe_handler in place */
-    if (fr->apache_sigpipe_handler != NULL)
-        signal(SIGPIPE, fr->apache_sigpipe_handler);
-#endif
-
-    close_connection_to_fs(fr);
-
-    if (fr->role == FCGI_RESPONDER) {
-        sink_client_data(fr);
-    }
-
-    switch (fr->parseHeader) {
-
-    case SCAN_CGI_FINISHED:
-
-        if (fr->role == FCGI_RESPONDER) {
-
-            write_to_client(fr);
-
-#ifdef RUSSIAN_APACHE
-            ap_rflush(r);
-#else
-            ap_bflush(r->connection->client);
-#endif
-            ap_bgetopt(r->connection->client, BO_BYTECT, &r->bytes_sent);
-        }
-        
-        /* fall through */
-
-    case SCAN_CGI_INT_REDIRECT:
-    case SCAN_CGI_SRV_REDIRECT:
-
-        rv = OK;
-        break;
-
-    case SCAN_CGI_READING_HEADERS:
-    case SCAN_CGI_BAD_HEADER:
-    default:
-
-        rv = SERVER_ERROR;
-        break;
-    }
-
-    ap_kill_timeout(r);
-
-    return rv;
-}
-
 static void cleanup(void *data)
 {
     fcgi_request * const fr = (fcgi_request *) data;
@@ -1385,45 +1322,727 @@ static void cleanup(void *data)
     }
 }
 
+static int npipe_io(fcgi_request * const fr)
+{
+    request_rec * const r = fr->r;
+    enum 
+    {
+        STATE_ENV_SEND,
+        STATE_CLIENT_RECV,
+        STATE_SERVER_SEND,
+        STATE_SERVER_RECV,
+        STATE_CLIENT_SEND,
+        STATE_CLIENT_ERROR,
+        STATE_ERROR
+    }
+    state = STATE_ENV_SEND;
+    env_status env_status;
+    int client_recv;
+    int dynamic_first_recv = fr->dynamic;
+    int idle_timeout = fr->dynamic ? dynamic_idle_timeout : fr->fs->idle_timeout;
+    int send_pending = 0;
+    int recv_pending = 0;
+    int client_send = 0;
+    int rv;
+    OVERLAPPED rov; 
+    OVERLAPPED sov;
+    HANDLE events[2];
+    struct timeval timeout;
+    struct timeval dynamic_last_io_time = {0, 0};
+    int did_io = 1;
+    pool * const rp = r->pool;
+
+DWORD recv_count = 0;
+
+    if (fr->role == FCGI_RESPONDER)
+    {
+        client_recv = (fr->expectingClientContent != 0);
+    }
+
+    idle_timeout = fr->dynamic ? dynamic_idle_timeout : fr->fs->idle_timeout;
+
+    env_status.envp = NULL;
+
+    events[0] = CreateEvent(NULL, TRUE, FALSE, NULL);
+    events[1] = CreateEvent(NULL, TRUE, FALSE, NULL);
+    sov.hEvent = events[0];
+    rov.hEvent = events[1];
+
+    if (fr->dynamic) 
+    {
+        dynamic_last_io_time = fr->startTime;
+
+        if (dynamicAppConnectTimeout) 
+        {
+            struct timeval qwait;
+            timersub(&fr->queueTime, &fr->startTime, &qwait);
+            dynamic_first_recv = qwait.tv_sec / dynamicPleaseStartDelay + 1;
+        }
+    }
+
+    ap_hard_timeout("FastCGI request processing", r);
+
+    while (state != STATE_CLIENT_SEND)
+    {
+        DWORD msec_timeout;
+
+        switch (state)
+        {
+        case STATE_ENV_SEND:
+
+            if (fcgi_protocol_queue_env(r, fr, &env_status) == 0)
+            {
+                goto SERVER_SEND;
+            }
+            
+            state = STATE_CLIENT_RECV;
+
+            /* fall through */
+            
+        case STATE_CLIENT_RECV:
+
+            if (read_from_client_n_queue(fr) != OK)
+            {
+                state = STATE_CLIENT_ERROR;
+                break;
+            }
+
+            if (fr->eofSent)
+            {
+                state = STATE_SERVER_SEND;
+            }
+
+            /* fall through */
+
+SERVER_SEND:
+
+        case STATE_SERVER_SEND:
+
+            if (! send_pending && BufferLength(fr->serverOutputBuffer))
+            {
+                Buffer * b = fr->serverOutputBuffer;
+                DWORD sent, len;
+                
+                len = min(b->length, b->data + b->size - b->begin);
+
+                if (WriteFile((HANDLE) fr->fd, b->begin, len, &sent, &sov))
+                {
+                    fcgi_buf_removed(b, sent);
+                    ResetEvent(sov.hEvent);
+                }
+                else if (GetLastError() == ERROR_IO_PENDING)
+                {
+                    send_pending = 1;
+                }
+                else
+                {
+                    ap_log_rerror(FCGI_LOG_ERR, r, "FastCGI: comm with server "
+                        "\"%s\" aborted: WriteFile() failed", fr->fs_path);
+                    state = STATE_ERROR;
+                    break;
+                }
+            }
+
+            /* fall through */
+
+        case STATE_SERVER_RECV:
+
+            if (! recv_pending && BufferFree(fr->serverInputBuffer))
+            {
+                Buffer * b = fr->serverInputBuffer;
+                DWORD rcvd, len;
+                
+                len = min(b->size - b->length, b->data + b->size - b->end);
+
+                if (ReadFile((HANDLE) fr->fd, b->end, len, &rcvd, &rov))
+                {
+                    fcgi_buf_added(b, rcvd);
+                    recv_count += rcvd;
+                    ResetEvent(rov.hEvent);
+                    if (dynamic_first_recv)
+                    {
+                        dynamic_first_recv = 0;
+                    }
+                }
+                else if (GetLastError() == ERROR_IO_PENDING)
+                {
+                    recv_pending = 1;
+                }
+                else if (GetLastError() == ERROR_HANDLE_EOF)
+                {
+                    fr->keepReadingFromFcgiApp = FALSE;
+                    state = STATE_CLIENT_SEND;
+                    ResetEvent(rov.hEvent);
+                    break;
+                }
+                else if (GetLastError() == ERROR_NO_DATA)
+                {
+                    break;
+                }
+                else
+                {
+                    ap_log_rerror(FCGI_LOG_ERR, r, "FastCGI: comm with server "
+                        "\"%s\" aborted: ReadFile() failed", fr->fs_path);
+                    state = STATE_ERROR;
+                    break;
+                }
+            }
+
+            /* fall through */
+
+        case STATE_CLIENT_SEND:
+
+            if (client_send || ! BufferFree(fr->clientOutputBuffer))
+            {
+                if (write_to_client(fr)) 
+                {
+                    state = STATE_CLIENT_ERROR;
+                    break;
+                }
+
+                client_send = 0;
+            }
+
+            break;
+
+        default:
+
+            ap_assert(0);
+        }
+
+        if (state == STATE_CLIENT_ERROR || state == STATE_ERROR)
+        {
+            break;
+        }
+
+        /* setup the io timeout */
+
+        if (BufferLength(fr->clientOutputBuffer))
+        {
+            /* don't let client data sit too long, it might be a push */
+            timeout.tv_sec = 0;
+            timeout.tv_usec = 100000;
+        }
+        else if (dynamic_first_recv)
+        {
+            int delay;
+            struct timeval qwait;
+
+            fcgi_util_ticks(&fr->queueTime);
+
+            if (did_io) 
+            {
+                /* a send() succeeded last pass */
+                dynamic_last_io_time = fr->queueTime;
+            }
+            else 
+            {
+                /* timed out last pass */
+                struct timeval idle_time;
+        
+                timersub(&fr->queueTime, &dynamic_last_io_time, &idle_time);
+        
+                if (idle_time.tv_sec > idle_timeout) 
+                {
+                    send_to_pm(FCGI_REQUEST_TIMEOUT_JOB, fr->fs_path, fr->user, fr->group, 0, 0);
+                    ap_log_rerror(FCGI_LOG_ERR_NOERRNO, r, "FastCGI: comm "
+                        "with (dynamic) server \"%s\" aborted: (first read) "
+                        "idle timeout (%d sec)", fr->fs_path, idle_timeout);
+                    state = STATE_ERROR;
+                    break;
+                }
+            }
+
+            timersub(&fr->queueTime, &fr->startTime, &qwait);
+
+            delay = dynamic_first_recv * dynamicPleaseStartDelay;
+
+            if (qwait.tv_sec < delay) 
+            {
+                timeout.tv_sec = delay;
+                timeout.tv_usec = 100000;  /* fudge for select() slop */
+                timersub(&timeout, &qwait, &timeout);
+            }
+            else 
+            {
+                /* Killed time somewhere.. client read? */
+                send_to_pm(FCGI_REQUEST_TIMEOUT_JOB, fr->fs_path, fr->user, fr->group, 0, 0);
+                dynamic_first_recv = qwait.tv_sec / dynamicPleaseStartDelay + 1;
+                timeout.tv_sec = dynamic_first_recv * dynamicPleaseStartDelay;
+                timeout.tv_usec = 100000;  /* fudge for select() slop */
+                timersub(&timeout, &qwait, &timeout);
+            }
+        }
+        else
+        {
+            timeout.tv_sec = idle_timeout;
+            timeout.tv_usec = 0;
+        }
+
+        /* require a pended recv otherwise the app can deadlock */
+        if (recv_pending)
+        {
+            msec_timeout = timeout.tv_sec * 1000 + timeout.tv_usec / 1000;
+
+            rv = WaitForMultipleObjects(2, events, FALSE, msec_timeout);
+
+            if (rv == WAIT_TIMEOUT)
+            {
+                did_io = 0;
+
+                if (BufferLength(fr->clientOutputBuffer))
+                {
+                    client_send = 1;
+                }
+                else if (dynamic_first_recv)
+                {
+                    struct timeval qwait;
+
+                    fcgi_util_ticks(&fr->queueTime);
+                    timersub(&fr->queueTime, &fr->startTime, &qwait);
+
+                    send_to_pm(FCGI_REQUEST_TIMEOUT_JOB, fr->fs_path, fr->user, fr->group, 0, 0);
+
+                    dynamic_first_recv = qwait.tv_sec / dynamicPleaseStartDelay + 1;
+                }
+                else
+                {
+                    ap_log_rerror(FCGI_LOG_ERR_NOERRNO, r, "FastCGI: comm with "
+                        "server \"%s\" aborted: idle timeout (%d sec)",
+                        fr->fs_path, idle_timeout);
+                    state = STATE_ERROR;
+                    break;
+                }
+            }
+            else
+            {
+                int i = rv - WAIT_OBJECT_0;
+            
+                did_io = 1;
+
+                if (i == 0)
+                {
+                    DWORD sent;
+
+                    if (GetOverlappedResult((HANDLE) fr->fd, &sov, &sent, FALSE))
+                    {
+                        send_pending = 0;
+                        ResetEvent(sov.hEvent);
+                        fcgi_buf_removed(fr->serverOutputBuffer, sent);
+                    }
+                    else
+                    {
+                        ap_log_rerror(FCGI_LOG_ERR, r, "FastCGI: comm with server "
+                            "\"%s\" aborted: GetOverlappedResult() failed", fr->fs_path);
+                        state = STATE_ERROR;
+                        break;
+                    }
+                }
+                else
+                {
+                    DWORD rcvd;
+
+                    ap_assert(i == 1);
+
+                    recv_pending = 0;
+                    ResetEvent(rov.hEvent);
+
+                    if (GetOverlappedResult((HANDLE) fr->fd, &rov, &rcvd, FALSE))
+                    {
+                        fcgi_buf_added(fr->serverInputBuffer, rcvd);
+                        if (dynamic_first_recv)
+                        {
+                            dynamic_first_recv = 0;
+                        }
+                    }
+                    else
+                    {
+                        ap_log_rerror(FCGI_LOG_ERR, r, "FastCGI: comm with server "
+                            "\"%s\" aborted: GetOverlappedResult() failed", fr->fs_path);
+                        state = STATE_ERROR;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (fcgi_protocol_dequeue(rp, fr)) 
+        {
+            state = STATE_ERROR;
+            break;
+        }
+        
+        if (fr->parseHeader == SCAN_CGI_READING_HEADERS) 
+        {
+            const char * err = process_headers(r, fr);
+            if (err)
+            {
+                ap_log_rerror(FCGI_LOG_ERR_NOERRNO, r,
+                    "FastCGI: comm with server \"%s\" aborted: "
+                    "error parsing headers: %s", fr->fs_path, err);
+                state = STATE_ERROR;
+                break;
+            }
+        }
+
+        if (fr->exitStatusSet) 
+        {
+            fr->keepReadingFromFcgiApp = FALSE;
+            state = STATE_CLIENT_SEND;
+            break;
+        }
+    }
+
+    if (! fr->exitStatusSet || ! fr->eofSent) 
+    {
+        CancelIo((HANDLE) fr->fd);
+    }
+
+    CloseHandle(rov.hEvent);
+    CloseHandle(sov.hEvent);
+
+    return (state == STATE_ERROR);
+}
+
+static int socket_io(fcgi_request * const fr)
+{
+    enum 
+    {
+        STATE_ENV_SEND,
+        STATE_CLIENT_RECV,
+        STATE_SERVER_SEND,
+        STATE_SERVER_RECV,
+        STATE_CLIENT_SEND,
+        STATE_ERROR,
+        STATE_SERVER_SEND_ERROR,
+        STATE_CLIENT_ERROR
+    }
+    state = STATE_ENV_SEND;
+
+    request_rec * const r = fr->r;
+
+    struct timeval timeout;
+    struct timeval dynamic_last_io_time = {0, 0};
+    fd_set read_set;
+    fd_set write_set;
+    int nfds = fr->fd + 1;
+    int select_status = 1;
+    int idle_timeout;
+    int rv;
+    int dynamic_first_recv = fr->dynamic ? 1 : 0;
+    int client_send = FALSE;
+    int client_recv = FALSE;
+    env_status env;
+    pool *rp = r->pool;
+
+    if (fr->role == FCGI_RESPONDER) 
+    {
+        client_recv = (fr->expectingClientContent != 0);
+    }
+
+    idle_timeout = fr->dynamic ? dynamic_idle_timeout : fr->fs->idle_timeout;
+
+    env.envp = NULL;
+
+    if (fr->dynamic) 
+    {
+        dynamic_last_io_time = fr->startTime;
+
+        if (dynamicAppConnectTimeout) 
+        {
+            struct timeval qwait;
+            timersub(&fr->queueTime, &fr->startTime, &qwait);
+            dynamic_first_recv = qwait.tv_sec / dynamicPleaseStartDelay + 1;
+        }
+    }
+
+    ap_hard_timeout("FastCGI request processing", r);
+
+    set_nonblocking(fr, TRUE);
+
+    for (;;)
+    {
+        FD_ZERO(&read_set);
+        FD_ZERO(&write_set);
+
+        switch (state)
+        {
+        case STATE_ENV_SEND:
+
+            if (fcgi_protocol_queue_env(r, fr, &env) == 0)
+            {
+                goto SERVER_SEND;
+            }
+
+            state = STATE_CLIENT_RECV;
+
+            /* fall through */
+
+        case STATE_CLIENT_RECV:
+
+            if (read_from_client_n_queue(fr))
+            {
+                state = STATE_CLIENT_ERROR;
+                break;
+            }
+
+            if (fr->eofSent)
+            {
+                state = STATE_SERVER_SEND;
+            }
+
+            /* fall through */
+
+SERVER_SEND:
+
+        case STATE_SERVER_SEND:
+
+            if (BufferLength(fr->serverOutputBuffer))
+            {
+                FD_SET(fr->fd, &write_set);
+            }
+            else
+            {
+                ap_assert(fr->eofSent);
+                state = STATE_SERVER_RECV;
+            }
+
+            /* fall through */
+
+        case STATE_SERVER_RECV:
+        case STATE_SERVER_SEND_ERROR:
+
+            FD_SET(fr->fd, &read_set);
+
+            /* fall through */
+
+        case STATE_CLIENT_SEND:
+
+            if (client_send || ! BufferFree(fr->clientOutputBuffer)) 
+            {
+                if (write_to_client(fr)) 
+                {
+                    state = STATE_CLIENT_ERROR;
+                    break;
+                }
+
+                client_send = 0;
+            }
+
+            break;
+
+        default:
+
+            ap_assert(0);
+        }
+
+        if (state == STATE_CLIENT_ERROR)
+        {
+            break;
+        }
+
+        /* setup the io timeout */
+
+        if (BufferLength(fr->clientOutputBuffer))
+        {
+            /* don't let client data sit too long, it might be a push */
+            timeout.tv_sec = 0;
+            timeout.tv_usec = 100000;
+        }
+        else if (dynamic_first_recv)
+        {
+            int delay;
+            struct timeval qwait;
+
+            fcgi_util_ticks(&fr->queueTime);
+
+            if (select_status) 
+            {
+                /* a send() succeeded last pass */
+                dynamic_last_io_time = fr->queueTime;
+            }
+            else 
+            {
+                /* timed out last pass */
+                struct timeval idle_time;
+        
+                timersub(&fr->queueTime, &dynamic_last_io_time, &idle_time);
+        
+                if (idle_time.tv_sec > idle_timeout) 
+                {
+                    send_to_pm(FCGI_REQUEST_TIMEOUT_JOB, fr->fs_path, fr->user, fr->group, 0, 0);
+                    ap_log_rerror(FCGI_LOG_ERR_NOERRNO, r, "FastCGI: comm "
+                        "with (dynamic) server \"%s\" aborted: (first read) "
+                        "idle timeout (%d sec)", fr->fs_path, idle_timeout);
+                    state = STATE_ERROR;
+                    break;
+                }
+            }
+
+            timersub(&fr->queueTime, &fr->startTime, &qwait);
+
+            delay = dynamic_first_recv * dynamicPleaseStartDelay;
+
+            if (qwait.tv_sec < delay) 
+            {
+                timeout.tv_sec = delay;
+                timeout.tv_usec = 100000;  /* fudge for select() slop */
+                timersub(&timeout, &qwait, &timeout);
+            }
+            else 
+            {
+                /* Killed time somewhere.. client read? */
+                send_to_pm(FCGI_REQUEST_TIMEOUT_JOB, fr->fs_path, fr->user, fr->group, 0, 0);
+                dynamic_first_recv = qwait.tv_sec / dynamicPleaseStartDelay + 1;
+                timeout.tv_sec = dynamic_first_recv * dynamicPleaseStartDelay;
+                timeout.tv_usec = 100000;  /* fudge for select() slop */
+                timersub(&timeout, &qwait, &timeout);
+            }
+        }
+        else
+        {
+            timeout.tv_sec = idle_timeout;
+            timeout.tv_usec = 0;
+        }
+
+        /* wait on the socket */
+        select_status = ap_select(nfds, &read_set, &write_set, NULL, &timeout);
+
+        if (select_status < 0)
+        {
+            ap_log_rerror(FCGI_LOG_ERR_ERRNO, r, "FastCGI: comm with server "
+                "\"%s\" aborted: select() failed", fr->fs_path);
+            state = STATE_ERROR;
+            break;
+        }
+
+        if (select_status == 0) 
+        {
+            /* select() timeout */
+
+            if (BufferLength(fr->clientOutputBuffer)) 
+            {
+                if (fr->role == FCGI_RESPONDER)
+                {
+                    client_send = TRUE;
+                }
+            }
+            else if (dynamic_first_recv) 
+            {
+                struct timeval qwait;
+
+                fcgi_util_ticks(&fr->queueTime);
+                timersub(&fr->queueTime, &fr->startTime, &qwait);
+
+                send_to_pm(FCGI_REQUEST_TIMEOUT_JOB, fr->fs_path, fr->user, fr->group, 0, 0);
+
+                dynamic_first_recv = qwait.tv_sec / dynamicPleaseStartDelay + 1;
+                continue;
+            }
+            else 
+            {
+                ap_log_rerror(FCGI_LOG_ERR_NOERRNO, r, "FastCGI: comm with "
+                    "server \"%s\" aborted: idle timeout (%d sec)",
+                    fr->fs_path, idle_timeout);
+                state = STATE_SERVER_SEND_ERROR;
+            }
+        }
+
+        if (FD_ISSET(fr->fd, &write_set))
+        {
+            /* send to the server */
+
+            rv = fcgi_buf_socket_send(fr->serverOutputBuffer, fr->fd);
+
+            if (rv < 0)
+            {
+                ap_log_rerror(FCGI_LOG_ERR, r, "FastCGI: comm with server "
+                    "\"%s\" aborted: write failed", fr->fs_path);
+                state = STATE_ERROR;
+                break;
+            }
+        } 
+
+        if (FD_ISSET(fr->fd, &read_set)) 
+        {
+            /* recv from the server */
+
+            if (dynamic_first_recv) 
+            {
+                dynamic_first_recv = 0;
+                fcgi_util_ticks(&fr->queueTime);
+            }
+
+            rv = fcgi_buf_socket_recv(fr->serverInputBuffer, fr->fd);
+
+            if (rv < 0) 
+            {
+                ap_log_rerror(FCGI_LOG_ERR, r, "FastCGI: comm with server "
+                    "\"%s\" aborted: read failed", fr->fs_path);
+                state = STATE_ERROR;
+                break;
+            }
+
+            if (rv == 0) 
+            {
+                fr->keepReadingFromFcgiApp = FALSE;
+                state = STATE_CLIENT_SEND;
+                break;
+            }
+        }
+
+        if (fcgi_protocol_dequeue(rp, fr)) 
+        {
+            state = STATE_ERROR;
+            break;
+        }
+        
+        if (fr->parseHeader == SCAN_CGI_READING_HEADERS) 
+        {
+            const char * err = process_headers(r, fr);
+            if (err)
+            {
+                ap_log_rerror(FCGI_LOG_ERR_NOERRNO, r,
+                    "FastCGI: comm with server \"%s\" aborted: "
+                    "error parsing headers: %s", fr->fs_path, err);
+                state = STATE_ERROR;
+                break;
+            }
+        }
+
+        if (fr->exitStatusSet) 
+        {
+            fr->keepReadingFromFcgiApp = FALSE;
+            state = STATE_CLIENT_SEND;
+            break;
+        }
+    }
+    
+    return (state == STATE_ERROR);
+}
+
+
 /*----------------------------------------------------------------------
  * This is the core routine for moving data between the FastCGI
  * application and the Web server's client.
  */
-static int do_work(request_rec *r, fcgi_request *fr)
+static int do_work(request_rec * const r, fcgi_request * const fr)
 {
-    struct timeval  timeOut, dynamic_last_activity_time = {0, 0};
-    fd_set  read_set, write_set;
-    int     status = 0, idle_timeout;
-    int     numFDs, dynamic_first_read = fr->dynamic ? 1 : 0;
-    int     doClientWrite;
-    int     envSent = FALSE;    /* has the complete ENV been buffered? */
-    env_status env;
+    int rv;
     pool *rp = r->pool;
-    const char *err = NULL;
-
-    FD_ZERO(&read_set);
-    FD_ZERO(&write_set);
 
     fcgi_protocol_queue_begin_request(fr);
 
-    /* Buffer as much of the environment as we can fit */
-    env.envp = NULL;
-    envSent = fcgi_protocol_queue_env(r, fr, &env);
-
-    /* Start the Apache dropdead timer.  See comments at top of file. */
-    ap_hard_timeout("buffering of FastCGI client data", r);
-
-    /* Read as much as possible from the client. */
-    if (fr->role == FCGI_RESPONDER) {
-        status = ap_setup_client_block(r, REQUEST_CHUNKED_ERROR);
-        if (status != OK) {
+    if (fr->role == FCGI_RESPONDER) 
+    {
+        rv = ap_setup_client_block(r, REQUEST_CHUNKED_ERROR);
+        if (rv != OK) 
+        {
             ap_kill_timeout(r);
-            return status;
+            return rv;
         }
-        fr->expectingClientContent = (ap_should_client_block(r) != 0);
 
-        if (read_from_client_n_queue(fr) != OK)
-            return server_error(fr);
+        fr->expectingClientContent = ap_should_client_block(r);
     }
 
     ap_block_alarms();
@@ -1432,379 +2051,101 @@ static int do_work(request_rec *r, fcgi_request *fr)
 
     /* Connect to the FastCGI Application */
     ap_hard_timeout("connect() to FastCGI server", r);
-    if (open_connection_to_fs(fr) != FCGI_OK) {
-        return server_error(fr);
+    if (open_connection_to_fs(fr) != FCGI_OK) 
+    {
+        ap_kill_timeout(r);
+        return SERVER_ERROR;
     }
 
-    numFDs = fr->fd + 1;
-    idle_timeout = fr->dynamic ? dynamic_idle_timeout : fr->fs->idle_timeout;
-
-    if (dynamic_first_read) {
-        dynamic_last_activity_time = fr->startTime;
-
-        if (dynamicAppConnectTimeout) {
-            struct timeval qwait;
-            timersub(&fr->queueTime, &fr->startTime, &qwait);
-            dynamic_first_read = qwait.tv_sec / dynamicPleaseStartDelay + 1;
-        }
+#ifdef WIN32
+    if (fr->using_npipe_io)
+    {
+        rv = npipe_io(fr);
+    }
+    else
+#endif
+    {
+        rv = socket_io(fr);
     }
 
-    /* @@@ We never reset the timer in this loop, most folks don't mess w/
-     * Timeout directive which means we've got the 5 min default which is way
-     * to long to tie up a fs.  We need a better/configurable solution that
-     * uses the select */
-    ap_hard_timeout("FastCGI request processing", r);
+    /* comm with the server is done */
+    close_connection_to_fs(fr);
 
-    /* Before we do any writing, set the connection non-blocking */
-    set_nonblocking(fr, TRUE);
-
-    /* The socket is writeable, so get the first write out of the way */
-    if (fcgi_buf_get_to_fd(fr->serverOutputBuffer, fr->fd) < 0) {
-#ifdef WIN32
-        if (! fr->using_npipe_io)
-            ap_log_rerror(FCGI_LOG_ERR_ERRNO, r,
-                "FastCGI: comm with server \"%s\" aborted: write failed", fr->fs_path);
-        else
-#endif
-        ap_log_rerror(FCGI_LOG_ERR, r,
-            "FastCGI: comm with server \"%s\" aborted: write failed", fr->fs_path);
-        return server_error(fr);
-    }
-
-    while (fr->keepReadingFromFcgiApp
-            || BufferLength(fr->serverInputBuffer) > 0
-            || BufferLength(fr->clientOutputBuffer) > 0) {
-
-        /* If we didn't buffer all of the environment yet, buffer some more */
-        if (!envSent)
-            envSent = fcgi_protocol_queue_env(r, fr, &env);
-
-        /* Read as much as possible from the client. */
-        if (fr->role == FCGI_RESPONDER && !fr->eofSent && envSent) {
-
-            /* ap_get_client_block() (called in read_from_client_n_queue() 
-             * can't handle a non-blocking fd, its a bummer.  We might be
-             * able to completely bypass the Apache BUFF routines in still
-             * do it, but thats a major hassle. Apache 2.X will handle it,
-             * and then so will we. */
-
-            if (read_from_client_n_queue(fr) != OK)
-                return server_error(fr);
-        }
-
-        /* To avoid deadlock, don't do a blocking select to write to
-         * the FastCGI application without selecting to read from the
-         * FastCGI application.
-         */
-        doClientWrite = FALSE;
-        if (fr->keepReadingFromFcgiApp && BufferFree(fr->serverInputBuffer) > 0) {
-
-#ifdef WIN32
-        DWORD bytesavail = 0;
-
-            if (!fr->using_npipe_io) {
-#endif
-            FD_SET(fr->fd, &read_set);
-
-            /* Is data buffered for output to the FastCGI server? */
-            if (BufferLength(fr->serverOutputBuffer) > 0) {
-                FD_SET(fr->fd, &write_set);
-            } else {
-                FD_CLR(fr->fd, &write_set);
-            }
-#ifdef WIN32
-            }
-#endif
-            /*
-             * If there's data buffered to send to the client, don't
-             * wait indefinitely for the FastCGI app; the app might
-             * be doing server push.
-             */
-        if (BufferLength(fr->clientOutputBuffer) > 0) {
-                timeOut.tv_sec = 0;
-                timeOut.tv_usec = 100000;        /* 0.1 sec */
-            }
-        else if (dynamic_first_read) {
-                int delay;
-                struct timeval qwait;
-
-                if (fcgi_util_ticks(&fr->queueTime) < 0) {
-                    ap_log_rerror(FCGI_LOG_ERR, r, "FastCGI: can't get time of day");
-                    return server_error(fr);
-                }
-
-                /* Check for idle_timeout */
-                if (status) {
-                    dynamic_last_activity_time = fr->queueTime;
-                }
-                else {
-                    struct timeval idle_time;
-                    timersub(&fr->queueTime, &dynamic_last_activity_time, &idle_time);
-                    if (idle_time.tv_sec > idle_timeout) {
-                        send_to_pm(FCGI_REQUEST_TIMEOUT_JOB, fr->fs_path, fr->user, fr->group, 0, 0);
-                        ap_log_rerror(FCGI_LOG_ERR_NOERRNO, r,
-                            "FastCGI: comm with (dynamic) server \"%s\" aborted: (first read) idle timeout (%d sec)",
-                            fr->fs_path, idle_timeout);
-                        return server_error(fr);
-                    }
-                }
-
-                timersub(&fr->queueTime, &fr->startTime, &qwait);
-
-                delay = dynamic_first_read * dynamicPleaseStartDelay;
-                if (qwait.tv_sec < delay) {
-                    timeOut.tv_sec = delay;
-                    timeOut.tv_usec = 100000;  /* fudge for select() slop */
-                    timersub(&timeOut, &qwait, &timeOut);
-                }
-                else {
-                    /* Killed time somewhere.. client read? */
-                    send_to_pm(FCGI_REQUEST_TIMEOUT_JOB, fr->fs_path, fr->user, fr->group, 0, 0);
-                    dynamic_first_read = qwait.tv_sec / dynamicPleaseStartDelay + 1;
-                    timeOut.tv_sec = dynamic_first_read * dynamicPleaseStartDelay;
-                    timeOut.tv_usec = 100000;  /* fudge for select() slop */
-                    timersub(&timeOut, &qwait, &timeOut);
-                }
-            }
-            else {
-                timeOut.tv_sec = idle_timeout;
-                timeOut.tv_usec = 0;
-            }
-
-#ifdef WIN32
-            if (!fr->using_npipe_io) {
-#endif
-            if ((status = ap_select(numFDs, &read_set, &write_set, NULL, &timeOut)) < 0) {
-#ifdef WIN32
-                errno = WSAGetLastError();
-#endif
-                ap_log_rerror(FCGI_LOG_ERR_ERRNO, r,
-                    "FastCGI: comm with server \"%s\" aborted: select() failed", fr->fs_path);
-                return server_error(fr);
-            }
-#ifdef WIN32
-            }
-            else {
-                int stopTime = time(NULL) + timeOut.tv_sec;
-
-                if (BufferLength(fr->serverOutputBuffer) == 0) 
-                {
-                    status = 0;
-
-                    while ((timeOut.tv_sec != 0) && (time(NULL) <= stopTime)) 
-                    {
-                        BOOL ok = PeekNamedPipe((HANDLE) fr->fd,NULL, 0, NULL, &bytesavail, NULL);
-                        if (! ok) 
-                        {
-                            ap_log_rerror(FCGI_LOG_ERR, r,
-                                "FastCGI: comm with sever \"%s\" aborted: PeekNamedPipe() failed",
-                                fr->fs_path);
-                            return server_error(fr);
-                        }
-                        if (bytesavail > 0) 
-                        {
-                            status =1;
-                            break;
-                        }
-                        Sleep(100);
-                    }
-                }
-                else {
-                    status = 1;
-                }
-            }
-#endif
-
-            if (status == 0) {
-                if (BufferLength(fr->clientOutputBuffer) > 0) {
-                    doClientWrite = TRUE;
-                }
-                else if (dynamic_first_read) {
-                    struct timeval qwait;
-
-                    if (fcgi_util_ticks(&fr->queueTime) < 0) {
-                    	ap_log_rerror(FCGI_LOG_ERR, r, "FastCGI: can't get time of day");
-                    	return server_error(fr);
-                    }
-
-                    timersub(&fr->queueTime, &fr->startTime, &qwait);
-
-                    send_to_pm(FCGI_REQUEST_TIMEOUT_JOB, fr->fs_path, fr->user, fr->group, 0, 0);
-
-                    dynamic_first_read = qwait.tv_sec / dynamicPleaseStartDelay + 1;
-                }
-                else {
-                    ap_log_rerror(FCGI_LOG_ERR_NOERRNO, r,
-                        "FastCGI: comm with server \"%s\" aborted: idle timeout (%d sec)",
-                        fr->fs_path, idle_timeout);
-                    return server_error(fr);
-                }
-            }
-
-#if defined(SIGPIPE) && MODULE_MAGIC_NUMBER < 19990320
-            /* Disable Apache's SIGPIPE handler */
-            fr->apache_sigpipe_handler = signal(SIGPIPE, SIG_IGN);
-#endif
-
-            /* Read from the FastCGI server */
-#ifdef WIN32
-            if ((fr->using_npipe_io
-                    && (BufferFree(fr->serverInputBuffer) > 0) 
-                    && PeekNamedPipe((HANDLE) fr->fd, NULL, 0, NULL, &bytesavail, NULL) 
-                    && (bytesavail > 0))
-                || FD_ISSET(fr->fd, &read_set)) {
-#else
-            if (FD_ISSET(fr->fd, &read_set)) {
-#endif             
-                if (dynamic_first_read) {
-                    dynamic_first_read = 0;
-                    if (fcgi_util_ticks(&fr->queueTime) < 0) {
-                        ap_log_rerror(FCGI_LOG_ERR, r, "FastCGI: can't get time of day");
-                        return server_error(fr);
-                    }
-                }
-
-                if ((status = fcgi_buf_add_fd(fr->serverInputBuffer, fr->fd)) < 0) {
-#ifdef WIN32
-                    if (! fr->using_npipe_io)
-                        ap_log_rerror(FCGI_LOG_ERR_ERRNO, r,
-                            "FastCGI: comm with server \"%s\" aborted: read failed", fr->fs_path);
-                    else
-#endif
-                    ap_log_rerror(FCGI_LOG_ERR, r,
-                        "FastCGI: comm with server \"%s\" aborted: read failed", fr->fs_path);
-                    return server_error(fr);
-                }
-
-                if (status == 0) {
-                    fr->keepReadingFromFcgiApp = FALSE;
-                    close_connection_to_fs(fr);
-                }
-                else {
-                    if (fcgi_protocol_dequeue(rp, fr) != OK) {
-                        return server_error(fr);
-                    }
-                    
-                    if (fr->parseHeader == SCAN_CGI_READING_HEADERS) {
-                        if ((err = process_headers(r, fr))) {
-                            ap_log_rerror(FCGI_LOG_ERR_NOERRNO, r,
-                                "FastCGI: comm with server \"%s\" aborted: "
-                                "error parsing headers: %s", fr->fs_path, err);
-                            return server_error(fr);
-                        }
-                    }
-                }
-            }
-
-            /* Write to the FastCGI server */
-            if (BufferLength(fr->serverOutputBuffer) > 0)
-            {
-#ifdef WIN32
-                /* XXX this is broke because it will cause a spin if the app doesn't read */
-                if (fr->using_npipe_io || FD_ISSET(fr->fd, &write_set))
-#else
-                if (FD_ISSET(fr->fd, &write_set))
-#endif
-                {
-                    if (fcgi_buf_get_to_fd(fr->serverOutputBuffer, fr->fd) < 0) 
-                    {
-                        /* XXX this could fail even if the app finished sending a response */
-#ifdef WIN32
-                        if (! fr->using_npipe_io)
-                            ap_log_rerror(FCGI_LOG_ERR_ERRNO, r,
-                                "FastCGI: comm with server \"%s\" aborted: write failed", fr->fs_path);
-                        else
-#endif
-                        ap_log_rerror(FCGI_LOG_ERR, r,
-                            "FastCGI: comm with server \"%s\" aborted: write failed", fr->fs_path);
-                        
-                        return server_error(fr);
-                    }
-                }
-            }
-
-#if defined(SIGPIPE) && MODULE_MAGIC_NUMBER < 19990320
-            /* Reinstall Apache's SIGPIPE handler */
-            signal(SIGPIPE, fr->apache_sigpipe_handler);
-#endif
-
-        } else {
-            doClientWrite = TRUE;
-        }
-
-        if (fr->role == FCGI_RESPONDER && doClientWrite) {
-
-            if (write_to_client(fr) != OK) {
-#if defined(SIGPIPE) && MODULE_MAGIC_NUMBER < 19990320
-                    /* Make sure we leave with Apache's sigpipe_handler in place */
-                    if (fr->apache_sigpipe_handler != NULL)
-                        signal(SIGPIPE, fr->apache_sigpipe_handler);
-#endif
-                    close_connection_to_fs(fr);
-                    ap_kill_timeout(fr->r);
-                    return OK;
-            }
-        }
-
-        if (fcgi_protocol_dequeue(rp, fr) != OK)
-            return server_error(fr);
-
-        if (fr->keepReadingFromFcgiApp && fr->exitStatusSet) {
-            /* we're done talking to the fcgi app */
-            fr->keepReadingFromFcgiApp = FALSE;
-            close_connection_to_fs(fr);
-        }
-
-        if (fr->parseHeader == SCAN_CGI_READING_HEADERS) {
-            if ((err = process_headers(r, fr))) {
-                ap_log_rerror(FCGI_LOG_ERR_NOERRNO, r,
-                    "FastCGI: comm with server \"%s\" aborted: error parsing headers: %s", fr->fs_path, err);
-                return server_error(fr);
-            }
-        }
-
-    } /* while */
-
-    if (fr->role == FCGI_RESPONDER) {
+    if (fr->role == FCGI_RESPONDER) 
+    {
         sink_client_data(fr);
     }
 
-    switch (fr->parseHeader) {
-
-        case SCAN_CGI_FINISHED:
-
-            if (fr->role == FCGI_RESPONDER) {
-#ifdef RUSSIAN_APACHE
-                ap_rflush(r);
-#else
-                ap_bflush(r->connection->client);
-#endif
-                ap_bgetopt(r->connection->client, BO_BYTECT, &r->bytes_sent);
+    while (rv == 0 && BufferLength(fr->serverInputBuffer) || BufferLength(fr->clientOutputBuffer))
+    {
+        if (fcgi_protocol_dequeue(rp, fr)) 
+        {
+            rv = SERVER_ERROR;
+        }
+    
+        if (fr->parseHeader == SCAN_CGI_READING_HEADERS) 
+        {
+            const char * err = process_headers(r, fr);
+            if (err)
+            {
+                ap_log_rerror(FCGI_LOG_ERR_NOERRNO, r,
+                    "FastCGI: comm with server \"%s\" aborted: "
+                    "error parsing headers: %s", fr->fs_path, err);
+                rv = SERVER_ERROR;
             }
-            break;
+        }
 
-        case SCAN_CGI_READING_HEADERS:
-
-            ap_log_rerror(FCGI_LOG_ERR_NOERRNO, r,
-                "FastCGI: incomplete headers (%d bytes) received from server \"%s\"",
-                fr->header->nelts, fr->fs_path);
-            return server_error(fr);
-
-        case SCAN_CGI_BAD_HEADER:
-
-            return server_error(fr);
-
-        case SCAN_CGI_INT_REDIRECT:
-        case SCAN_CGI_SRV_REDIRECT:
-
-            break;
-
-        default:
-            ap_assert(FALSE);
+        if (fr->role == FCGI_RESPONDER) 
+        {
+            if (write_to_client(fr)) 
+            {
+                break;
+            }
+        }
+        else
+        {
+            fcgi_buf_reset(fr->clientOutputBuffer);
+        }
     }
 
+    switch (fr->parseHeader) 
+    {
+    case SCAN_CGI_FINISHED:
+
+        if (fr->role == FCGI_RESPONDER) 
+        {
+            /* RUSSIAN_APACHE requires rflush() over bflush() */
+            ap_rflush(r);
+            ap_bgetopt(r->connection->client, BO_BYTECT, &r->bytes_sent);
+        }
+
+        /* fall through */
+
+    case SCAN_CGI_INT_REDIRECT:
+    case SCAN_CGI_SRV_REDIRECT:
+
+        break;
+
+    case SCAN_CGI_READING_HEADERS:
+
+        ap_log_rerror(FCGI_LOG_ERR_NOERRNO, r, "FastCGI: incomplete headers "
+            "(%d bytes) received from server \"%s\"", fr->header->nelts, fr->fs_path);
+        
+        /* fall through */
+
+    case SCAN_CGI_BAD_HEADER:
+
+        rv = SERVER_ERROR;
+        break;
+
+    default:
+
+        ap_assert(0);
+        rv = SERVER_ERROR;
+    }
+   
     ap_kill_timeout(r);
-    return OK;
+    return rv;
 }
 
 static fcgi_request *create_fcgi_request(request_rec * const r, const char *fs_path)
