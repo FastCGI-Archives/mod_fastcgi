@@ -12,10 +12,12 @@
 	difficulty is that mod_fastcgi often interleaves client and
 	application communication.
 
- *) Implement session affinity.  The issue here is where to get
-	session information from.  Apache doesn't handle this in a
-	standard way and there's no way to customize short of writing
-	C code to link into the server.  (Authorizer role would
-	allow the session-identifying code to run outside the server.)
-	Is it possible to use mod_unique_id to set/get identifiers to be used
-	in implementing session affinity ???.  
+ *) Implement session affinity.  Is it possible to use mod_unique_id to set/get
+    identifiers to be used in implementing session affinity?
+    
+ *) Support an -appConnTimeout value which would indicate that the connection
+    should not be put in non-blocking mode.
+    
+ *) Configurable buffer sizes.
+ 
+
