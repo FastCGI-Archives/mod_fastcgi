@@ -13,9 +13,9 @@ Notes
 
   The FastCGI Module has not been tested on all of the Apache supported
   platforms.  These are known to work: SunOS, Solaris, SCO, Linux, Digital
-  Unix, IRIX, FreeBSD and QNX (Inet sockets only).  Windows is not currently
-  supported.  If your successful in using this module on other platforms, 
-  please email fastcgi-developers@idle.com.
+  Unix, IRIX, FreeBSD and QNX (Inet sockets only). The Windows NT port is
+  available for beta testing.  If your successful in using this module on
+  other platforms, please email fastcgi-developers@idle.com.
 
   This module is maintained at http://www.FastCGI.com.  
   
@@ -43,6 +43,8 @@ Introduction
   If you have a binary Apache distribution, such as Red Hat's Secure
   Server (or prefer a DSO based Apache), you have to build mod_fastcgi as a
   Dynamic Shared Object (DSO) - see Section 3.
+
+  If your on Windows NT, see Section 4.
 
 
 1) Installing mod_fastcgi with APACI
@@ -148,3 +150,48 @@ Introduction
 
     $ <run_dir>/bin/apachectl stop
     $ <run_dir>/bin/apachectl start
+
+
+4) Windows NT
+======================
+   To build mod_fastcgi on NT will need Mircsoft Visual Studio C++ 5.0
+
+   1. From the mod_fastcgi directory, compile the module.
+ 
+      a) Open the mod_fastcgi project file with the developer studio
+
+      b) Select Project->Settings or press <ALT+F7>
+
+      c) Select "All configurations" from the "Settiings For:" list
+
+      d) Select the "C/C++" tab and select "Category->Preprocesser"
+
+      e) Edit the "Additional include directories" to provide the location of
+         the Apache source tree. (ex.  C:\apache_1.3.6\src\include)
+
+      e) Select the "Link" tab and "Win32 Release" from the Setting list
+
+      g) Select the "Catagory->General" and edit the "Object/library modules"
+         to match Apache source tree on your system 
+         example:  C:\apache_1.3.6\src\CoreR\ApacheCore.lib
+
+      h) Select "Win32 Debug" from the setting list and follow step (g) expcept
+         CoreR would be CoreD
+
+      i) Select OK
+
+      j) Set the active configuration you want to build from.
+
+      k) Build the module
+
+   2. Install
+
+      Copy the mod_fastcgi.dll to the modules directory in your Apache install
+      directory
+      
+      Edit the httpd configurion file and add a line like:
+
+          LoadModule fastcgi_module modules/mod_fastcgi.dll
+
+   3. Edit the httpd configuration file(s) to enable your FastCGI
+      application(s).  See docs/mod_fastcgi.html for details.

@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_buf.c,v 1.3 1999/09/24 02:25:00 roberts Exp $
+ * $Id: fcgi_buf.c,v 1.4 2000/04/27 02:27:35 robs Exp $
  */
 
 #include "fcgi.h"
@@ -56,9 +56,16 @@ Buffer *fcgi_buf_new(pool *p, int size)
  *      =0 EOF reached
  *      >0 successful read or no room in buffer (NOT # of bytes read)
  */
+#ifdef WIN32
+int fcgi_buf_add_fd(Buffer *buf, SOCKET fd)
+#else
 int fcgi_buf_add_fd(Buffer *buf, int fd)
+#endif
 {
     size_t len;
+#ifdef WIN32
+    DWORD bytesRead;
+#endif
 
     fcgi_buf_check(buf);
 
@@ -79,7 +86,19 @@ int fcgi_buf_add_fd(Buffer *buf, int fd)
 #endif
 
     do
+#ifdef WIN32
+    {
+        if (!ReadFile((HANDLE) fd, buf->end, len, &bytesRead, NULL)) {
+            int err = GetLastError();
+            len = recv(fd, buf->end, len, 0);
+        }
+        else {
+            len = bytesRead;
+        }
+    }
+#else
         len = read(fd, buf->end, len);
+#endif
     while (len == -1 && errno == EINTR);
 
     if (len <= 0)
@@ -165,9 +184,16 @@ int fcgi_buf_add_fd(Buffer *buf, int fd)
  *      =0 if no bytes were written
  *      >0 successful write
  */
+#ifdef WIN32
+int fcgi_buf_get_to_fd(Buffer *buf, SOCKET fd)
+#else
 int fcgi_buf_get_to_fd(Buffer *buf, int fd)
+#endif
 {
     size_t len;
+#ifdef WIN32
+    DWORD bytesWritten;
+#endif
 
     fcgi_buf_check(buf);
 
@@ -182,7 +208,21 @@ int fcgi_buf_get_to_fd(Buffer *buf, int fd)
 #endif
 
     do
+#ifdef WIN32
+    {
+        int err;
+
+        if (!WriteFile((HANDLE) fd, (LPVOID) buf->begin, len, &bytesWritten, NULL)) {
+            err =GetLastError();
+
+            len = send(fd, buf->begin, len, 0);
+        }
+        else
+            len = bytesWritten;
+    }
+#else
         len = write(fd, buf->begin, len);
+#endif
     while (len == -1 && errno == EINTR);
 
     if (len <= 0)
@@ -287,7 +327,7 @@ void fcgi_buf_get_block_info(Buffer *buf, char **beginPtr, int *countPtr)
 void fcgi_buf_toss(Buffer *buf, size_t count)
 {
     fcgi_buf_check(buf);
-    ap_assert(count >= 0 && count <= buf->length);
+    ap_assert(count >= 0 && (int) count <= buf->length);
 
     buf->length -= count;
     buf->begin += count;
@@ -313,7 +353,7 @@ void fcgi_buf_get_free_block_info(Buffer *buf, char **endPtr, int *countPtr)
 void fcgi_buf_add_update(Buffer *buf, size_t count)
 {
     fcgi_buf_check(buf);
-    ap_assert(count >= 0 && count <= BufferFree(buf));
+    ap_assert(count >= 0 && (int) count <= BufferFree(buf));
 
     buf->length += count;
     buf->end += count;
@@ -346,8 +386,8 @@ int fcgi_buf_add_block(Buffer *buf, char *data, size_t datalen)
      * Copy the first part of the data:  from here to the end of the
      * buffer, or the end of the data, whichever comes first.
      */
-    datalen = min(BufferFree(buf), datalen);
-    canCopy = min(datalen, end - buf->end);
+    datalen = min(BufferFree(buf), (int) datalen);
+    canCopy = min((int) datalen, end - buf->end);
     memcpy(buf->end, data, canCopy);
     buf->length += canCopy;
     buf->end += canCopy;
@@ -398,7 +438,7 @@ int fcgi_buf_get_to_block(Buffer *buf, char *data, int datalen)
      * of the buffer, or all of the requested data.
      */
     canCopy = min(buf->length, datalen);
-    canCopy = min(canCopy, end - buf->begin);
+    canCopy = min((int) canCopy, end - buf->begin);
     memcpy(data, buf->begin, canCopy);
     buf->length -= canCopy;
     buf->begin += canCopy;
@@ -448,7 +488,7 @@ void fcgi_buf_get_to_buf(Buffer *dest, Buffer *src, int len)
         fcgi_buf_get_block_info(src, &src_begin, &src_len);
 
         move_len = min(dest_len, src_len);
-        move_len = min(move_len, len);
+        move_len = min((int) move_len, len);
 
         if (move_len == 0)
             return;
@@ -465,7 +505,7 @@ static void array_grow(array_header *arr, size_t n)
     if (n <= 0)
         return;
 
-    if (arr->nelts + n > arr->nalloc) {
+    if ((int) (arr->nelts + n) > arr->nalloc) {
         char *new_elts;
         int new_nalloc = (arr->nalloc <= 0) ? n : arr->nelts + n;
 
@@ -494,14 +534,14 @@ void fcgi_buf_get_to_array(Buffer *buf, array_header *arr, size_t len)
 
     fcgi_buf_check(buf);
     ap_assert(len > 0);
-    ap_assert(len <= BufferLength(buf));
+    ap_assert((int) len <= BufferLength(buf));
 
     array_grow(arr, len);
 
-    len1 = min(len1, len);
+    len1 = min(len1, (int) len);
     array_cat_block(arr, buf->begin, len1);
 
-    if (len1 < len)
+    if (len1 < (int) len)
         array_cat_block(arr, buf->data, len - len1);
 
     fcgi_buf_toss(buf, len);

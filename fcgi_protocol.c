@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_protocol.c,v 1.13 2000/04/06 18:46:36 robs Exp $
+ * $Id: fcgi_protocol.c,v 1.14 2000/04/27 02:27:35 robs Exp $
  */
 
 
@@ -180,15 +180,11 @@ static void add_pass_header_vars(fcgi_request *fr)
  * complete ENV was buffered, FALSE otherwise.  Note: envp is updated to
  * reflect the current position in the ENV.
  */
-int fcgi_protocol_queue_env(request_rec *r, fcgi_request *fr, char ***envp)
+int fcgi_protocol_queue_env(request_rec *r, fcgi_request *fr, env_status *env)
 {
-    static int              headerLen, nameLen, valueLen, totalLen;
-    static char             *equalPtr;
-    static unsigned char    headerBuff[8];
-    static enum { prep, header, name, value } pass;
-    int       charCount;
+    int charCount;
 
-    if (*envp == NULL) {
+    if (env->envp == NULL) {
         ap_add_common_vars(r);
         add_pass_header_vars(fr);
 
@@ -197,49 +193,54 @@ int fcgi_protocol_queue_env(request_rec *r, fcgi_request *fr, char ***envp)
         else
             add_auth_cgi_vars(r, fr->auth_compat);
 
-        *envp = ap_create_environment(r->pool, r->subprocess_env);
-        pass = prep;
+        env->envp = ap_create_environment(r->pool, r->subprocess_env);
+        env->pass = prep;
     }
 
-    while (**envp) {
-        switch (pass) {
-            case prep:
-                equalPtr = strchr(**envp, '=');
-                ap_assert(equalPtr != NULL);
-                nameLen = equalPtr - **envp;
-                valueLen = strlen(++equalPtr);
-                build_env_header(nameLen, valueLen, headerBuff, &headerLen);
-                totalLen = headerLen + nameLen + valueLen;
-                pass = header;
-                /* drop through */
-            case header:
-                if (BufferFree(fr->serverOutputBuffer) < (sizeof(FCGI_Header)+headerLen)) {
-                    return (FALSE);
-                }
-                queue_header(fr, FCGI_PARAMS, totalLen);
-                fcgi_buf_add_block(fr->serverOutputBuffer, (char *)headerBuff, headerLen);
-                pass = name;
-                /* drop through */
-            case name:
-                charCount = fcgi_buf_add_block(fr->serverOutputBuffer, **envp, nameLen);
-                if (charCount != nameLen) {
-                    **envp += charCount;
-                    nameLen -= charCount;
-                    return (FALSE);
-                }
-                pass = value;
-                /* drop through */
-            case value:
-                charCount = fcgi_buf_add_block(fr->serverOutputBuffer, equalPtr, valueLen);
-                if (charCount != valueLen) {
-                    equalPtr += charCount;
-                    valueLen -= charCount;
-                    return (FALSE);
-                }
-                pass = prep;
+    while (**env->envp) {
+        switch (env->pass) 
+        {
+        case prep:
+            env->equalPtr = strchr(*env->envp, '=');
+            ap_assert(env->equalPtr != NULL);
+            env->nameLen = env->equalPtr - *env->envp;
+            env->valueLen = strlen(++env->equalPtr);
+            build_env_header(env->nameLen, env->valueLen, env->headerBuff, &env->headerLen);
+            env->totalLen = env->headerLen + env->nameLen + env->valueLen;
+            env->pass = header;
+            /* drop through */
+
+        case header:
+            if (BufferFree(fr->serverOutputBuffer) < (int)(sizeof(FCGI_Header) + env->headerLen)) {
+                return (FALSE);
+            }
+            queue_header(fr, FCGI_PARAMS, env->totalLen);
+            fcgi_buf_add_block(fr->serverOutputBuffer, (char *)env->headerBuff, env->headerLen);
+            env->pass = name;
+            /* drop through */
+
+        case name:
+            charCount = fcgi_buf_add_block(fr->serverOutputBuffer, *env->envp, env->nameLen);
+            if (charCount != env->nameLen) {
+                **env->envp += charCount;
+                env->nameLen -= charCount;
+                return (FALSE);
+            }
+            env->pass = value;
+            /* drop through */
+
+        case value:
+            charCount = fcgi_buf_add_block(fr->serverOutputBuffer, env->equalPtr, env->valueLen);
+            if (charCount != env->valueLen) {
+                env->equalPtr += charCount;
+                env->valueLen -= charCount;
+                return (FALSE);
+            }
+            env->pass = prep;
         }
-        (*envp)++;
+        (*env->envp)++;
     }
+
     if (BufferFree(fr->serverOutputBuffer) < sizeof(FCGI_Header)) {
         return(FALSE);
     }

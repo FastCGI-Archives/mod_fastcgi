@@ -1,5 +1,7 @@
 Changes with mod_fastcgi 2.2.3
 
+ *) Beta WinNT support.  David Allen [djallen@raleigh.ibm.com]
+
  *) Remove request type restriction (GET and POST only) in order to support
     Web DAV requests.  Scott Robertson [sroberts@codeit.com] 
 

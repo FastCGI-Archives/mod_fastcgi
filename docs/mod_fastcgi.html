@@ -1,6 +1,6 @@
 <!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">
 <html>
-<!-- $Id: mod_fastcgi.html,v 1.14 1999/09/19 02:06:59 roberts Exp $ -->
+<!-- $Id: mod_fastcgi.html,v 1.15 2000/04/27 02:27:36 robs Exp $ -->
 
 <head>
 <title>Apache module mod_fastcgi</title>
@@ -256,7 +256,7 @@ the specified extension(s) as FastCGI applications:</p>
     application.&nbsp; This delay prevents a broken application from soaking up too much of
     the system.</dd>
   <dt><code><b>-socket<em> filename</em>&nbsp;</b><em>(gen'd)</em></code></dt>
-  <dd>The filename of the Unix domain socket that the application will use for communication
+  <dd><b>Unix: </b>The filename of the Unix domain socket that the application will use for communication
     with the web server.&nbsp; The module creates the socket within the directory specified by
     <code>FastCgiIpcDir</code>.&nbsp; This option makes the application accessible to other
     applications (e.g. <code>cgi-fcgi</code>) on the same machine or via an external FastCGI
@@ -264,6 +264,16 @@ the specified extension(s) as FastCGI applications:</p>
     nor the <code>-port</code> options are given, the module generates a Unix domain socket
     filename.&nbsp; The <code>-socket</code> and <code>-port</code> options are mutually
     exclusive.</dd>
+<DD>
+<B>Windows NT: </B>The name of the named pipe that the application will
+use for communication with the web server.&nbsp; The module creates the
+named pipe off the named pipe root specified by the FastCgiIpcDir.&nbsp;
+. This option makes the application accessible to other applications (e.g.
+<TT>cgi-fcgi</TT>) on the same machine or via an external FastCGI application
+definition (<TT>FastCgiExternalServer</TT>).&nbsp; If neither the <TT>-socket</TT>
+nor the <TT>-port</TT> options are given, the module generates a name for
+the named pipe.&nbsp; The <TT>-socket</TT> and <TT>-port</TT> options are
+mutually exclusive.</DD>
 </dl>
 
 <dl>
@@ -451,9 +461,13 @@ the specified extension(s) as FastCGI applications:</p>
     environment.&nbsp; This option makes available the contents of headers which
     are normally not available (e.g. Authorization) to a CGI environment. </dd>
   <dt><code><b>-socket<em> filename</em>&nbsp;</b><em>none</em></code></dt>
-  <dd>The filename of the Unix domain socket the application uses for communication with the
+  <dd><b>Unix: </b>The filename of the Unix domain socket the application uses for communication with the
     web server.&nbsp; The filename is relative to the <code>FastCgiIpcDir</code>.&nbsp; The <code>-socket</code>
     and <code>-port</code> options are mutually exclusive.</dd>
+  <dd> <b>Windows NT:&nbsp;</b> The name of the named pipe the application uses
+for communitcating with the web server. the name is relative to the <TT><A HREF="#FastCgiIpcDir">
+FastCgiIpcDir</A></TT>.&nbsp;
+The -<TT>socket </TT>and&nbsp;<TT> -port </TT>options are mutually exclusive.</DD>
   <dt>&nbsp;</dt>
   <hr>
   <h2><a name="FastCgiIpcDir">FastCgiIpcDir</a></h2>
@@ -461,18 +475,26 @@ the specified extension(s) as FastCGI applications:</p>
   <table border="0">
     <tr>
       <td><a HREF="http://www.apache.org/docs/mod/directive-dict.html#Syntax" REL="Help"><strong>Syntax:</strong></a></td>
-      <td><code>FastCgiIpcDir <em>directory</em></code></td>
+      <td><code><B>Unix: </B>FastCgiIpcDir <em>directory</em></code></td>
+    </tr>
+    <tr>
+       <td></td>
+       <td><tt><b>Windows NT: </b>FastCgiIpcDir <i>name&nbsp;</i></tt></td> 
     </tr>
     <tr>
       <td><a href="http://www.apache.org/docs/mod/directive-dict.html#Default"><strong>Default:</strong></a></td>
-      <td><code>FastCgiIpcDir /tmp/fcgi</code></td>
+      <td><code><b>Unix: </b>FastCgiIpcDir /tmp/fcgi</code></td>
+    </tr>
+    <tr>
+      <td></td>
+      <td><tt><b>Windows NT: </b>FastCgiIpcDir \\.\pipe\ModFastCgi\</tt></td>
     </tr>
     <tr>
       <td><a HREF="http://www.apache.org/docs/mod/directive-dict.html#Context" REL="Help"><strong>Context:</strong></a></td>
       <td>server config</td>
     </tr>
   </table>
-  <p>The <code>FastCgiIpcDir</code> directive specifies <em>directory</em> as the place to
+  <p><b>Unix: </b>The <code>FastCgiIpcDir</code> directive specifies <em>directory</em> as the place to
   store (and find, in the case of external FastCGI applications) the Unix socket files used
   for communication between the applications and the web server.&nbsp; If the directory does
   not begin with a slash (/) then it is assumed to be relative to the <a
@@ -481,6 +503,11 @@ the specified extension(s) as FastCGI applications:</p>
   permissions.&nbsp; Do not specify a directory that is not on a local filesystem!&nbsp; If
   you use the default directory (or another directory within <code>/tmp</code>), <code>mod_fastcgi</code>
   will break if your system periodically deletes files from <code>/tmp</code>.</p>
+  <p><b>Windows NT: </b>The <tt>FastCgiIpcDir </tt>directive specifies <i>name
+  </i>as the root for the named pipes used for communication between the
+  application and the web server.&nbsp; The <i>name</i> must be in the form
+  of <b>\\.\pipe\</b><i>pipname. </i>The <i>pipename </i>part can contain
+  any charater other than a backslash,/p>
   <p>The <code>FastCgiIpcDir</code> directive must precede any <a href="#FastCgiServer"><code>FastCgiServer</code></a>
   or <a href="#FastCgiExternalServer"><code>FastCgiExternalServer</code></a> directives
   (which make use of Unix sockets). The directory must be readable, writeable, and

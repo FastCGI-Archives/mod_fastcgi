@@ -1,23 +1,41 @@
 /*
- * $Id: fcgi_pm.c,v 1.20 1999/10/06 11:44:23 roberts Exp $
+ * $Id: fcgi_pm.c,v 1.21 2000/04/27 02:27:35 robs Exp $
  */
+
 
 #include "fcgi.h"
 
+#ifdef WIN32
+#include "multithread.h"
+#endif
+
+
 int fcgi_dynamic_total_proc_count = 0;    /* number of running apps */
 time_t fcgi_dynamic_epoch = 0;            /* last time kill_procs was
-                                                  * invoked by process mgr */
+                                           * invoked by process mgr */
 time_t fcgi_dynamic_last_analyzed = 0;    /* last time calculation was
-                                                  * made for the dynamic procs*/
+                                           * made for the dynamic procs */
 
 static time_t now = 0;
 
 /* Information about a process we are doing a blocking kill of.  */
 struct FuncData {
+#ifndef WIN32
     const char *lockFileName;    /* name of the lock file to lock */
     pid_t pid;                   /* process to issue SIGTERM to   */
+#else
+    FcgiRWLock *lock;    /* reader/writer lock for dynamic app */
+    HANDLE pid;                  /* process to issue SIGTERM to   */
+#endif
 };
 
+#ifdef WIN32
+static BOOL bTimeToDie = FALSE;  /* process termination flag */
+HANDLE fcgi_event_handles[3];
+#endif
+
+
+#ifndef WIN32
 static int seteuid_root(void)
 {
     int rc = seteuid((uid_t)0);
@@ -37,10 +55,12 @@ static int seteuid_user(void)
     }
     return rc;
 }
+#endif
 
 static int fcgi_kill(pid_t pid, int sig)
 {
     int rc;
+#ifndef WIN32
     if (fcgi_suexec) {
         seteuid_root();
     }
@@ -48,6 +68,9 @@ static int fcgi_kill(pid_t pid, int sig)
     if (fcgi_suexec) {
         seteuid_user();
     }
+#else
+    rc = TerminateProcess((HANDLE) pid, sig);
+#endif
     return rc;
 }
 
@@ -67,14 +90,23 @@ static void kill_fs_procs(pool *p, fcgi_server *s)
         numChildren = s->numProcesses;
 
     for (i = 0; i < numChildren; i++, proc++) {
+#ifndef WIN32
         if (proc->pid > 0) {
             fcgi_kill(proc->pid, SIGTERM);
             proc->pid = -1;
         }
+#else
+        if (proc->pid != INVALID_HANDLE_VALUE) {
+            fcgi_kill((int) proc->pid, 1);
+            CloseHandle((HANDLE) proc->pid);
+            proc->pid = INVALID_HANDLE_VALUE;
+        }
+#endif
     }
 
     /* Remove the dead lock file */
     if (s->directive == APP_CLASS_DYNAMIC) {
+#ifndef WIN32
         const char *lockFileName = fcgi_util_socket_get_lock_filename(p, s->socket_path);
 
         if (unlink(lockFileName) != 0) {
@@ -82,16 +114,23 @@ static void kill_fs_procs(pool *p, fcgi_server *s)
                 "FastCGI: unlink() failed to remove lock file \"%s\" for (dynamic) server \"%s\"",
                 lockFileName, s->fs_path);
         }
+#else
+       fcgi_rdwr_destory(s->dynamic_lock);
+#endif
     }
 
     /* Remove the socket file */
     if (s->socket_path != NULL && s->directive != APP_CLASS_EXTERNAL) {
+#ifndef WIN32
         if (unlink(s->socket_path) != 0) {
             ap_log_error(FCGI_LOG_ERR, fcgi_apache_main_server,
                 "FastCGI: unlink() failed to remove socket file \"%s\" for%s server \"%s\"",
                 s->socket_path,
                 (s->directive == APP_CLASS_DYNAMIC) ? " (dynamic)" : "", s->fs_path);
         }
+#else
+       CloseHandle((HANDLE)s->listenFd);
+#endif
     }
     fcgi_servers = s->next;
 }
@@ -104,10 +143,14 @@ static void kill_fs_procs(pool *p, fcgi_server *s)
 static const char *bind_n_listen(pool *p, struct sockaddr *socket_addr,
         int socket_addr_len, int backlog, int sock)
 {
+#ifndef WIN32
     if (socket_addr->sa_family == AF_UNIX) {
         /* Remove any existing socket file.. just in case */
         unlink(((struct sockaddr_un *)socket_addr)->sun_path);
-    } else {
+    }
+    else 
+#endif
+    {
         int flag = 1;
         setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (char *)&flag, sizeof(flag));
     }
@@ -116,11 +159,13 @@ static const char *bind_n_listen(pool *p, struct sockaddr *socket_addr,
     if (bind(sock, socket_addr, socket_addr_len) != 0)
         return "bind() failed";
 
+#ifndef WIN32
     /* Twiddle permissions */
     if (socket_addr->sa_family == AF_UNIX) {
         if (chmod(((struct sockaddr_un *)socket_addr)->sun_path, S_IRUSR | S_IWUSR))
             return "chmod() of socket failed";
     }
+#endif
 
     /* Set to listen */
     if (listen(sock, backlog) != 0)
@@ -153,6 +198,7 @@ static const char *bind_n_listen(pool *p, struct sockaddr *socket_addr,
 static void dynamic_blocking_kill(void *data)
 {
     struct FuncData *funcData = (struct FuncData *)data;
+#ifndef WIN32
     int lockFd;
 
     ap_assert(funcData->lockFileName);
@@ -167,6 +213,17 @@ static void dynamic_blocking_kill(void *data)
     }
     /* exit() may flush stdio buffers inherited from the parent. */
     _exit(0);
+#else
+    ap_assert(funcData->lock);
+    if (fcgi_wait_for_shared_write_lock(funcData->lock) < 0) {
+       // This is a major problem 
+    }
+	else {
+       TerminateProcess(funcData->pid, 1);
+	   fcgi_rdwr_unlock(funcData->lock, WRITER);
+    }
+    return;
+#endif
 }
 
 /*
@@ -193,6 +250,7 @@ static void dynamic_blocking_kill(void *data)
  *
  *----------------------------------------------------------------------
  */
+#ifndef WIN32
 static int caughtSigTerm = FALSE;
 static int caughtSigChld = FALSE;
 static int caughtSigUsr2 = FALSE;
@@ -213,6 +271,7 @@ static void signal_handler(int signo)
         caughtSigUsr2 = TRUE;
     }
 }
+#endif
 
 /*
  *----------------------------------------------------------------------
@@ -235,8 +294,13 @@ static void signal_handler(int signo)
  *----------------------------------------------------------------------
  */
 
+#ifndef WIN32
 static pid_t spawn_fs_process(const fcgi_server *fs)
+#else
+static HANDLE spawn_fs_process(fcgi_server *fs)
+#endif
 {
+#ifndef WIN32
     pid_t child_pid;
     int i;
     char *dirName;
@@ -318,8 +382,67 @@ FailedSystemCallExit:
 
     /* avoid an irrelevant compiler warning */
     return(0);
+#else
+    int i;
+    int EnvBlockLen = 0;
+    int success =  0;
+    char * EnvBlock = NULL;
+    char * Next;
+	HANDLE child_process;
+
+    STARTUPINFO si;
+    PROCESS_INFORMATION pi;
+    pool * tp =ap_make_sub_pool(fcgi_config_pool);
+
+    memset(&si, 0, sizeof(si));
+    memset(&pi, 0, sizeof(pi));
+
+    si.cb = sizeof(si);
+    si.dwFlags = STARTF_USESHOWWINDOW | STARTF_USESTDHANDLES;
+    si.wShowWindow = SW_HIDE;
+    si.hStdInput = (HANDLE) fs->listenFd;
+    si.hStdOutput = INVALID_HANDLE_VALUE;
+    si.hStdError = INVALID_HANDLE_VALUE;
+
+    if (fs->envp && *fs->envp) {
+        i = 0;
+        EnvBlockLen = 1;
+        while (fs->envp[i]) {
+            EnvBlockLen += strlen(fs->envp[i]) + 1;
+            i++;
+        }
+
+        EnvBlock = (char *) ap_pcalloc(tp, EnvBlockLen);
+
+        i = 0;
+        Next = EnvBlock;
+        while (fs->envp[i]) {
+            strcpy(Next, fs->envp[i]);
+            Next = Next + strlen(Next) + 1;
+            i++;
+        }
+    }
+
+    success = SetHandleInformation(si.hStdInput, HANDLE_FLAG_INHERIT, TRUE);
+
+    success = CreateProcess(NULL, (char *)fs->fs_path, NULL, NULL, TRUE, 0, EnvBlock,
+                            ap_make_dirstr_parent(tp, fs->fs_path), &si, &pi);
+
+    ap_destroy_pool(tp);
+
+    if (success) {
+        child_process = pi.hProcess;
+        CloseHandle(pi.hThread);
+
+        return(child_process);
+    }
+    else {
+        return INVALID_HANDLE_VALUE;
+    }
+#endif
 }
 
+#ifndef WIN32
 static void reduce_priveleges(void)
 {
     char *name;
@@ -386,11 +509,12 @@ static void change_process_name(const char * const name)
 {
     strncpy(ap_server_argv0, name, strlen(ap_server_argv0));
 }
+#endif
 
 static void schedule_start(fcgi_server *s, int proc)
 {
     s->procs[proc].state = STATE_NEEDS_STARTING;
-    if (proc == dynamicMaxClassProcs - 1) {
+    if (proc == (int)dynamicMaxClassProcs - 1) {
         ap_log_error(FCGI_LOG_WARN_NOERRNO, fcgi_apache_main_server,
             "FastCGI: scheduled the %sstart of the last (dynamic) server "
             "\"%s\" process: reached dynamicMaxClassProcs (%d)",
@@ -412,6 +536,8 @@ static void schedule_start(fcgi_server *s, int proc)
 static void dynamic_read_msgs(int read_ready)
 {
     fcgi_server *s;
+
+#ifndef WIN32
     int rc;
     static int buflen = 0;
     static char buf[FCGI_MSGS_BUFSIZE + 1];
@@ -420,9 +546,20 @@ static void dynamic_read_msgs(int read_ready)
     char user[MAX_USER_NAME_LEN + 2];
     char group[MAX_GID_CHAR_LEN + 1];
     unsigned long q_usec = 0UL, req_usec = 0UL;
+#else
+    char *buf=NULL;
+    fcgi_pm_job *joblist = NULL;
+    fcgi_pm_job *cjob = NULL;
+    SECURITY_ATTRIBUTES sa;
+    HANDLE hPipeMutex;
+#endif
+
+    time_t now = time(NULL);
     pool *sp, *tp;
 
+#ifndef WIN32
     user[MAX_USER_NAME_LEN + 1] = group[MAX_GID_CHAR_LEN] = '\0';
+#endif
 
     /*
      * To prevent the idle application from running indefinitely, we
@@ -433,13 +570,13 @@ static void dynamic_read_msgs(int read_ready)
     if (fcgi_dynamic_last_analyzed == 0) {
         fcgi_dynamic_last_analyzed = now;
     }
-    if ((long)(now - fcgi_dynamic_last_analyzed) >= dynamicUpdateInterval) {
+    if ((now - fcgi_dynamic_last_analyzed) >= (int)dynamicUpdateInterval) {
         for (s = fcgi_servers; s != NULL; s = s->next) {
             if (s->directive != APP_CLASS_DYNAMIC)
                 break;
             /* XXX what does this adjustment do? */
             fcgi_dynamic_last_analyzed += (((long)(now-fcgi_dynamic_last_analyzed)/dynamicUpdateInterval)*dynamicUpdateInterval);
-            s->smoothConnTime = (1.0-dynamicGain)*s->smoothConnTime + dynamicGain*s->totalConnTime;
+            s->smoothConnTime = (unsigned long) ((1.0-dynamicGain)*s->smoothConnTime + dynamicGain*s->totalConnTime);
             s->totalConnTime = 0UL;
             s->totalQueueTime = 0UL;
         }
@@ -449,6 +586,7 @@ static void dynamic_read_msgs(int read_ready)
         return;
     }
     
+#ifndef WIN32
     rc = read(fcgi_pm_pipe[0], (void *)(buf + buflen), FCGI_MSGS_BUFSIZE - buflen);
     if (rc <= 0) {
         if (!caughtSigTerm) {
@@ -459,9 +597,26 @@ static void dynamic_read_msgs(int read_ready)
     }
     buflen += rc;
     buf[buflen] = '\0';
+#else
+    /* Obtain the data from the fcgi_dynamic_mbox file */
+    ap_acquire_mutex(fcgi_dynamic_mbox_mutex);
+
+    if (fcgi_dynamic_mbox == NULL) {
+        return;
+    }
+    else {
+        joblist = fcgi_dynamic_mbox;
+        fcgi_dynamic_mbox = NULL;
+    }
+
+    ap_release_mutex(fcgi_dynamic_mbox_mutex);
+
+    cjob = joblist;
+#endif
     
     tp = ap_make_sub_pool(fcgi_config_pool);
 
+#ifndef WIN32
     for (ptr1 = buf; ptr1; ptr1 = ptr2) {
         int scan_failed = 0;
 
@@ -507,12 +662,28 @@ static void dynamic_read_msgs(int read_ready)
                 "FastCGI: bogus message, sscanf() failed: \"%s\"", ptr1);
             continue;
         }
+#else
+    /* Update data structures for processing */
+    while (cjob != NULL) {
+        joblist = cjob->next;
+#endif
 
+#ifndef WIN32
         s = fcgi_util_fs_get(execName, user, group);
+#else
+        s = fcgi_util_fs_get(cjob->fs_path, cjob->user, cjob->group);
+#endif
 
-        if (s==NULL && opcode != REQ_COMPLETE) {
+#ifndef WIN32
+        if (s==NULL && opcode != REQ_COMPLETE)
+#else
+        if (s==NULL && cjob->id != REQ_COMPLETE)
+#endif
+        {
+#ifndef WIN32
             int fd;
             const char *err, *lockPath;
+#endif
 
             /* Create a perm subpool to hold the new server data,
              * we can destroy it if something doesn't pan out */
@@ -525,11 +696,18 @@ static void dynamic_read_msgs(int read_ready)
             s->listenQueueDepth = dynamicListenQueueDepth;
             s->initStartDelay = dynamicInitStartDelay;
             s->envp = dynamicEnvp;
+#ifndef WIN32
             ap_getparents(execName);
             ap_no2slash(execName);
             s->fs_path = ap_pstrdup(sp, execName);
+#else
+            ap_getparents(cjob->fs_path);
+            ap_no2slash(cjob->fs_path);
+            s->fs_path = ap_pstrdup(sp, cjob->fs_path);
+#endif
             s->procs = fcgi_util_fs_create_procs(sp, dynamicMaxClassProcs);
 
+#ifndef WIN32
             /* Create socket file's path */
             s->socket_path = fcgi_util_socket_hash_filename(tp, execName, user, group);
             s->socket_path = fcgi_util_socket_make_path_absolute(sp, s->socket_path, 1);
@@ -609,27 +787,104 @@ static void dynamic_read_msgs(int read_ready)
                     s->group = ap_pstrdup(sp, group);
                 }
             }
-        fcgi_util_fs_add(s);
-        } else {
-            if(opcode==PLEASE_START) {
+#else
+            /* Create socket file's path */
+            s->socket_path = fcgi_util_socket_hash_filename(tp, cjob->fs_path, cjob->user, cjob->group);
+            s->socket_path = fcgi_util_socket_make_path_absolute(sp, s->socket_path, 1);
+
+            /* Create Named Pipe and I/O mutex*/
+            sa.nLength = sizeof(sa);
+            sa.lpSecurityDescriptor = NULL;
+            sa.bInheritHandle = TRUE;
+
+            s->listenFd = (int)CreateNamedPipe(s->socket_path,
+                                          PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED,
+                                          PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT,
+                                          PIPE_UNLIMITED_INSTANCES, 4096,4096,0, &sa);
+
+            if ((HANDLE)s->listenFd == INVALID_HANDLE_VALUE) {
+                ap_log_error(FCGI_LOG_CRIT, fcgi_apache_main_server,
+                             "FASTCGI: can't create (dynamic) server \"%s\": CreateNamePipe() failed",
+                             cjob->fs_path);
+                goto BagNewServer;
+            }
+
+            hPipeMutex = ap_create_mutex(NULL);
+			
+            if (hPipeMutex == NULL) {
+                ap_log_error(FCGI_LOG_CRIT, fcgi_apache_main_server,
+                "FastCGI: can't create (dynamic) server \"%s\": ap_create_mutex() failed", cjob->fs_path);
+                CloseHandle((HANDLE)s->listenFd);
+                goto BagNewServer;
+            }
+
+            SetHandleInformation(hPipeMutex, HANDLE_FLAG_INHERIT, TRUE);
+
+            if ((s->envp != NULL) && (*s->envp)) {
+                const char **cur = s->envp;
+
+                while (*cur != NULL)
+                    cur++;
+                *cur = ap_psprintf(fcgi_config_pool, "_FCGI_MUTEX_=%d", (int)hPipeMutex);
+            }
+            else {
+                s->envp = (char **)ap_palloc(fcgi_config_pool, sizeof(char *) * 2);
+                s->envp[0] = ap_psprintf(fcgi_config_pool, "_FCGI_MUTEX_=%d", (int)hPipeMutex);
+            }
+
+            /* Create the application lock */
+            if ((s->dynamic_lock = fcgi_rdwr_create()) == NULL) {
+                ap_log_error(FCGI_LOG_CRIT, fcgi_apache_main_server,
+                             "FastCGI: can;t create (dynamic) server \"%s\": fcgi_rdwr_create() failed",
+                             cjob->fs_path);
+                CloseHandle((HANDLE)s->listenFd);
+                CloseHandle(hPipeMutex);
+                goto BagNewServer;
+            }
+#endif
+
+            fcgi_util_fs_add(s);
+        }
+        else {
+#ifndef WIN32
+            if (opcode == PLEASE_START) {
+#else
+            if(cjob->id==PLEASE_START) {
+#endif
                 if (dynamicAutoUpdate) {
                     /* Check to see if the binary has changed.  If so,
                     * kill the FCGI application processes, and
                     * restart them.
                     */
                     struct stat stbuf;
-                    int i;
+                    unsigned int i;
 
+#ifndef WIN32
                     if ((stat(execName, &stbuf)==0) &&
+#else
+                    if ((stat(cjob->fs_path, &stbuf)==0) &&
+#endif
                             (stbuf.st_mtime > s->restartTime)) {
                         /* kill old server(s) */
                         for (i = 0; i < dynamicMaxClassProcs; i++) {
+#ifndef WIN32
                             if (s->procs[i].pid > 0) {
                                 fcgi_kill(s->procs[i].pid, SIGTERM);
                             }
+#else
+                            if (s->procs[i].pid != INVALID_HANDLE_VALUE) {
+                                fcgi_kill((int) s->procs[i].pid, 1);
+                            }
+#endif
                         }
+
                         ap_log_error(FCGI_LOG_WARN_NOERRNO, fcgi_apache_main_server,
-                            "FastCGI: restarting server \"%s\" processes, newer version found", execName);
+                                     "FastCGI: restarting server \"%s\" processes, newer version found",
+#ifndef WIN32
+                                     execName);
+#else
+                                     cjob->fs_path);
+#endif
                     }
 
                     /* If dynamicAutoRestart, don't mark any new processes
@@ -644,11 +899,11 @@ static void dynamic_read_msgs(int read_ready)
                     * it if we're not already running at least one
                     * instance.
                     */
-                    int i;
+                    unsigned int i;
 
                     for (i = 0; i < dynamicMaxClassProcs; i++) {
-                        if (s->procs[i].state == STATE_STARTED)
-                            break;
+                       if (s->procs[i].state == STATE_STARTED)
+                          break;
                     }
                     /* if already running, don't start another one */
                     if (i < dynamicMaxClassProcs) {
@@ -657,8 +912,13 @@ static void dynamic_read_msgs(int read_ready)
                 }
             }
         }
-        switch (opcode) {
-	    int i;
+#ifndef WIN32
+        switch (opcode)
+#else
+        switch (cjob->id)
+#endif
+        {
+			unsigned int i;
             time_t time_passed;
 
             case PLEASE_START:
@@ -666,13 +926,13 @@ static void dynamic_read_msgs(int read_ready)
                 /* If we've started one recently, don't register another */
                 time_passed  = now - s->restartTime;
 
-                if (time_passed < s->initStartDelay
-                     && time_passed < s->restartDelay)
+                if (time_passed < (int) s->initStartDelay
+                     && time_passed < (int) s->restartDelay)
                 {
                     continue;
                 }
 
-                if ((fcgi_dynamic_total_proc_count + 1) > dynamicMaxProcs) {
+                if ((fcgi_dynamic_total_proc_count + 1) > (int) dynamicMaxProcs) {
                     /*
                      * Extra instances should have been
                      * terminated beforehand, probably need
@@ -691,14 +951,24 @@ static void dynamic_read_msgs(int read_ready)
                     {
                         continue;
                     }
-                    if (s->procs[i].pid < 0) {
-                        if (time_passed > s->restartDelay) {
+#ifndef WIN32
+                    if (s->procs[i].pid < 0)
+#else
+                    if (s->procs[i].pid == INVALID_HANDLE_VALUE)
+#endif
+                    {
+                        if (time_passed > (int)s->restartDelay) {
                             schedule_start(s, i);
                         }
                         break;
                     }
-                    else if (s->procs[i].pid == 0) {
-                        if (time_passed > s->initStartDelay) {
+#ifndef WIN32
+                    else if (s->procs[i].pid == 0)
+#else
+                    else if (s->procs[i].pid == (HANDLE) 0)
+#endif
+                    {
+                        if (time_passed > (int)s->initStartDelay) {
                             schedule_start(s, i);
                         }
                         break;
@@ -709,18 +979,39 @@ static void dynamic_read_msgs(int read_ready)
             case REQ_COMPLETE:
                 /* only record stats if we have a structure */
                 if (s) {
+#ifndef WIN32
                     s->totalConnTime += req_usec;
                     s->totalQueueTime += q_usec;
+#else
+                    s->totalConnTime += cjob->start_time;
+                    s->totalQueueTime += cjob->qsec;
+#endif
                 }
                 break;
         }
+
+#ifdef WIN32
+        /* Cleanup job data */
+        free(cjob->fs_path);
+        free(cjob->user);
+        free(cjob->group);
+        free(cjob);
+        cjob = joblist;
+#endif
 
         continue;
 
 BagNewServer:
         ap_destroy_pool(sp);
+
+#ifdef WIN32
+	free(cjob->fs_path);
+	free(cjob);
+	cjob = joblist;
+#endif
     }
 
+#ifndef WIN32
     if (ptr1 == buf) {
         ap_log_error(FCGI_LOG_ERR_NOERRNO, fcgi_apache_main_server,
             "FastCGI: really bogus message: \"%s\"", ptr1);
@@ -731,6 +1022,7 @@ BagNewServer:
     if (buflen) {
         memmove(buf, ptr1, buflen);
     }
+#endif
 
     ap_destroy_pool(tp);
 }
@@ -752,18 +1044,20 @@ static void dynamic_kill_idle_fs_procs(void)
 {
     fcgi_server *s;
     struct FuncData *funcData = NULL;
-    float connTime;         /* server's smoothed running time, or
-                             * if that's 0, the current total */
-    float totalTime;        /* maximum number of microseconds that all
-                             * of a server's running processes together
-                             * could have spent running since the
-                             * last check */
-    float loadFactor;       /* percentage, 0-100, of totalTime that
-                             * the processes actually used */
-    int i, victims = 0;
+    unsigned long connTime;   /* server's smoothed running time, or
+                               * if that's 0, the current total */
+    unsigned long totalTime;  /* maximum number of microseconds that all
+                               * of a server's running processes together
+                               * could have spent running since the
+                               * last check */
+    double loadFactor;        /* percentage, 0-100, of totalTime that
+                               * the processes actually used */
+    unsigned int i, victims = 0;
+#ifndef WIN32
     const char *lockFileName;
     int lockFd;
     pid_t pid;
+#endif
     pool *tp = ap_make_sub_pool(fcgi_config_pool);
 
     /* pass 1 - locate and mark all victims */
@@ -775,15 +1069,18 @@ static void dynamic_kill_idle_fs_procs(void)
         /* If the number of non-victims is less than or equal to
            the minimum that may be running without being killed off,
            don't select any more victims.  */
-        if((fcgi_dynamic_total_proc_count-victims)<=dynamicMinProcs) {
+        if ((fcgi_dynamic_total_proc_count - victims) <= (int) dynamicMinProcs) {
             break;
         }
+
         connTime = s->smoothConnTime ? s->smoothConnTime : s->totalConnTime;
         totalTime = (s->numProcesses)*(now - fcgi_dynamic_epoch)*1000000 + 1;
+
         /* XXX producing a heavy load with one client, I haven't been
            able to achieve a loadFactor greater than 0.5.  Perhaps this
            should be scaled up by another order of magnitude or two.  */
         loadFactor = connTime/totalTime*100.0;
+
         if ((s->numProcesses > 1
                 && s->numProcesses/(s->numProcesses - 1)*loadFactor < dynamicThreshholdN) 
             || (s->numProcesses == 1 && loadFactor < dynamicThreshhold1))
@@ -812,6 +1109,7 @@ static void dynamic_kill_idle_fs_procs(void)
             }
         }
     }
+
     /* pass 2 - kill procs off */
     for(s=fcgi_servers; s!=NULL; s=s->next) {
         /* Only kill dynamic apps */
@@ -820,6 +1118,7 @@ static void dynamic_kill_idle_fs_procs(void)
 
         for(i = 0; i < dynamicMaxClassProcs; i++) {
             if (s->procs[i].state == STATE_KILL) {
+#ifndef WIN32
                 lockFileName = fcgi_util_socket_get_lock_filename(tp, s->socket_path);
                 if ((lockFd = ap_popenf(tp, lockFileName, O_RDWR, 0))<0) {
                     /*
@@ -832,7 +1131,12 @@ static void dynamic_kill_idle_fs_procs(void)
                     ap_pclosef(tp, lockFd);
                     continue;
                 }
+
                 if (fcgi_get_exclusive_write_lock_no_wait(lockFd) < 0) {
+#else
+                if (fcgi_get_exclusive_write_lock_no_wait(s->dynamic_lock) < 0) {
+                    DWORD tid;
+#endif
                     /*
                      * Unable to lock the lockfile, indicative
                      * of WS performing operation with the given
@@ -843,9 +1147,14 @@ static void dynamic_kill_idle_fs_procs(void)
                      * situation occurs very rarely, which it should
                      */
                     funcData = ap_pcalloc(tp, sizeof(struct FuncData));
+#ifndef WIN32
                     funcData->lockFileName = lockFileName;
+#else
+                    funcData->lock = s->dynamic_lock;
+#endif
                     funcData->pid = s->procs[i].pid;
                     
+#ifndef WIN32
                     if((pid=fork())<0) {
                         /*@@@ this should be logged, but since all the lock
                          * file stuff will be tossed, I'll leave it now */
@@ -863,10 +1172,20 @@ static void dynamic_kill_idle_fs_procs(void)
                         s->procs[i].state = STATE_VICTIM;
                         ap_pclosef(tp, lockFd);
                     }
-                } else {
+#else
+                    CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)dynamic_blocking_kill, (void *)funcData, 0, &tid);
                     s->procs[i].state = STATE_VICTIM;
+#endif
+                }
+                else {
+                    s->procs[i].state = STATE_VICTIM;
+#ifndef WIN32
                     fcgi_kill(s->procs[i].pid, SIGTERM);
                     ap_pclosef(tp, lockFd);
+#else
+                    fcgi_kill((int)s->procs[i].pid, 1);
+                    fcgi_rdwr_unlock(s->dynamic_lock, WRITER);
+#endif
                 }
             }
         }
@@ -874,6 +1193,79 @@ static void dynamic_kill_idle_fs_procs(void)
     ap_destroy_pool(tp);
 }
 
+#ifdef WIN32
+void child_wait_thread(void *data) {
+    fcgi_server *s;
+    DWORD dwRet = WAIT_TIMEOUT;
+    int numChildren;
+    int i;
+    int sleepseconds = min(dynamicKillInterval, dynamicUpdateInterval);
+
+    while (!bTimeToDie) {
+		if (fcgi_servers == NULL)
+			sleep(sleepseconds);
+
+        for (s = fcgi_servers; s != NULL; s = s->next) {
+            if (s->directive == APP_CLASS_EXTERNAL || s->listenFd < 0) {
+                continue;
+            }
+            if (s->directive == APP_CLASS_DYNAMIC) {
+                numChildren = dynamicMaxClassProcs;
+            }
+            else {
+                numChildren = s->numProcesses;
+            }
+
+            for (i=0; i < numChildren; i++) {
+                if (s->procs[i].pid != INVALID_HANDLE_VALUE) {
+                    /* timeout is currently set for 100 miliecond */ 
+                    /* it may need t longer or user customizable */
+                    dwRet = WaitForSingleObject(s->procs[i].pid, 100);
+
+                    if (dwRet != WAIT_TIMEOUT) {
+                        /* a child fs has died */
+                        /* mark the child as dead */
+                        if (s->directive == APP_CLASS_STANDARD) {
+                            /* restart static app */
+                            s->procs[i].state = STATE_NEEDS_STARTING;
+                            s->numFailures++;
+                        }
+                        else {
+                            s->numProcesses--;
+                            fcgi_dynamic_total_proc_count--;
+
+                            if (s->procs[i].state == STATE_VICTIM) {
+                                s->procs[i].state = STATE_KILLED;
+                                continue;
+                            }
+                            else {
+                                /* dynamic app shouldn't have died or dynamicAutoUpdate killed it*/
+                                s->numFailures++;
+
+                                if (dynamicAutoRestart) {
+                                    s->procs[i].state = STATE_NEEDS_STARTING;
+                                }
+                                else {
+                                    s->procs[i].state = STATE_READY;
+                                }
+                            }
+                        }
+
+                        CloseHandle(s->procs[i].pid);
+                        s->procs[i].pid = INVALID_HANDLE_VALUE;
+
+                        /* wake up the main thread */
+                        SetEvent(fcgi_event_handles[WAKE_EVENT]);
+                    }
+                }
+            }
+        }
+		Sleep(0);
+    }
+}
+#endif
+
+#ifndef WIN32
 static void setup_signals(void)
 {
     sigset_t mask;
@@ -891,39 +1283,54 @@ static void setup_signals(void)
     sa.sa_flags = 0;
 
     if (sigaction(SIGTERM, &sa, NULL) < 0) {
-	ap_log_error(FCGI_LOG_ALERT, fcgi_apache_main_server, 
-	"sigaction(SIGTERM) failed");
+        ap_log_error(FCGI_LOG_ALERT, fcgi_apache_main_server,
+        "sigaction(SIGTERM) failed");
     }
     /* httpd restart */
     if (sigaction(SIGHUP, &sa, NULL) < 0) {
-	ap_log_error(FCGI_LOG_ALERT, fcgi_apache_main_server, 
-	"sigaction(SIGHUP) failed");
+        ap_log_error(FCGI_LOG_ALERT, fcgi_apache_main_server,
+        "sigaction(SIGHUP) failed");
     }
     /* httpd graceful restart */
     if (sigaction(SIGUSR1, &sa, NULL) < 0) {
-	ap_log_error(FCGI_LOG_ALERT, fcgi_apache_main_server, 
-	"sigaction(SIGUSR1) failed");
+        ap_log_error(FCGI_LOG_ALERT, fcgi_apache_main_server,
+        "sigaction(SIGUSR1) failed");
     }
     /* read messages from request handlers - kill interval expired */
     if (sigaction(SIGALRM, &sa, NULL) < 0) {
-	ap_log_error(FCGI_LOG_ALERT, fcgi_apache_main_server, 
-	"sigaction(SIGALRM) failed");
+        ap_log_error(FCGI_LOG_ALERT, fcgi_apache_main_server,
+        "sigaction(SIGALRM) failed");
     }
     if (sigaction(SIGCHLD, &sa, NULL) < 0) {
-	ap_log_error(FCGI_LOG_ALERT, fcgi_apache_main_server, 
-	"sigaction(SIGCHLD) failed");
+        ap_log_error(FCGI_LOG_ALERT, fcgi_apache_main_server,
+        "sigaction(SIGCHLD) failed");
     }
 }
+#endif
 
+#ifndef WIN32
 int fcgi_pm_main(void *dummy, child_info *info)
+#else
+void fcgi_pm_main(void *dummy)
+#endif
 {
     fcgi_server *s;
-    int i, read_ready;
+    unsigned int i;
+	int read_ready;
+#ifndef WIN32
     int callWaitPid, callDynamicProcs;
+#endif
     int alarmLeft = 0;
     pool *tp;
     const char *err;
 
+#ifdef WIN32
+    DWORD dwRet;
+    int first_time = 1;
+    HANDLE wait_thread = INVALID_HANDLE_VALUE;
+#endif
+
+#ifndef WIN32
     reduce_priveleges();
 
     close(fcgi_pm_pipe[1]);
@@ -934,36 +1341,84 @@ int fcgi_pm_main(void *dummy, child_info *info)
         ap_log_error(FCGI_LOG_INFO_NOERRNO, fcgi_apache_main_server,
             "FastCGI: suEXEC mechanism enabled (wrapper: %s)", fcgi_suexec);
     }
+#endif
 
     /* Initialize AppClass */
     tp = ap_make_sub_pool(fcgi_config_pool);
     for(s = fcgi_servers; s != NULL; s = s->next) {
         if (s->directive == APP_CLASS_EXTERNAL)
-        continue;
-
-        /* Create the socket */
-        s->listenFd = ap_psocket(fcgi_config_pool, s->socket_addr->sa_family, SOCK_STREAM, 0);
-        if (s->listenFd < 0) {
-            ap_log_error(FCGI_LOG_CRIT, fcgi_apache_main_server,
-                "FastCGI: server \"%s\" disabled, socket() failed", s->fs_path);
             continue;
+
+#ifdef WIN32
+        if (s->socket_path) {
+            SECURITY_ATTRIBUTES sa;
+            HANDLE hPipeMutex;
+
+            sa.nLength = sizeof(sa);
+            sa.lpSecurityDescriptor = NULL;
+            sa.bInheritHandle = TRUE;
+
+            s->listenFd = (int)CreateNamedPipe(s->socket_path, PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED,
+                                          PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT,
+                                          PIPE_UNLIMITED_INSTANCES, 4096,4096,0, &sa);
+            if ((HANDLE)s->listenFd == INVALID_HANDLE_VALUE) {
+                ap_log_error(FCGI_LOG_CRIT, fcgi_apache_main_server,
+                             "FastCGI: server \"%s\" disabled, CreateNamedPipe() failed", s->fs_path);
+                continue;
+            }
+
+            hPipeMutex = ap_create_mutex(NULL);
+
+            if (hPipeMutex == NULL) {
+                ap_log_error(FCGI_LOG_CRIT, fcgi_apache_main_server,
+                             "FastCGI: server \"%s\" disabled, ap_create_mutex() failed", s->fs_path);
+                CloseHandle((HANDLE)s->listenFd);
+                s->listenFd = (int) INVALID_HANDLE_VALUE;
+                continue;
+            }
+
+            SetHandleInformation(hPipeMutex, HANDLE_FLAG_INHERIT, TRUE);
+
+            if (s->envp && *s->envp) {
+                const char **cur = s->envp;
+
+                while (*cur != NULL)
+                    cur++;
+                *cur = ap_psprintf(fcgi_config_pool, "_FCGI_MUTEX_=%d", (int)hPipeMutex);
+            }
+            else {
+                s->envp = (char **)ap_palloc(fcgi_config_pool, sizeof(char *) * 2);
+                s->envp[0] = ap_psprintf(fcgi_config_pool, "_FCGI_MUTEX_=%d", (int)hPipeMutex);
+            }
         }
+        else
+#endif
+        {
+            /* Create the socket */
+            s->listenFd = ap_psocket(fcgi_config_pool, s->socket_addr->sa_family, SOCK_STREAM, 0);
+            if (s->listenFd < 0) {
+                ap_log_error(FCGI_LOG_CRIT, fcgi_apache_main_server,
+                    "FastCGI: server \"%s\" disabled, socket() failed", s->fs_path);
+                continue;
+            }
 
-        /* bind() and listen() */
-        err = bind_n_listen(tp, s->socket_addr, s->socket_addr_len,
-                                s->listenQueueDepth, s->listenFd);
-        if (err) {
-            ap_log_error(FCGI_LOG_CRIT, fcgi_apache_main_server,
-                         "FastCGI: server \"%s\" disabled: %s",
-                         s->fs_path, err);
-            ap_pclosesocket(fcgi_config_pool, s->listenFd);
-            s->listenFd = -1;
-            continue;
+            /* bind() and listen() */
+            err = bind_n_listen(tp, s->socket_addr, s->socket_addr_len,
+                                    s->listenQueueDepth, s->listenFd);
+            if (err) {
+                ap_log_error(FCGI_LOG_CRIT, fcgi_apache_main_server,
+                             "FastCGI: server \"%s\" disabled: %s",
+                             s->fs_path, err);
+                ap_pclosesocket(fcgi_config_pool, s->listenFd);
+                s->listenFd = -1;
+                continue;
+            }
         }
 
         for (i = 0; i < s->numProcesses; i++)
             s->procs[i].state = STATE_NEEDS_STARTING;
     }
+
     ap_destroy_pool(tp);
 
     ap_log_error(FCGI_LOG_NOTICE_NOERRNO, fcgi_apache_main_server,
@@ -976,9 +1431,13 @@ int fcgi_pm_main(void *dummy, child_info *info)
      */
     for (;;) {
         int sleepSeconds = min(dynamicKillInterval, dynamicUpdateInterval);
+#ifdef WIN32
+        time_t expire;
+#else
         pid_t childPid;
         int waitStatus;
-        int numChildren;
+#endif
+        unsigned int numChildren;
 
         /*
          * If we came out of sigsuspend() for any reason other than
@@ -1003,8 +1462,13 @@ int fcgi_pm_main(void *dummy, child_info *info)
             } else {
                 numChildren = s->numProcesses;
             }
+
             for (i = 0; i < numChildren; i++) {
+#ifndef WIN32
                 if ((s->procs[i].pid <= 0) &&
+#else
+                if (((s->procs[i].pid <= (HANDLE) 0) || (s->procs[i].pid == INVALID_HANDLE_VALUE)) &&
+#endif
                     (s->procs[i].state == STATE_NEEDS_STARTING))
                 {
                     time_t restartTime;
@@ -1019,10 +1483,12 @@ int fcgi_pm_main(void *dummy, child_info *info)
                         int restart = (s->procs[i].pid < 0);
 
                         s->restartTime = now;
+
+#ifndef WIN32
                         if (caughtSigTerm) {
                             goto ProcessSigTerm;
                         }
-
+#endif
                         s->procs[i].pid = spawn_fs_process(s);
                         if (s->procs[i].pid <= 0) {
                             ap_log_error(FCGI_LOG_CRIT, fcgi_apache_main_server,
@@ -1031,15 +1497,17 @@ int fcgi_pm_main(void *dummy, child_info *info)
                                 s->fs_path);
 
                             sleepSeconds = min(sleepSeconds,
-                                max(s->restartDelay, FCGI_MIN_EXEC_RETRY_DELAY));
+                                max((int) s->restartDelay, FCGI_MIN_EXEC_RETRY_DELAY));
 
                             ap_assert(s->procs[i].pid < 0);
                             break;
                         }
+
                         if (s->directive == APP_CLASS_DYNAMIC) {
                             s->numProcesses++;
                             fcgi_dynamic_total_proc_count++;
                         }
+
                         s->procs[i].state = STATE_STARTED;
 
                         if (restart)
@@ -1066,6 +1534,7 @@ int fcgi_pm_main(void *dummy, child_info *info)
             }
         }
 
+#ifndef WIN32
         if(caughtSigTerm) {
             goto ProcessSigTerm;
         }
@@ -1189,6 +1658,76 @@ ChildFound:
                     s->fs_path, (int)childPid, WTERMSIG(waitStatus), SYS_SIGLIST[WTERMSIG(waitStatus)]);
             }
         } /* for (;;), waitpid() */
+#else
+	    if (first_time) {
+            DWORD tid;  /* Thread id */
+
+            /* Start the child wait thread */
+            wait_thread = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)child_wait_thread, NULL, 0, &tid);
+            first_time = 0;
+        }
+
+        /* wait for an event to occur or timer expires */
+        expire = time(NULL) + sleepSeconds;
+        dwRet = WaitForMultipleObjects(3, (HANDLE *) fcgi_event_handles, FALSE, sleepSeconds * 1000);
+
+        if (dwRet == WAIT_FAILED) {
+           /* There is something seriously wrong here */
+           ap_log_error(APLOG_MARK,APLOG_CRIT|APLOG_WIN32ERROR, fcgi_apache_main_server,
+                        "FastDGI: WaitForMultipleObjects on event handles -- pm is shuting down");
+           bTimeToDie = TRUE;
+        }
+
+        if (dwRet != WAIT_TIMEOUT) {
+           now = time(NULL);
+
+           if (now < expire)
+               alarmLeft = expire - now;
+        }
+
+        /*
+         * Dynamic fcgi process management
+         */
+        if ((dwRet == MBOX_EVENT) || (dwRet == WAIT_TIMEOUT)) {
+            if (dwRet == MBOX_EVENT) {
+				read_ready = 1;    
+            }
+
+            dynamic_read_msgs(read_ready);
+
+            now = time(NULL);
+
+            if(fcgi_dynamic_epoch == 0) {
+                fcgi_dynamic_epoch = now;
+            }
+
+            if (((long)(now-fcgi_dynamic_epoch) >= (int)dynamicKillInterval) ||
+               ((fcgi_dynamic_total_proc_count+dynamicProcessSlack) >= dynamicMaxProcs)) {
+                dynamic_kill_idle_fs_procs();
+                fcgi_dynamic_epoch = now;
+            }
+            read_ready = 0;
+        }
+        else if (dwRet == WAKE_EVENT) {
+            continue;
+        }
+        else if (dwRet == TERM_EVENT) {
+            ap_log_error(FCGI_LOG_INFO_NOERRNO, fcgi_apache_main_server, 
+                         "FastCGI: Termination event received process manager shutting down");
+            bTimeToDie = TRUE;
+
+            dwRet = WaitForSingleObject(wait_thread, INFINITE);
+            goto ProcessSigTerm;
+        }
+        else {
+            // Have an received an unknown event - should not happen
+            ap_log_error(APLOG_MARK,APLOG_CRIT|APLOG_WIN32ERROR, fcgi_apache_main_server,
+                         "FastCGI: WaitForMultipleobjects return an unrecognized event");
+            bTimeToDie = TRUE;
+            dwRet = WaitForSingleObject(wait_thread, INFINITE);
+            goto ProcessSigTerm;
+        }
+#endif
     } /* for (;;), the whole shoot'n match */
 
 ProcessSigTerm:
@@ -1198,7 +1737,21 @@ ProcessSigTerm:
     while (fcgi_servers != NULL) {
         kill_fs_procs(fcgi_config_pool, fcgi_servers);
     }
-    exit(0);
+
+    return;
 }
 
+#ifdef WIN32
+int fcgi_pm_add_job(fcgi_pm_job *new_job) {
 
+	if (new_job == NULL)
+		return 0;
+
+	ap_acquire_mutex(fcgi_dynamic_mbox_mutex);
+	new_job->next = fcgi_dynamic_mbox;
+	fcgi_dynamic_mbox = new_job;
+	ap_release_mutex(fcgi_dynamic_mbox_mutex);
+
+	return 1;
+}
+#endif

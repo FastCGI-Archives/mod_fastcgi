@@ -1,5 +1,5 @@
 /*
- * $Id: mod_fastcgi.h,v 1.19 1999/09/22 05:03:49 roberts Exp $
+ * $Id: mod_fastcgi.h,v 1.20 2000/04/27 02:27:36 robs Exp $
  */
 
 #ifndef MOD_FASTCGI_H
@@ -79,7 +79,11 @@
                                             * fcgi apps when the binary on the
                                             * disk is changed. */
 
+#ifdef WIN32
+#define DEFAULT_SOCK_DIR "\\\\.\\pipe\\ModFastCGI\\"
+#else
 #define DEFAULT_SOCK_DIR "/tmp/fcgi"       /* Default dir for Unix/Domain sockets */
+#endif
 
 #define FCGI_MAGIC_TYPE "application/x-httpd-fcgi"
 

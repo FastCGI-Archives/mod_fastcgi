@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_util.c,v 1.8 1999/10/06 11:42:39 roberts Exp $
+ * $Id: fcgi_util.c,v 1.9 2000/04/27 02:27:35 robs Exp $
  */
 
 #include "fcgi.h"
@@ -29,7 +29,11 @@ fcgi_util_socket_make_path_absolute(pool * const p,
         const char *const file, const int dynamic)
 {
     return (const char *)ap_pstrcat(p, 
+#ifdef WIN32
+        (dynamic ? fcgi_dynamic_dir : fcgi_socket_dir), file, NULL);
+#else
         (dynamic ? fcgi_dynamic_dir : fcgi_socket_dir), "/", file, NULL);
+#endif
 }
 
 /*******************************************************************************
@@ -42,6 +46,7 @@ fcgi_util_socket_get_lock_filename(pool *p, const char *socket_path)
     return ap_pstrcat(p, socket_path, ".lock", NULL);
 }
 
+#ifndef WIN32
 /*******************************************************************************
  * Build a Domain Socket Address structure, and calculate its size.
  * The error message is allocated from the pool p.  If you don't want the
@@ -69,6 +74,7 @@ fcgi_util_socket_make_domain_addr(pool *p, struct sockaddr_un **socket_addr,
     *socket_addr_len = SUN_LEN(*socket_addr);
     return NULL;
 }
+#endif
 
 /*******************************************************************************
  * Convert a hostname or IP address string to an in_addr struct.
@@ -103,7 +109,7 @@ convert_string_to_in_addr(const char * const hostname, struct in_addr * const ad
  */
 const char *
 fcgi_util_socket_make_inet_addr(pool *p, struct sockaddr_in **socket_addr,
-        int *socket_addr_len, const char *host, int port)
+        int *socket_addr_len, const char *host, unsigned short port)
 {
     if (*socket_addr == NULL)
         *socket_addr = ap_pcalloc(p, sizeof(struct sockaddr_in));
@@ -143,6 +149,7 @@ fcgi_util_check_access(pool *tp,
         statBuf = &staticStatBuf;
     }
     
+#ifndef WIN32    
     /* If the uid owns the file, check the owner bits */
     if (uid == statBuf->st_uid) {
         if (mode & R_OK && !(statBuf->st_mode & S_IRUSR))
@@ -153,8 +160,16 @@ fcgi_util_check_access(pool *tp,
             return "execute not allowed by owner";
         return NULL;
     }
+#else
+    if (mode & _S_IREAD && !(statBuf->st_mode & _S_IREAD))
+        return "read not allowed";
+    if (mode & _S_IWRITE && !(statBuf->st_mode & _S_IWRITE))
+        return "write not allowed";
+    if (mode & _S_IEXEC && !(statBuf->st_mode & _S_IEXEC))
+        return "execute not allowed";
+#endif
 
-#ifndef __EMX__
+#if  !defined(__EMX__) && !defined(WIN32)
     /* If the gid is same as the file's group, check the group bits */
     if (gid == statBuf->st_gid) {
         if (mode & R_OK && !(statBuf->st_mode & S_IRGRP))
@@ -286,15 +301,21 @@ fcgi_util_fs_is_path_ok(pool * const p, const char * const fs_path,
         return ap_psprintf(p, "script is a directory!");
     
     if (fcgi_suexec != NULL) {
+#ifndef WIN32
         err = fcgi_util_check_access(p, fs_path, finfo, X_OK, uid, gid);
         if (err) {
             return ap_psprintf(p,
                 "access for fcgi_suexec (uid %ld, gid %ld) not allowed: %s",
                 (long)uid, (long)gid, err);
         }
+#endif
     }
     else {
+#ifdef WIN32
+        err = fcgi_util_check_access(p, fs_path, finfo, _S_IEXEC, fcgi_user_id, fcgi_group_id);
+#else
         err = fcgi_util_check_access(p, fs_path, finfo, X_OK, fcgi_user_id, fcgi_group_id);
+#endif
         if (err) {
             return ap_psprintf(p,
                 "access for server (uid %ld, gid %ld) not allowed: %s",
@@ -324,7 +345,11 @@ fcgi_util_fs_new(pool *p)
     s->restartOnExit = FALSE;
     s->directive = APP_CLASS_UNKNOWN;
     s->processPriority = FCGI_DEFAULT_PRIORITY;
+#ifdef WIN32
+    s->listenFd = (int)INVALID_HANDLE_VALUE;
+#else
     s->listenFd = -2;
+#endif
     s->envp = &fcgi_empty_env;
 
     return s;
@@ -346,12 +371,15 @@ fcgi_util_fs_add(fcgi_server *s)
 const char *
 fcgi_util_fs_set_uid_n_gid(pool *p, fcgi_server *s, uid_t uid, gid_t gid)
 {
+#ifndef WIN32
     struct passwd *pw;
     struct group  *gr;
+#endif
 
     if (fcgi_suexec == NULL)
         return NULL;
 
+#ifndef WIN32
     s->uid = uid;
     pw = getpwuid(uid);
     if (pw == NULL) {
@@ -372,7 +400,7 @@ fcgi_util_fs_set_uid_n_gid(pool *p, fcgi_server *s, uid_t uid, gid_t gid)
             (long)gid, strerror(errno));
     }
     s->group = ap_pstrdup(p, gr->gr_name);
-
+#endif
     return NULL;
 }
 
@@ -386,7 +414,11 @@ fcgi_util_fs_create_procs(pool *p, int num)
     ServerProcess *proc = (ServerProcess *)ap_pcalloc(p, sizeof(ServerProcess) * num);
 
     for (i = 0; i < num; i++) {
+#ifdef WIN32
+        proc[i].pid = (HANDLE) 0;
+#else
         proc[i].pid = 0;
+#endif
         proc[i].state = STATE_READY;
     }
     return proc;
@@ -418,8 +450,9 @@ fcgi_util_fs_create_procs(pool *p, int num)
 int 
 fcgi_util_lock_fd(int fd, int cmd, int type, off_t offset, int whence, off_t len)
 {
+    int res = 0;
+#ifndef WIN32
     struct flock lock;
-    int res;
 
     lock.l_type = type;       /* F_RDLCK, F_WRLCK, F_UNLCK */
     lock.l_start = offset;    /* byte offset, relative to whence */
@@ -431,6 +464,126 @@ fcgi_util_lock_fd(int fd, int cmd, int type, off_t offset, int whence, off_t len
 
     /* This is OK only if there is a hard_timeout() in effect! */
     while ((res = fcntl(fd, cmd, &lock)) == -1 && errno == EINTR);
-    
+#endif    
     return res;
 }
+
+int fcgi_util_gettimeofday(struct timeval *Time) {
+#ifdef WIN32
+    DWORD clock;
+    time_t t;
+
+    clock = GetTickCount();
+
+
+    t = time(NULL);
+
+    Time->tv_sec = t; //clock / 1000;
+    Time->tv_usec = (clock - Time->tv_sec) * 1000;
+
+    if (Time->tv_sec == (time_t)-1) 
+        return -1;
+    else
+        return 0;
+#else
+    return gettimeofday(Time, NULL);
+#endif
+}
+
+#ifdef WIN32
+
+FcgiRWLock * fcgi_rdwr_create() {
+    FcgiRWLock *newlock = NULL;
+
+    newlock = (FcgiRWLock *) malloc(sizeof(FcgiRWLock));
+
+    if (newlock == NULL)
+        return NULL;
+
+    newlock->read_event = CreateEvent(NULL, TRUE, FALSE, NULL);
+    newlock->lock_mutex = CreateEvent(NULL, FALSE, TRUE, NULL);
+    newlock->write_event = CreateMutex(NULL, FALSE, NULL);
+    newlock->counter = -1;
+
+    return newlock;
+}
+
+void fcgi_rdwr_destory(FcgiRWLock *lock) {
+    CloseHandle(lock->read_event);
+    CloseHandle(lock->lock_mutex);
+    CloseHandle(lock->write_event);
+
+    free(lock);
+    lock = NULL;
+}
+
+
+int fcgi_rdwr_lock(FcgiRWLock *lock, int type) {
+    
+    if (lock == NULL)
+        return -1;
+
+    if (type == WRITER) {  
+        WaitForSingleObject(lock->write_event,INFINITE);
+        WaitForSingleObject(lock->lock_mutex, INFINITE);
+    }
+    else {   
+        if (InterlockedIncrement(&lock->counter) == 0) { 
+            WaitForSingleObject(lock->lock_mutex, INFINITE);
+            SetEvent(lock->read_event);
+        }
+
+        WaitForSingleObject(lock->read_event,INFINITE);
+    }
+
+    return 0;
+}
+
+int fcgi_rdwr_try_lock(FcgiRWLock *lock, int type) {
+    DWORD dwret;
+    
+    if (lock == NULL)
+        return -1;
+
+    if (type == WRITER) {  
+        dwret = WaitForSingleObject(lock->write_event, 0);
+        if (dwret == WAIT_TIMEOUT)
+            return -1;
+
+        dwret = WaitForSingleObject(lock->lock_mutex, 0);
+        if (dwret == WAIT_TIMEOUT)
+            return -1;
+    }
+    else {   
+        if (InterlockedIncrement(&lock->counter) == 0) { 
+            dwret = WaitForSingleObject(lock->lock_mutex, 0);
+            if (dwret == WAIT_TIMEOUT)
+                return -1;
+
+            SetEvent(lock->read_event);
+        }
+
+        dwret = WaitForSingleObject(lock->read_event, 0);
+        if (dwret == WAIT_TIMEOUT)
+            return -1;
+    }
+
+    return 0;
+}
+
+int fcgi_rdwr_unlock(FcgiRWLock *lock, int type) {
+
+    if (type == WRITER) { 
+        SetEvent(lock->lock_mutex);
+        ReleaseMutex(lock->write_event);
+    }
+    else {
+        if (InterlockedDecrement(&lock->counter) < 0) {
+            ResetEvent(lock->read_event);
+            SetEvent(lock->lock_mutex);
+        }
+    }
+
+    return 0;
+}
+#endif

@@ -1,5 +1,5 @@
 /*
- * $Id: fcgi_config.c,v 1.17 1999/09/22 05:03:44 roberts Exp $
+ * $Id: fcgi_config.c,v 1.18 2000/04/27 02:27:35 robs Exp $
  */
 
 #include "fcgi.h"
@@ -11,7 +11,7 @@
  * The pool arg should be persistant storage.
  */
 static const char *get_host_n_port(pool *p, const char **arg,
-        const char **host, u_int *port)
+        const char **host, u_short *port)
 {
     char *cvptr, *portStr;
 
@@ -34,6 +34,36 @@ static const char *get_host_n_port(pool *p, const char **arg,
     return NULL;
 }
 
+/*******************************************************************************
+ * Get the next configuration directive argument, & return an u_short.
+ * The pool arg should be temporary storage.
+ */
+static const char *get_u_short(pool *p, const char **arg,
+        u_short *num, u_short min)
+{
+    char *ptr;
+	long tmp;
+    const char *txt = ap_getword_conf(p, arg);
+
+    if (*txt == '\0') {
+		return "\"\"";
+	}
+
+    tmp = strtol(txt, &ptr, 10);
+
+    if (*ptr != '\0') {
+        return ap_pstrcat(p, "\"", txt, "\" must be a positive integer", NULL);
+	}
+    
+	if (tmp < min) {
+        return ap_psprintf(p, "\"%u\" must be >= %u", *num, min);
+	}
+
+	*num = (u_short) tmp;
+
+    return NULL;
+}
+
 /*******************************************************************************
  * Get the next configuration directive argument, & return an u_int.
  * The pool arg should be temporary storage.
@@ -67,7 +97,7 @@ static const char *get_float(pool *p, const char **arg,
 
     if (*val == '\0')
         return "\"\"";
-    *num = strtod(val, &ptr);
+    *num = (float) strtod(val, &ptr);
 
     if (*ptr != '\0')
         return ap_pstrcat(p, "\"", val, "\" is not a floating point number", NULL);
@@ -138,6 +168,7 @@ static const char *invalid_value(pool *p, const char *cmd, const char *id,
 const char *fcgi_config_set_fcgi_uid_n_gid(int set)
 {
     static int isSet = 0;
+#ifndef WIN32
     uid_t uid = geteuid();
     gid_t gid = getegid();
 
@@ -158,6 +189,7 @@ const char *fcgi_config_set_fcgi_uid_n_gid(int set)
     isSet = 1;
     fcgi_user_id = uid;
     fcgi_group_id = gid;
+#endif
     return NULL;
 }
 
@@ -216,18 +248,25 @@ const char *fcgi_config_make_dir(pool *tp, char *path)
     /* Does it exist? */
     if (stat(path, &finfo) != 0) {
         /* No, but maybe we can create it */
-        if (mkdir(path, S_IRWXU) != 0) {
+#ifdef WIN32
+        if (mkdir(path) != 0) 
+#else
+        if (mkdir(path, S_IRWXU) != 0)
+#endif
+        {
             return ap_psprintf(tp,
                 "doesn't exist and can't be created: %s",
                 strerror(errno));
         }
 
+#ifndef WIN32
         /* If we're root, we're gonna setuid/setgid so we need to chown */
         if (geteuid() == 0 && chown(path, ap_user_id, ap_group_id) != 0) {
             return ap_psprintf(tp,
                 "can't chown() to the server (uid %ld, gid %ld): %s",
                 (long)ap_user_id, (long)ap_group_id, strerror(errno));
         }
+#endif
     }
     else {
         /* Yes, is it a directory? */
@@ -235,8 +274,12 @@ const char *fcgi_config_make_dir(pool *tp, char *path)
             return "isn't a directory!";
 
         /* Can we RWX in there? */
+#ifdef WIN32
+        err = fcgi_util_check_access(tp, NULL, &finfo, _S_IREAD | _S_IWRITE | _S_IEXEC, fcgi_user_id, fcgi_group_id);
+#else
         err = fcgi_util_check_access(tp, NULL, &finfo, R_OK | W_OK | X_OK,
                           fcgi_user_id, fcgi_group_id);
+#endif
         if (err != NULL) {
             return ap_psprintf(tp,
                 "access for server (uid %ld, gid %ld) failed: %s",
@@ -252,6 +295,7 @@ const char *fcgi_config_make_dir(pool *tp, char *path)
  */
 const char *fcgi_config_make_dynamic_dir(pool *p, const int wax)
 {
+#ifndef WIN32
     DIR *dp = NULL;
     struct dirent *dirp = NULL;
     const char *err;
@@ -288,6 +332,9 @@ const char *fcgi_config_make_dynamic_dir(pool *p, const int wax)
 
     ap_destroy_pool(tp);
 
+#else
+    fcgi_dynamic_dir = ap_pstrcat(p, fcgi_socket_dir, "dynamic", NULL);
+#endif
     return NULL;
 }
 
@@ -317,11 +364,17 @@ const char *fcgi_config_set_socket_dir(cmd_parms *cmd, void *dummy, char *arg)
             name);
     }
 
+#ifndef WIN32
     if (!ap_os_is_path_absolute(arg))
         arg = ap_make_full_path(cmd->pool, ap_server_root, arg);
+#else
+	if (strncmp(arg, "\\\\.\\pipe\\", 9) != 0)
+		return ap_psprintf(tp, "%s %s is invalid format",name, arg);
+#endif
 
     fcgi_socket_dir = arg;
 
+#ifndef WIN32
     err = fcgi_config_make_dir(tp, fcgi_socket_dir);
     if (err != NULL)
         return ap_psprintf(tp, "%s %s: %s", name, arg, err);
@@ -329,6 +382,7 @@ const char *fcgi_config_set_socket_dir(cmd_parms *cmd, void *dummy, char *arg)
     err = fcgi_config_make_dynamic_dir(cmd->pool, 0);
     if (err != NULL)
         return ap_psprintf(tp, "%s %s: %s", name, arg, err);
+#endif
 
     return NULL;
 }
@@ -368,7 +422,12 @@ const char *fcgi_config_set_suexec(cmd_parms *cmd, void *dummy, const char *arg)
         if (!ap_os_is_path_absolute(arg))
             arg = ap_make_full_path(cmd->pool, ap_server_root, arg);
 
+#ifdef WIN32
+        err = fcgi_util_check_access(tp, arg, NULL, _S_IEXEC, fcgi_user_id, fcgi_group_id);
+#else
         err = fcgi_util_check_access(tp, arg, NULL, X_OK, fcgi_user_id, fcgi_group_id);
+#endif
+
         if (err != NULL) {
             return ap_psprintf(tp,
                 "%s: \"%s\" access for server (uid %ld, gid %ld) failed: %s",
@@ -403,6 +462,8 @@ const char *fcgi_config_new_static_server(cmd_parms *cmd, void *dummy, const cha
 
     if (!ap_os_is_path_absolute(fs_path))
         fs_path = ap_make_full_path(p, ap_server_root, fs_path);
+        
+    fs_path = ap_os_canonical_filename(p, fs_path);
 
     ap_getparents(fs_path);
     ap_no2slash(fs_path);
@@ -436,6 +497,7 @@ const char *fcgi_config_new_static_server(cmd_parms *cmd, void *dummy, const cha
     s->restartOnExit = TRUE;
     s->numProcesses = 1;
 
+#ifndef WIN32
     if (fcgi_suexec) {
         struct passwd *pw;
         struct group  *gr;
@@ -461,6 +523,7 @@ const char *fcgi_config_new_static_server(cmd_parms *cmd, void *dummy, const cha
         }
         s->group = ap_pstrdup(p, gr->gr_name);
     }
+#endif
 
     /*  Parse directive arguments */
     while (*arg) {
@@ -495,7 +558,7 @@ const char *fcgi_config_new_static_server(cmd_parms *cmd, void *dummy, const cha
                 return invalid_value(tp, name, fs_path, option, err);
         }
         else if (strcasecmp(option, "-port") == 0) {
-            if ((err = get_u_int(tp, &arg, &s->port, 1)))
+            if ((err = get_u_short(tp, &arg, &s->port, 1)))
                 return invalid_value(tp, name, fs_path, option, err);
         }
         else if (strcasecmp(option, "-socket") == 0) {
@@ -540,14 +603,22 @@ const char *fcgi_config_new_static_server(cmd_parms *cmd, void *dummy, const cha
                                 &s->socket_addr_len, NULL, s->port);
         if (err != NULL)
             return ap_psprintf(tp, "%s %s: %s", name, fs_path, err);
+#ifdef WIN32
+        err = fcgi_util_socket_make_inet_addr(p, (struct sockaddr_in **)&s->dest_addr,
+                                          &s->socket_addr_len, "localhost", s->port);
+        if (err != NULL)
+            return ap_psprintf(tp, "%s %s: %s", name, fs_path, err);
+#endif
     } else {
         if (s->socket_path == NULL)
              s->socket_path = fcgi_util_socket_hash_filename(tp, fs_path, s->user, s->group);
         s->socket_path = fcgi_util_socket_make_path_absolute(p, s->socket_path, 0);
+#ifndef WIN32
         err = fcgi_util_socket_make_domain_addr(p, (struct sockaddr_un **)&s->socket_addr,
                                   &s->socket_addr_len, s->socket_path);
         if (err != NULL)
             return ap_psprintf(tp, "%s %s: %s", name, fs_path, err);
+#endif
     }
 
     /* Add it to the list of FastCGI servers */
@@ -573,6 +644,8 @@ const char *fcgi_config_new_external_server(cmd_parms *cmd, void *dummy, const c
 
     if (!ap_os_is_path_absolute(fs_path))
         fs_path = ap_make_full_path(p, ap_server_root, fs_path);
+
+    fs_path = ap_os_canonical_filename(p, fs_path);
 
     ap_getparents(fs_path);
     ap_no2slash(fs_path);
@@ -653,10 +726,12 @@ const char *fcgi_config_new_external_server(cmd_parms *cmd, void *dummy, const c
             return ap_psprintf(tp, "%s %s: %s", name, fs_path, err);
     } else {
         s->socket_path = fcgi_util_socket_make_path_absolute(p, s->socket_path, 0);
+#ifndef WIN32
         err = fcgi_util_socket_make_domain_addr(p, (struct sockaddr_un **)&s->socket_addr,
                                   &s->socket_addr_len, s->socket_path);
         if (err != NULL)
             return ap_psprintf(tp, "%s %s: %s", name, fs_path, err);
+#endif
     }
 
     /* Add it to the list of FastCGI servers */
