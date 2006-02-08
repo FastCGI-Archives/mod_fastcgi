@@ -933,8 +933,7 @@ static int write_to_client(fcgi_request *fr)
 
 #endif
 
-    if (rv)
-    {
+    if (rv || fr->r->connection->aborted) {
         ap_log_rerror(FCGI_LOG_INFO_NOERRNO, fr->r,
             "FastCGI: client stopped connection before send body completed");
         return -1;
