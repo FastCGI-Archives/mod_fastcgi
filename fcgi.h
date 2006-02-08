@@ -260,6 +260,7 @@ typedef struct _FastCgiServerInfo {
     u_long totalQueueTime;          /* microseconds spent by the web server
                                      * waiting to connect to the fastcgi app
                                      * since the last dynamicUpdateInterval. */
+    int nph;
     struct _FastCgiServerInfo *next;
 } fcgi_server;
 
@@ -310,6 +311,7 @@ typedef struct {
 #ifdef WIN32
     BOOL using_npipe_io;             /* named pipe io */
 #endif
+    int nph;
 } fcgi_request;
 
 /* Values of parseHeader field */

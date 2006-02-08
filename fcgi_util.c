@@ -371,11 +371,6 @@ fcgi_util_fs_is_path_ok(pool * const p, const char * const fs_path, struct stat 
         if (stat(fs_path, finfo) < 0)
             return ap_psprintf(p, "stat(%s) failed: %s", fs_path, strerror(errno));
     }
-
-    /* No Parse Header scripts aren't allowed.
-     * @@@ Well... we really could quite easily */ 
-    if (strncmp(strrchr(fs_path, '/'), "/nph-", 5) == 0)
-        return ap_psprintf(p, "NPH scripts cannot be run as FastCGI");
     
     if (finfo->st_mode == 0) 
         return ap_psprintf(p, "script not found or unable to stat()");

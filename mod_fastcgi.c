@@ -2469,14 +2469,15 @@ create_fcgi_request(request_rec * const r,
         }
     }
 
+    fr->nph = (strncmp(strrchr(fs_path, '/'), "/nph-", 5) == 0) ||
+		    (fs && fs->nph);
+
     fr->serverInputBuffer = fcgi_buf_new(p, SERVER_BUFSIZE);
     fr->serverOutputBuffer = fcgi_buf_new(p, SERVER_BUFSIZE);
     fr->clientInputBuffer = fcgi_buf_new(p, SERVER_BUFSIZE);
     fr->clientOutputBuffer = fcgi_buf_new(p, SERVER_BUFSIZE);
     fr->erBufPtr = fcgi_buf_new(p, sizeof(FCGI_EndRequestBody) + 1);
     fr->gotHeader = FALSE;
-    fr->parseHeader = SCAN_CGI_READING_HEADERS;
-    fr->header = ap_make_array(p, 1, 1);
     fr->fs_stderr = NULL;
     fr->r = r;
     fr->readingEndRequestBody = FALSE;
@@ -2498,6 +2499,27 @@ create_fcgi_request(request_rec * const r,
     fr->dynamic = (fs == NULL) ? TRUE : FALSE;
     fr->fd = -1;
 #endif
+
+    if (fr->nph) {
+	struct ap_filter_t *cur;
+
+	fr->parseHeader = SCAN_CGI_FINISHED;
+	fr->header = ap_make_array(p, 1, 1);
+
+	/* get rid of all filters up through protocol...  since we
+	 * haven't parsed off the headers, there is no way they can
+	 * work
+	 */
+
+	cur = r->proto_output_filters;
+	while (cur && cur->frec->ftype < AP_FTYPE_CONNECTION) {
+	    cur = cur->next;
+	}
+	r->output_filters = r->proto_output_filters = cur;
+    } else {
+	fr->parseHeader = SCAN_CGI_READING_HEADERS;
+	fr->header = ap_make_array(p, 1, 1);
+    }
 
     set_uid_n_gid(r, &fr->user, &fr->group);
 

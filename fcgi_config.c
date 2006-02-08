@@ -733,6 +733,9 @@ const char *fcgi_config_new_static_server(cmd_parms *cmd, void *dummy, const cha
         else if (strcasecmp(option, "-flush") == 0) {
             s->flush = 1;
         }
+        else if (strcasecmp(option, "-nph") == 0) {
+            s->nph = 1;
+        }
         else if (strcasecmp(option, "-user") == 0) {
 #ifdef WIN32
             return ap_psprintf(tp, 
