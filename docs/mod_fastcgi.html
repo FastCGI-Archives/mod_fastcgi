@@ -1,6 +1,6 @@
 <!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">
 <HTML>
-    <!-- $Id: mod_fastcgi.html,v 1.35 2004/01/07 02:02:31 robs Exp $ -->
+    <!-- $Id: mod_fastcgi.html,v 1.39 2008/09/22 00:28:56 robs Exp $ -->
     <HEAD>
         <TITLE>
             Apache module mod_fastcgi
@@ -159,9 +159,7 @@
         <P>
             FastCGI application output is buffered by default. This is not the case for CGI scripts (under Apache 1.3).
             To override the default behavior, use the <CODE>-flush</CODE> option (not available for dynamic
-            applications). Non-parsed header (nph-) scripts will be rejected by mod_fastcgi simply as warning the
-            behavior is different (create a symbolic link to the script without the &quot;nph-&quot; prefix if this
-            poses a problem).
+            applications). 
         </P>
         <P>
             Redirects are handled similarly to CGI. Location headers with values that begin with &quot;/&quot; are
@@ -280,7 +278,7 @@
                     "Help"><STRONG>Context:</STRONG></A> 
                 </TD>
                 <TD>
-                    server config
+					server config, virtual host
                 </TD>
             </TR>
         </TABLE>
@@ -296,6 +294,12 @@
             HREF="http://httpd.apache.org/docs/mod/core.html#loglevel"><CODE>LogLevel</CODE></A>).
         </P>
         <P>
+			<B>Note:</B> Using <CODE>FastCgiServer</CODE> within a
+			<A HREF="http://httpd.apache.org/docs/mod/core.html#virtualhost">VirtualHost</A>
+			does not necessarily limited access to that host.  If <EM>filename</EM> is
+			accessible via other virtual hosts, they too can leverage the same definition.
+		</P>
+		<P>
             <EM>Option</EM> can be one of (case insensitive):
         </P>
         <DL>
@@ -377,12 +381,19 @@
 				number of seconds.
             </DD>
             <DT>
+                <CODE><STRONG>-nph</STRONG></CODE>
+            </DT>
+            <DD>
+                Instructs mod_fastcgi not to parse the headers.  See the Apache documentation for more information
+                about <em>nph</em> (non parse header) scripts.
+            </DD>
+            <DT>
                 <CODE><STRONG>-pass-header <EM>header</EM></STRONG> (none)</CODE>
             </DT>
             <DD>
-                The name of an HTTP Request Header to be passed in the <EM>request</EM> environment. This option makes
+                The name of a Request Header to be passed in the <EM>request</EM> environment. This option makes
                 available the contents of headers which are normally not available (e.g. Authorization) to a CGI
-                environment.
+                environment.  The passed header names are prefixed with "HTTP_" IAW the CGI specification.
             </DD>
             <DT>
                 <CODE><STRONG>-port <EM>n</EM></STRONG> (none)</CODE>
@@ -612,9 +623,9 @@
                 <CODE><STRONG>-pass-header <EM>header</EM></STRONG> (none)</CODE>
             </DT>
             <DD>
-                The name of an HTTP Request Header to be passed in the <EM>request</EM> environment. This option makes
+                The name of a Request Header to be passed in the <EM>request</EM> environment. This option makes
                 available the contents of headers which are normally not available (e.g. Authorization) to a CGI
-                environment.
+                environment.  The passed header names are prefixed with "HTTP_" IAW the CGI specification.
             </DD>
             <DT>
                 <CODE><STRONG>-priority <EM>n</EM></STRONG> (0)</CODE>
@@ -703,7 +714,7 @@
                     "Help"><STRONG>Context:</STRONG></A> 
                 </TD>
                 <TD>
-                    server config
+					server config, virtual host
                 </TD>
             </TR>
         </TABLE>
@@ -712,7 +723,7 @@
             application. If <EM>filename</EM> does not begin with a slash (/) then it is assumed to be relative to the
             <A HREF="http://httpd.apache.org/docs/mod/core.html#serverroot">ServerRoot</A>. The <EM>filename</EM> does
             not have to exist in the local filesystem. URIs that Apache resolves to this <EM>filename</EM> will be
-            handled by this external FastCGI application..
+            handled by this external FastCGI application.  
         </P>
         <P>
             External FastCGI applications are not started by the process manager, they are presumed to be started and
@@ -721,6 +732,12 @@
             be <EM>self-starting</EM>, see the devkit).
         </P>
         <P>
+			<B>Note:</B> Using <CODE>FastCgiServer</CODE> within a
+			<A HREF="http://httpd.apache.org/docs/mod/core.html#virtualhost">VirtualHost</A>
+			does not necessarily limited access to that host.  If <EM>filename</EM> is
+			accessible via other virtual hosts, they too can leverage the same definition.
+		</P>
+		<P>
             <EM>Option</EM> can be one of (case insensitive):
         </P>
         <DL>
@@ -776,12 +793,19 @@
                 the web server. The <CODE>-socket</CODE> and <CODE>-host</CODE> options are mutually exclusive.
             </DD>
             <DT>
+                <CODE><STRONG>-nph</STRONG></CODE>
+            </DT>
+            <DD>
+                Instructs mod_fastcgi not to parse the headers.  See the Apache documentation for more information
+                about <em>nph</em> (non parse header) scripts.
+            </DD>
+            <DT>
                 <CODE><STRONG>-pass-header <EM>header</EM></STRONG> (none)</CODE>
             </DT>
             <DD>
-                The name of an HTTP Request Header to be passed in the <EM>request</EM> environment. This option makes
+                The name of a Request Header to be passed in the <EM>request</EM> environment. This option makes
                 available the contents of headers which are normally not available (e.g. Authorization) to a CGI
-                environment.
+                environment.  The passed header names are prefixed with "HTTP_" IAW the CGI specification.
             </DD>
             <DT>
                 <CODE><STRONG>-socket <EM>filename</EM></STRONG> (none)</CODE>
