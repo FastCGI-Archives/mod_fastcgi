@@ -1,5 +1,5 @@
-README for mod_fastcgi
-~~~~~~~~~~~~~~~~~~~~~~
+# README for mod_fastcgi
+
 mod_fastcgi is a module for the Apache web server, that enables
 FastCGI - a standards based protocol for communicating with
 applications that generate dynamic content for web pages.
@@ -10,7 +10,7 @@ Nonetheless, the feature set is rich enough for programming virtually
 any type of web application, but the result is generally more
 scalable.  For more information on FastCGI, see
 
-   https://github.com/FastCGI-Backups/FastCGI.com
+- https://github.com/FastCGI-Backups/FastCGI.com
 
 For information on installing mod_fastcgi with Apache 1.3.x, see the
 file INSTALL.
@@ -22,20 +22,19 @@ For information on configuring an installed instance of mod_fastcgi,
 see the file mod_fastcgi.html in the docs/ directory, also available
 online at:
  
-   [https://github.com/FastCGI-Backups/mod_fastcgi/blob/master/docs/mod_fastcgi.html](https://htmlpreview.github.io/?https://github.com/FastCGI-Backups/mod_fastcgi/blob/master/docs/mod_fastcgi.html)
+- [mod_fastcgi.html](https://htmlpreview.github.io/?https://github.com/FastCGI-Backups/mod_fastcgi/blob/master/docs/mod_fastcgi.html)
 
 For information on programming FastCGI applications, see:
 
-   https://github.com/FastCGI-Backups/FastCGI.com
+- https://github.com/FastCGI-Backups/FastCGI.com
 
 Finally, if you get stuck - start with the Frequently Asked Questions
 (FAQ) file at:
 
-   [https://github.com/FastCGI-Backups/FastCGI.com/blob/master/FastCGI%20FAQ.html](https://htmlpreview.github.io/?https://github.com/FastCGI-Backups/FastCGI.com/blob/master/FastCGI%20FAQ.html)
+- [FastCGI FAQ.html](https://htmlpreview.github.io/?https://github.com/FastCGI-Backups/FastCGI.com/blob/master/FastCGI%20FAQ.html)
 
 If you still can't find an answer, join the developer's mailing list
 at:
 
-   http://blog.gmane.org/gmane.comp.web.fastcgi.devel
-   https://web.archive.org/web/20130914200635/http://mailman.chelsea.net/mailman/listinfo/fastcgi-developers
-
+- http://blog.gmane.org/gmane.comp.web.fastcgi.devel
+- https://web.archive.org/web/20130914200635/http://mailman.chelsea.net/mailman/listinfo/fastcgi-developers
