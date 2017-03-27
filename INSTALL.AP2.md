@@ -3,8 +3,10 @@
 # Apache FastCGI Module Installation
 
 
-See docs/mod_fastcgi.html for configuration information.
+See [docs/mod_fastcgi.html](https://htmlpreview.github.io/?https://raw.githubusercontent.com/FastCGI-Archives/mod_fastcgi/master/docs/mod_fastcgi.html) for configuration information.
+
 This module is maintained at https://fastcgi-archives.github.io/.  
+
 See the web page for mailing list information.
   
   
