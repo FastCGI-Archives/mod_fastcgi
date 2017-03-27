@@ -52,34 +52,34 @@ If your on Windows NT, see Section 4.
    as an argument to ./config.status (Apache 1.3.1+) in order to
    preserve the existing configuration.
 
-```
-<apache_dir>$ ./configure  \
-          --activate-module=src/modules/fastcgi/libfastcgi.a
-```
+   ```
+   <apache_dir>$ ./configure  \
+            --activate-module=src/modules/fastcgi/libfastcgi.a
+   ```
 
    or
 
-```
-<apache_dir>$ ./config.status  \
-          --activate-module=src/modules/fastcgi/libfastcgi.a
-```
+   ```
+   <apache_dir>$ ./config.status  \
+            --activate-module=src/modules/fastcgi/libfastcgi.a
+   ```
 
 3. Rebuild and reinstall Apache.
 
-```
-<apache_dir>$ make
-<apache_dir>$ make install
-```
+   ```
+   <apache_dir>$ make
+   <apache_dir>$ make install
+   ```
 
 4. Edit the httpd configuration files to enable your FastCGI
    application(s).  See docs/mod_fastcgi.html for details.
 
 5. Stop and start the server.
 
-```
-<apache_dir>$ /usr/local/apache/sbin/apachectl stop
-<apache_dir>$ /usr/local/apache/sbin/apachectl start
-```
+   ```
+   <apache_dir>$ /usr/local/apache/sbin/apachectl stop
+   <apache_dir>$ /usr/local/apache/sbin/apachectl start
+   ```
 
 ### Installing mod_fastcgi manually
 
@@ -91,16 +91,16 @@ If your on Windows NT, see Section 4.
    come later can override the behavior of those that come earlier.  I
    put mine just after the mod_cgi entry.
 
-```
-     AddModule modules/fastcgi/libfastcgi.a
-```
+   ```
+      AddModule modules/fastcgi/libfastcgi.a
+   ```
 
 3. From the <apache_dir>/src directory, reconfigure and rebuild Apache.
 
-```
-<apache_dir>/src$ ./configure
-<apache_dir>/src$ make
-```
+   ```
+   <apache_dir>/src$ ./configure
+   <apache_dir>/src$ make
+   ```
 
    Install the new httpd.
 
@@ -109,10 +109,10 @@ If your on Windows NT, see Section 4.
 
 5. Stop and start the server.
 
-```
-$ kill -TERM `cat <run_dir>/logs/httpd.pid`
-$ <run_dir>/bin/httpd -f <run_dir>/conf/httpd.conf
-```
+   ```
+   $ kill -TERM `cat <run_dir>/logs/httpd.pid`
+   $ <run_dir>/bin/httpd -f <run_dir>/conf/httpd.conf
+   ```
 
 
 ### Installing mod_fastcgi as a DSO
@@ -123,49 +123,49 @@ this, provide the full path in the FastCgiSuexec directive.
 
 1. From the mod_fastcgi directory, compile the module.
 
-```
-$ cd <mod_fastcgi_dir>
-<mod_fastcgi_dir>$ apxs -o mod_fastcgi.so -c *.c
-```
+   ```
+   $ cd <mod_fastcgi_dir>
+   <mod_fastcgi_dir>$ apxs -o mod_fastcgi.so -c *.c
+   ```
 
 2. Install the module.
 
-```
-<mod_fastcgi_dir>$ apxs -i -a -n fastcgi mod_fastcgi.so
-```
+   ```
+   <mod_fastcgi_dir>$ apxs -i -a -n fastcgi mod_fastcgi.so
+   ```
 
    This should create an entry in httpd.conf that looks like this: 
 
-```
-   LoadModule fastcgi_module  <some_path>/mod_fastcgi.so
-```
+   ```
+      LoadModule fastcgi_module  <some_path>/mod_fastcgi.so
+   ```
 
    Note that if there's a ClearModuleList directive after new entry,
    you'll have to either move the LoadModule after the ClearModuleList
    or add (have a look at how the other modules are handled):
 
-```
-   AddModule mod_fastcgi.c
-```
+   ```
+      AddModule mod_fastcgi.c
+   ```
 
 3. Edit the httpd configuration file(s) to enable your FastCGI
    application(s).  See docs/mod_fastcgi.html for details.
 
    If you want to wrap the mod_fastcgi directives, use:
 
-```
-   <IfModule mod_fastcgi.c>
-   .
-   .
-   </IfModule>
-```
+   ```
+      <IfModule mod_fastcgi.c>
+      .
+      .
+      </IfModule>
+   ```
 
 4. Stop and start the server.
 
-```
-$ <run_dir>/bin/apachectl stop
-$ <run_dir>/bin/apachectl start
-```
+   ```
+   $ <run_dir>/bin/apachectl stop
+   $ <run_dir>/bin/apachectl start
+   ```
 
 ### Windows NT
 
@@ -226,17 +226,17 @@ http://fastcgi.com/dist/):
 2. Edit the httpd configurion file (e.g. C:\Apache\conf\httpd.conf)
    and add a line like:
 
-  ```
-     LoadModule fastcgi_module modules/mod_fastcgi.dll
-  ```
+   ```
+       LoadModule fastcgi_module modules/mod_fastcgi.dll
+   ```
 
-  > Note that if there's a ClearModuleList directive after new entry,
-  > you'll have to either move the LoadModule after the ClearModuleList
-  > or add (have a look at how the other modules are handled):
+   > Note that if there's a ClearModuleList directive after new entry,
+   > you'll have to either move the LoadModule after the ClearModuleList
+   > or add (have a look at how the other modules are handled):
 
-  ```
-     AddModule mod_fastcgi.c
-  ```
+   ```
+       AddModule mod_fastcgi.c
+   ```
 
 3. Edit the httpd configuration file(s) to enable your FastCGI
    application(s).  See docs/mod_fastcgi.html for details.
