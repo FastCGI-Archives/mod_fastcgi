@@ -22,7 +22,7 @@ For information on configuring an installed instance of mod_fastcgi,
 see the file mod_fastcgi.html in the docs/ directory, also available
 online at:
  
-   https://htmlpreview.github.io/?https://github.com/FastCGI-Backups/mod_fastcgi/blob/master/docs/mod_fastcgi.html
+   [https://github.com/FastCGI-Backups/mod_fastcgi/blob/master/docs/mod_fastcgi.html](https://htmlpreview.github.io/?https://github.com/FastCGI-Backups/mod_fastcgi/blob/master/docs/mod_fastcgi.html)
 
 For information on programming FastCGI applications, see:
 
@@ -31,7 +31,7 @@ For information on programming FastCGI applications, see:
 Finally, if you get stuck - start with the Frequently Asked Questions
 (FAQ) file at:
 
-   https://htmlpreview.github.io/?https://github.com/FastCGI-Backups/FastCGI.com/blob/master/FastCGI%20FAQ.html
+   [https://github.com/FastCGI-Backups/FastCGI.com/blob/master/FastCGI%20FAQ.html](https://htmlpreview.github.io/?https://github.com/FastCGI-Backups/FastCGI.com/blob/master/FastCGI%20FAQ.html)
 
 If you still can't find an answer, join the developer's mailing list
 at:
