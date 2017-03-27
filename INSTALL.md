@@ -171,9 +171,9 @@ this, provide the full path in the FastCgiSuexec directive.
 
 To build mod_fastcgi from the command line:
 
-  1. Edit the APACHE_SRC_DIR variable in Makefile.nt.
+1. Edit the APACHE_SRC_DIR variable in Makefile.nt.
 
-  2. Build the module
+2. Build the module
 
 ```
        > nmake -f Makefile.nt CFG=[debug | release]
@@ -181,63 +181,62 @@ To build mod_fastcgi from the command line:
 
 To build mod_fastcgi as a project you'll need M$ VC++ 6.0:
 
-  1. Open the mod_fastcgi project file with the VC++.
+1. Open the mod_fastcgi project file with the VC++.
 
-  2. Edit the Project for your configuration.
+2. Edit the Project for your configuration.
 
-    a) Select Project->Settings or press <ALT+F7>.
+  1. Select Project->Settings or press <ALT+F7>.
 
-    b) Select "All Configurations" from "Settings For" drop-down menu.
+  2. Select "All Configurations" from "Settings For" drop-down menu.
 
-    c) Select the "C/C++" tab.
+  3. Select the "C/C++" tab.
 
-    d) Select "Preprocessor" from the "Category" drop-down menu.
+  4. Select "Preprocessor" from the "Category" drop-down menu.
 
-    e) Edit the path in "Additional include directories" to include your
-       Apache source header files (e.g. C:\apache_1.3.12\src\include).
+  5. Edit the path in "Additional include directories" to include your
+     Apache source header files (e.g. C:\apache_1.3.12\src\include).
 
-    f) Select the "Link" tab.
+  6. Select the "Link" tab.
 
-    g) Select "General" from the "Category" drop-down menu.
+  7. Select "General" from the "Category" drop-down menu.
 
-    h) Select "Win32 Release" from "Settings For" drop-down menu.
+  8. Select "Win32 Release" from "Settings For" drop-down menu.
 
-    i) Edit the path in "Object/library modules" to include your Apache
-       Release library (e.g. C:\apache_1.3.12\src\CoreR\ApacheCore.lib).
+  9. Edit the path in "Object/library modules" to include your Apache
+     Release library (e.g. C:\apache_1.3.12\src\CoreR\ApacheCore.lib).
 
-    j) Select "Win32 Debug" from "Settings For" drop-down menu.
+  10. Select "Win32 Debug" from "Settings For" drop-down menu.
 
-    k) Edit the path in "Object/library modules" to include your Apache
-       Debug library (e.g. C:\apache_1.3.12\src\CoreD\ApacheCore.lib).
+  11. Edit the path in "Object/library modules" to include your Apache
+     Debug library (e.g. C:\apache_1.3.12\src\CoreD\ApacheCore.lib).
 
-    l) Select OK.
+  12. Select OK.
 
-  3. Select "Set Active Configuration" from the "Build" menu and choose
-     either a release or debug build.
+3. Select "Set Active Configuration" from the "Build" menu and choose
+   either a release or debug build.
 
-  4. Select "Build mod_fastcgi.dll" from the "Build" menu.
+4. Select "Build mod_fastcgi.dll" from the "Build" menu.
 
 To install mod_fastcgi (built above or retrieved from 
 http://fastcgi.com/dist/):
 
-  1. Copy the mod_fastcgi.dll to the Apache modules directory 
-     (e.g. C:\Apache\modules)
+1. Copy the mod_fastcgi.dll to the Apache modules directory 
+   (e.g. C:\Apache\modules)
 
-  2. Edit the httpd configurion file (e.g. C:\Apache\conf\httpd.conf)
-     and add a line like:
+2. Edit the httpd configurion file (e.g. C:\Apache\conf\httpd.conf)
+   and add a line like:
 
 ```
        LoadModule fastcgi_module modules/mod_fastcgi.dll
 ```
 
-     Note that if there's a ClearModuleList directive after new entry,
-     you'll have to either move the LoadModule after the ClearModuleList
-     or add (have a look at how the other modules are handled):
+> Note that if there's a ClearModuleList directive after new entry,
+> you'll have to either move the LoadModule after the ClearModuleList
+> or add (have a look at how the other modules are handled):
 
 ```
        AddModule mod_fastcgi.c
 ```
 
-  3. Edit the httpd configuration file(s) to enable your FastCGI
-     application(s).  See docs/mod_fastcgi.html for details.
-
+3. Edit the httpd configuration file(s) to enable your FastCGI
+   application(s).  See docs/mod_fastcgi.html for details.
