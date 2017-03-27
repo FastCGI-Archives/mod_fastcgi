@@ -2,16 +2,12 @@
 
 # Apache FastCGI Module Installation
 
-
->
 >  See the [INSTALL.AP2](INSTALL.AP2.md) document for information on how to build
 >  **mod_fastcgi** for the Apache 2.X series.
->
-
 
 ## Notes
 
-  See [docs/mod_fastcgi.html](https://htmlpreview.github.io/?https://raw.githubusercontent.com/FastCGI-Archives/mod_fastcgi/master/docs/mod_fastcgi.html) for configuration information.
+See [docs/mod_fastcgi.html](https://htmlpreview.github.io/?https://raw.githubusercontent.com/FastCGI-Archives/mod_fastcgi/master/docs/mod_fastcgi.html) for configuration information.
   
 This module supports Apache 1.3+.  If your server is 1.2 based, either
 upgrade or use **mod_fastcgi** v2.0.18.
@@ -56,27 +52,34 @@ If your on Windows NT, see Section 4.
    as an argument to ./config.status (Apache 1.3.1+) in order to
    preserve the existing configuration.
 
+```
      <apache_dir>$ ./configure  \
                 --activate-module=src/modules/fastcgi/libfastcgi.a
+```
 
    or
 
+```
      <apache_dir>$ ./config.status  \
                 --activate-module=src/modules/fastcgi/libfastcgi.a
+```
 
 3. Rebuild and reinstall Apache.
 
+```
      <apache_dir>$ make
      <apache_dir>$ make install
+```
 
 4. Edit the httpd configuration files to enable your FastCGI
    application(s).  See docs/mod_fastcgi.html for details.
 
 5. Stop and start the server.
 
+```
      <apache_dir>$ /usr/local/apache/sbin/apachectl stop
      <apache_dir>$ /usr/local/apache/sbin/apachectl start
-
+```
 
 ### Installing mod_fastcgi manually
 
@@ -88,12 +91,16 @@ If your on Windows NT, see Section 4.
    come later can override the behavior of those that come earlier.  I
    put mine just after the mod_cgi entry.
 
+```
      AddModule modules/fastcgi/libfastcgi.a
+```
 
 3. From the <apache_dir>/src directory, reconfigure and rebuild Apache.
 
-     <apache_dir>/src$ ./Configure
+```
+     <apache_dir>/src$ ./configure
      <apache_dir>/src$ make
+```
 
    Install the new httpd.
 
@@ -102,8 +109,10 @@ If your on Windows NT, see Section 4.
 
 5. Stop and start the server.
 
+```
      $ kill -TERM `cat <run_dir>/logs/httpd.pid`
      $ <run_dir>/bin/httpd -f <run_dir>/conf/httpd.conf
+```
 
 
 ### Installing mod_fastcgi as a DSO
@@ -114,38 +123,49 @@ this, provide the full path in the FastCgiSuexec directive.
 
 1. From the mod_fastcgi directory, compile the module.
 
+```
      $ cd <mod_fastcgi_dir>
      <mod_fastcgi_dir>$ apxs -o mod_fastcgi.so -c *.c
+```
 
 2. Install the module.
 
+```
      <mod_fastcgi_dir>$ apxs -i -a -n fastcgi mod_fastcgi.so
+```
 
    This should create an entry in httpd.conf that looks like this: 
 
+```
      LoadModule fastcgi_module  <some_path>/mod_fastcgi.so
+```
 
    Note that if there's a ClearModuleList directive after new entry,
    you'll have to either move the LoadModule after the ClearModuleList
    or add (have a look at how the other modules are handled):
 
+```
      AddModule mod_fastcgi.c
+```
 
 3. Edit the httpd configuration file(s) to enable your FastCGI
    application(s).  See docs/mod_fastcgi.html for details.
 
    If you want to wrap the mod_fastcgi directives, use:
 
+```
      <IfModule mod_fastcgi.c>
      .
      .
      </IfModule>
+```
 
 4. Stop and start the server.
 
+```
      $ <run_dir>/bin/apachectl stop
      $ <run_dir>/bin/apachectl start
-
+```
 
 ### Windows NT
 
@@ -155,7 +175,9 @@ To build mod_fastcgi from the command line:
 
   2. Build the module
 
+```
        > nmake -f Makefile.nt CFG=[debug | release]
+```
 
 To build mod_fastcgi as a project you'll need M$ VC++ 6.0:
 
@@ -204,13 +226,17 @@ http://fastcgi.com/dist/):
   2. Edit the httpd configurion file (e.g. C:\Apache\conf\httpd.conf)
      and add a line like:
 
+```
        LoadModule fastcgi_module modules/mod_fastcgi.dll
+```
 
      Note that if there's a ClearModuleList directive after new entry,
      you'll have to either move the LoadModule after the ClearModuleList
      or add (have a look at how the other modules are handled):
 
+```
        AddModule mod_fastcgi.c
+```
 
   3. Edit the httpd configuration file(s) to enable your FastCGI
      application(s).  See docs/mod_fastcgi.html for details.
