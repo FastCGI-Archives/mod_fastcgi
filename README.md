@@ -1,16 +1,17 @@
 # README for mod_fastcgi
 
-mod_fastcgi is a module for the Apache web server, that enables
-FastCGI - a standards based protocol for communicating with
+**mod_fastcgi** is a module for the Apache web server, that enables
+`FastCGI - a standards based protocol` for communicating with
 applications that generate dynamic content for web pages.
 
-FastCGI provides a superset of CGI functionality, but a subset of the
+**FastCGI** provides a superset of **CGI** functionality, but a subset of the
 functionality of programming for a particular web server API.
+
 Nonetheless, the feature set is rich enough for programming virtually
 any type of web application, but the result is generally more
-scalable.  For more information on FastCGI, see
+scalable.  
 
-- https://github.com/FastCGI-Backups/FastCGI.com
+For more information on FastCGI, see on https://fastcgi-archives.github.io/
 
 For information on installing mod_fastcgi with Apache 1.3.x, see the
 file INSTALL.
@@ -24,14 +25,10 @@ online at:
  
 - [mod_fastcgi.html](https://htmlpreview.github.io/?https://github.com/FastCGI-Backups/mod_fastcgi/blob/master/docs/mod_fastcgi.html)
 
-For information on programming FastCGI applications, see:
+For information on programming FastCGI applications, see on https://fastcgi-archives.github.io/
 
-- https://github.com/FastCGI-Backups/FastCGI.com
-
-Finally, if you get stuck - start with the Frequently Asked Questions
-(FAQ) file at:
-
-- [FastCGI FAQ.html](https://htmlpreview.github.io/?https://github.com/FastCGI-Backups/FastCGI.com/blob/master/FastCGI%20FAQ.html)
+Finally, if you get stuck - start with the [Frequently Asked Questions
+(FAQ)](https://htmlpreview.github.io/?https://github.com/FastCGI-Backups/FastCGI.com/blob/master/FastCGI%20FAQ.html)
 
 If you still can't find an answer, join the developer's mailing list
 at:
