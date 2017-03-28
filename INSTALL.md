@@ -7,7 +7,7 @@
 
 ## Notes
 
-See [docs/mod_fastcgi.html](https://htmlpreview.github.io/?https://raw.githubusercontent.com/FastCGI-Archives/mod_fastcgi/master/docs/mod_fastcgi.html) for configuration information.
+See [CONFIG](CONFIG.md) for configuration information.
   
 This module supports Apache 1.3+.  If your server is 1.2 based, either
 upgrade or use **mod_fastcgi** v2.0.18.
