@@ -24,13 +24,13 @@ FastCGI static and dynamic applications are spawned and managed by the FastCGI P
 
 Apache must be configured to identify requests for FastCGI URIs. `mod_fastcgi` registers (with Apache) a handler type of `fastcgi-script` for this purpose.
 
-To configure Apache to handle all files (within the scope of the directive) as FastCGI applications (e.g. for a fcgi-bin directory):
+To configure Apache to handle all files (within the scope of the directive) as FastCGI applications (e.g. for a fcgi-bin directory) use [SetHandler](http://httpd.apache.org/docs/mod/mod_mime.html#sethandler) :
 
-> [SetHandler](http://httpd.apache.org/docs/mod/mod_mime.html#sethandler) fastcgi-script
+    SetHandler <fastcgi-script>
 
-To configure Apache to handle files (within the scope of the directive) with the specified extension(s) as FastCGI applications:
+To configure Apache to handle files (within the scope of the directive) with the specified extension(s) as FastCGI applications use [AddHandler](http://httpd.apache.org/docs/mod/mod_mime.html#addhandler) :
 
-> [AddHandler](http://httpd.apache.org/docs/mod/mod_mime.html#addhandler) fastcgi-script fcg fcgi fpl
+    AddHandler <fastcgi-script> fcg fcgi fpl
 
 Consult the Apache documentation for more information regarding these and other directives which affect request handling (such as [Action](http://httpd.apache.org/docs/mod/mod_actions.html#action)).
 
