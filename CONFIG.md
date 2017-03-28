@@ -103,8 +103,8 @@ _Option_ can be one of (case insensitive):
 
   -appConnTimeout _n_ (0 seconds)
 
-  **Unix: ** The number of seconds to wait for a connection to the FastCGI application to complete or 0 to indicate a blocking `connect()` should be used. Blocking `connect()`s have an OS dependent internal timeout`.` If the timeout expires, a SERVER_ERROR results. For non-zero values, this is the amount of time used in a `select()` to write to the file descriptor returned by a non-blocking `connect().` Non-blocking `connect()`s are troublesome on many platforms. See also `-idle-timeout`, it produces similar results but in a more portable manner.  
-**Windows NT: ** TCP based applications work as above. Named pipe based applications (static applications configured without the `-port` option and dynamic applications) use this value successfully to limit the amount of time to wait for a connection (i.e. it's not "troublesome"). By default, this is 90 seconds (FCGI_NAMED_PIPE_CONNECT_TIMEOUT in mod_fastcgi.h).
+  **Unix:** The number of seconds to wait for a connection to the FastCGI application to complete or 0 to indicate a blocking `connect()` should be used. Blocking `connect()`s have an OS dependent internal timeout`.` If the timeout expires, a SERVER_ERROR results. For non-zero values, this is the amount of time used in a `select()` to write to the file descriptor returned by a non-blocking `connect().` Non-blocking `connect()`s are troublesome on many platforms. See also `-idle-timeout`, it produces similar results but in a more portable manner.  
+  **Windows NT:** TCP based applications work as above. Named pipe based applications (static applications configured without the `-port` option and dynamic applications) use this value successfully to limit the amount of time to wait for a connection (i.e. it's not "troublesome"). By default, this is 90 seconds (FCGI_NAMED_PIPE_CONNECT_TIMEOUT in mod_fastcgi.h).
 
   -group _groupname|#gid_ (none)
 
@@ -160,9 +160,9 @@ _Option_ can be one of (case insensitive):
 
   -socket _filename_ (generated)
 
-  **Unix: ** The filename of the Unix domain socket that the application will use for communication with the web server. The module creates the socket within the directory specified by `[FastCgiIpcDir](#FastCgiIpcDir)`. This option makes the application accessible to other applications (e.g. `cgi-fcgi`) on the same machine or via an external FastCGI application definition (`[FastCgiExternalServer](#FastCgiExternalServer)`). If neither the `-socket` nor the `-port` options are given, the module generates a Unix domain socket filename. The `-socket` and `-port` options are mutually exclusive.
+  **Unix:** The filename of the Unix domain socket that the application will use for communication with the web server. The module creates the socket within the directory specified by `[FastCgiIpcDir](#FastCgiIpcDir)`. This option makes the application accessible to other applications (e.g. `cgi-fcgi`) on the same machine or via an external FastCGI application definition (`[FastCgiExternalServer](#FastCgiExternalServer)`). If neither the `-socket` nor the `-port` options are given, the module generates a Unix domain socket filename. The `-socket` and `-port` options are mutually exclusive.
 
-  **Windows NT: ** The name of the named pipe that the application will use for communication with the web server. The module creates the named pipe under the named pipe root specified by `[FastCgiIpcDir](#FastCgiIpcDir)`. This option makes the application accessible to other applications (e.g. `cgi-fcgi`) on the same machine or via an external FastCGI application definition (`[FastCgiExternalServer](#FastCgiExternalServer)`). If neither the `-socket` nor the `-port` options are given, the module generates a name for the named pipe. The `-socket` and `-port` options are mutually exclusive.
+  **Windows NT:** The name of the named pipe that the application will use for communication with the web server. The module creates the named pipe under the named pipe root specified by `[FastCgiIpcDir](#FastCgiIpcDir)`. This option makes the application accessible to other applications (e.g. `cgi-fcgi`) on the same machine or via an external FastCGI application definition (`[FastCgiExternalServer](#FastCgiExternalServer)`). If neither the `-socket` nor the `-port` options are given, the module generates a name for the named pipe. The `-socket` and `-port` options are mutually exclusive.
 
   -user _username|#uid_ (none)
 
@@ -189,8 +189,8 @@ _Option_ can be one of (case insensitive):
 
   -appConnTimeout _n_ (0 seconds)
 
-  **Unix: ** The number of seconds to wait for a connection to the FastCGI application to complete or 0 to indicate a blocking `connect()` should be used. Blocking `connect()`s have an OS dependent internal timeout. If the timeout expires, a SERVER_ERROR results. For non-zero values, this is the amount of time used in a `select()` to write to the file descriptor returned by a non-blocking `connect()`. Non-blocking `connect()`s are troublesome on many platforms. See also `-idle-timeout`, it produces similar results but in a more portable manner.  
-**Windows NT: ** TCP based applications work as above. Named pipe based applications (static applications configured without the `-port` option and dynamic applications) use this value successfully to limit the amount of time to wait for a connection (i.e. it's not "troublesome"). By default, this is 90 seconds (FCGI_NAMED_PIPE_CONNECT_TIMEOUT in mod_fastcgi.h).
+  **Unix:** The number of seconds to wait for a connection to the FastCGI application to complete or 0 to indicate a blocking `connect()` should be used. Blocking `connect()`s have an OS dependent internal timeout. If the timeout expires, a SERVER_ERROR results. For non-zero values, this is the amount of time used in a `select()` to write to the file descriptor returned by a non-blocking `connect()`. Non-blocking `connect()`s are troublesome on many platforms. See also `-idle-timeout`, it produces similar results but in a more portable manner.  
+  **Windows NT:** TCP based applications work as above. Named pipe based applications (static applications configured without the `-port` option and dynamic applications) use this value successfully to limit the amount of time to wait for a connection (i.e. it's not "troublesome"). By default, this is 90 seconds (FCGI_NAMED_PIPE_CONNECT_TIMEOUT in mod_fastcgi.h).
 
   -autoUpdate (none)
 
@@ -302,8 +302,8 @@ _Option_ can be one of (case insensitive):
 
   -appConnTimeout _n_ (0 seconds)
 
-  **Unix: ** The number of seconds to wait for a connection to the FastCGI application to complete or 0 to indicate a blocking `connect()` should be used. Blocking `connect()`s have an OS dependent internal timeout. If the timeout expires, a SERVER_ERROR results. For non-zero values, this is the amount of time used in a `select()` to write to the file descriptor returned by a non-blocking `connect()`. Non-blocking `connect()`s are troublesome on many platforms. See also `-idle-timeout`, it produces similar results but in a more portable manner.  
-**Windows NT: ** TCP based applications work as above. Named pipe based applications (static applications configured without the `-port` option and dynamic applications) use this value successfully to limit the amount of time to wait for a connection (i.e. it's not "troublesome"). By default, this is 90 seconds (FCGI_NAMED_PIPE_CONNECT_TIMEOUT in mod_fastcgi.h).
+  **Unix:** The number of seconds to wait for a connection to the FastCGI application to complete or 0 to indicate a blocking `connect()` should be used. Blocking `connect()`s have an OS dependent internal timeout. If the timeout expires, a SERVER_ERROR results. For non-zero values, this is the amount of time used in a `select()` to write to the file descriptor returned by a non-blocking `connect()`. Non-blocking `connect()`s are troublesome on many platforms. See also `-idle-timeout`, it produces similar results but in a more portable manner.  
+  **Windows NT:** TCP based applications work as above. Named pipe based applications (static applications configured without the `-port` option and dynamic applications) use this value successfully to limit the amount of time to wait for a connection (i.e. it's not "troublesome"). By default, this is 90 seconds (FCGI_NAMED_PIPE_CONNECT_TIMEOUT in mod_fastcgi.h).
 
   -group _groupname|#gid_ (none)
 
@@ -331,9 +331,9 @@ _Option_ can be one of (case insensitive):
 
   -socket _filename_ (none)
 
-  **Unix: ** The filename of the Unix domain socket the application uses for communication with the web server. The filename is relative to the `[FastCgiIpcDir](#FastCgiIpcDir)`. The `-socket` and `-port` options are mutually exclusive.
+  **Unix:** The filename of the Unix domain socket the application uses for communication with the web server. The filename is relative to the `[FastCgiIpcDir](#FastCgiIpcDir)`. The `-socket` and `-port` options are mutually exclusive.
 
-  **Windows NT: ** The name of the named pipe the application uses for communicating with the web server. the name is relative to the `[FastCgiIpcDir](#FastCgiIpcDir)`. The `-socket` and `-port` options are mutually exclusive.
+  **Windows NT:** The name of the named pipe the application uses for communicating with the web server. the name is relative to the `[FastCgiIpcDir](#FastCgiIpcDir)`. The `-socket` and `-port` options are mutually exclusive.
 
   -user _username|#uid_ (none)
 
