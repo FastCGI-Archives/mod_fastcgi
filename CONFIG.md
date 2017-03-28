@@ -101,70 +101,70 @@ _Option_ can be one of (case insensitive):
 
 
 
-  -appConnTimeout _n_ (0 seconds)
+  **-appConnTimeout _n_ (0 seconds)**
 
   **Unix:** The number of seconds to wait for a connection to the FastCGI application to complete or 0 to indicate a blocking `connect()` should be used. Blocking `connect()`s have an OS dependent internal timeout`.` If the timeout expires, a SERVER_ERROR results. For non-zero values, this is the amount of time used in a `select()` to write to the file descriptor returned by a non-blocking `connect().` Non-blocking `connect()`s are troublesome on many platforms. See also `-idle-timeout`, it produces similar results but in a more portable manner.  
   **Windows NT:** TCP based applications work as above. Named pipe based applications (static applications configured without the `-port` option and dynamic applications) use this value successfully to limit the amount of time to wait for a connection (i.e. it's not "troublesome"). By default, this is 90 seconds (FCGI_NAMED_PIPE_CONNECT_TIMEOUT in mod_fastcgi.h).
 
-  -group _groupname|#gid_ (none)
+  **-group _groupname|#gid_ (none)**
 
   **Unix (only):** When [FastCgiWrapper](#FastCgiWrapper) is in use, the group is used to invoke the wrapper. The `-group` option must be used together with `-user`.
 
-  -idle-timeout _n_ (30 seconds)
+  **-idle-timeout _n_ (30 seconds)**
 
   The number of seconds of FastCGI application inactivity allowed before the request is aborted and the event is logged (at the `error` [`LogLevel`](http://httpd.apache.org/docs/mod/core.html#loglevel)). The inactivity timer applies only as long as a connection is pending with the FastCGI application. If a request is queued to an application, but the application doesn't respond (by writing and flushing) within this period, the request will be aborted. If communication is complete with the application but incomplete with the client (the response is buffered), the timeout does not apply.
 
-  -initial-env _name[=[value]]_ (none)
+  **-initial-env _name[=[value]]_ (none)**
 
   A name-value pair to be passed in the FastCGI application's _initial_ environment. To pass a variable from Apache's environment, don't provide the "=" (if the variable isn't actually in the environment, it will be defined without a value). To define a variable without a value, provide the "=" without any value. The option can be used repeatedly.
 
-  -init-start-delay _n_ (1 second)
+  **-init-start-delay _n_ (1 second)**
 
   The minimum number of seconds between the spawning of instances of this application. This delay decreases the demand placed on the system at server initialization.
 
-  -flush (none)
+  **-flush (none)**
 
   Force a write to the client as data is received from the application. By default, `mod_fastcgi` buffers data in order to free the application as quickly as possible.
 
-  -listen-queue-depth _n_ (100)
+  **-listen-queue-depth _n_ (100)**
 
   The depth of `listen()` queue (also known as the backlog) shared by all of the instances of this application. A deeper listen queue allows the server to cope with transient load fluctuations without rejecting requests; it does not increase throughput. Adding additional application instances may increase throughput/performance, depending upon the application and the host.
 
-  -min-server-life _n_ (30)
+  **-min-server-life _n_ (30)**
 
   The minimum number of seconds the application must run for before its restart interval is increased to 600 seconds. The server will get 3 tries to run for at least this number of seconds.
 
-  -nph
+  **-nph**
 
   Instructs mod_fastcgi not to parse the headers. See the Apache documentation for more information about _nph_ (non parse header) scripts.
 
-  -pass-header _header_ (none)
+  **-pass-header _header_ (none)**
 
   The name of an HTTP Request Header to be passed in the _request_ environment. This option makes available the contents of headers which are normally not available (e.g. Authorization) to a CGI environment.
 
-  -port _n_ (none)
+  **-port _n_ (none)**
 
   The TCP port number (1-65535) the application will use for communication with the web server. This option makes the application accessible from other machines on the network (as well as this one). The `-socket` and `-port` options are mutually exclusive.
 
-  -priority _n_ (0)
+  **-priority _n_ (0)**
 
   The process priority to be assigned to the application instances (using `setpriority()`).
 
-  -processes _n_ (1)
+  **-processes _n_ (1)**
 
   The number of instances of the application to spawn at server initialization.
 
-  -restart-delay _n_ (5 seconds)
+  **-restart-delay _n_ (5 seconds)**
 
   The minimum number of seconds between the respawning of failed instances of this application. This delay prevents a broken application from soaking up too much of the system.
 
-  -socket _filename_ (generated)
+  **-socket _filename_ (generated)**
 
   **Unix:** The filename of the Unix domain socket that the application will use for communication with the web server. The module creates the socket within the directory specified by `[FastCgiIpcDir](#FastCgiIpcDir)`. This option makes the application accessible to other applications (e.g. `cgi-fcgi`) on the same machine or via an external FastCGI application definition (`[FastCgiExternalServer](#FastCgiExternalServer)`). If neither the `-socket` nor the `-port` options are given, the module generates a Unix domain socket filename. The `-socket` and `-port` options are mutually exclusive.
 
   **Windows NT:** The name of the named pipe that the application will use for communication with the web server. The module creates the named pipe under the named pipe root specified by `[FastCgiIpcDir](#FastCgiIpcDir)`. This option makes the application accessible to other applications (e.g. `cgi-fcgi`) on the same machine or via an external FastCGI application definition (`[FastCgiExternalServer](#FastCgiExternalServer)`). If neither the `-socket` nor the `-port` options are given, the module generates a name for the named pipe. The `-socket` and `-port` options are mutually exclusive.
 
-  -user _username|#uid_ (none)
+  **-user _username|#uid_ (none)**
 
   **Unix (only):** When [FastCgiWrapper](#FastCgiWrapper) is in use, the user is used to invoke the wrapper. The `-user` option must be used together with `-group`.
 
@@ -187,94 +187,94 @@ _Option_ can be one of (case insensitive):
 
 
 
-  -appConnTimeout _n_ (0 seconds)
+  **-appConnTimeout _n_ (0 seconds)**
 
   **Unix:** The number of seconds to wait for a connection to the FastCGI application to complete or 0 to indicate a blocking `connect()` should be used. Blocking `connect()`s have an OS dependent internal timeout. If the timeout expires, a SERVER_ERROR results. For non-zero values, this is the amount of time used in a `select()` to write to the file descriptor returned by a non-blocking `connect()`. Non-blocking `connect()`s are troublesome on many platforms. See also `-idle-timeout`, it produces similar results but in a more portable manner.  
   **Windows NT:** TCP based applications work as above. Named pipe based applications (static applications configured without the `-port` option and dynamic applications) use this value successfully to limit the amount of time to wait for a connection (i.e. it's not "troublesome"). By default, this is 90 seconds (FCGI_NAMED_PIPE_CONNECT_TIMEOUT in mod_fastcgi.h).
 
-  -autoUpdate (none)
+  **-autoUpdate (none)**
 
   Causes mod_fastcgi to check the modification time of the application on disk before processing each request. If the application on disk has been changed, the process manager is notified and all running instances of the application are killed off. In general, it's preferred that this type of functionality be built-in to the application (e.g. every 100th request it checks to see if there's a newer version on disk and exits if so). There may be an outstanding problem (bug) when this option is used with `-restart`.
 
-  -flush (none)
+  **-flush (none)**
 
   Force a write to the client as data is received from the application. By default, `mod_fastcgi` buffers data in order to free the application as quickly as possible.
 
-  -gainValue _n_ (0.5)
+  **-gainValue _n_ (0.5)**
 
   A floating point value between 0 and 1 used as an exponent in the computation of the exponentially decayed connection times load factor of the currently running dynamic FastCGI applications. Old values are scaled by (`1 - gainValue`), so making it smaller weights old values more than the current value (which is scaled by `gainValue`).
 
-  -idle-timeout _n_ (30 seconds)
+  **-idle-timeout _n_ (30 seconds)**
 
   The number of seconds of FastCGI application inactivity allowed before the request is aborted and the event is logged (at the `error` [`LogLevel`](http://httpd.apache.org/docs/mod/core.html#loglevel)). The inactivity timer applies only as long as a connection is pending with the FastCGI application. If a request is queued to an application, but the application doesn't respond (by writing and flushing) within this period, the request will be aborted. If communication is complete with the application but incomplete with the client (the response is buffered), the timeout does not apply.
 
-  -initial-env _name[=[value]]_ (none)
+  **-initial-env _name[=[value]]_ (none)**
 
   A name-value pair to be passed in the initial environment when instances of applications are spawned. To pass a variable from the Apache environment, don't provide the "=" (if the variable isn't actually in the environment, it will be defined without a value). To define a variable without a value, provide the "=" without any value. The option can be used repeatedly.
 
-  -init-start-delay _n_ (1 second)
+  **-init-start-delay _n_ (1 second)**
 
   The minimum number of seconds between the spawning of instances of applications. This delay decreases the demand placed on the system at server initialization.
 
-  -killInterval _n_ (300 seconds)
+  **-killInterval _n_ (300 seconds)**
 
   Determines how often the dynamic application instance killing policy is implemented within the process manager. Smaller numbers result in a more aggressive policy, larger numbers a less aggressive policy.
 
-  -listen-queue-depth _n_ (100)
+  **-listen-queue-depth _n_ (100)**
 
   The depth of `listen()` queue (also known as the backlog) shared by all instances of applications. A deeper listen queue allows the server to cope with transient load fluctuations without rejecting requests; it does not increase throughput. Adding additional application instances may increase throughput/performance, depending upon the application and the host.
 
-  -maxClassProcesses _n_ (10)
+  **-maxClassProcesses _n_ (10)**
 
   The maximum number of dynamic FastCGI application instances allowed to run for any one FastCGI application. It must be <= to -maxProcesses (this is not programmatically enforced).
 
-  -maxProcesses _n_ (50)
+  **-maxProcesses _n_ (50)**
 
   The maximum total number of dynamic FastCGI application instances allowed to run at any one time. It must be >= to -maxClassProcesses (this is not programmatically enforced).
 
-  -min-server-life _n_ (30)
+  **-min-server-life _n_ (30)**
 
   The minimum number of seconds a dynamic FastCGI application must run for before its restart interval is increased to 600 seconds. The server will get 3 tries to run for at least this number of seconds.
 
-  -minProcesses _n_ (5)
+  **-minProcesses _n_ (5)**
 
   The minimum total number of dynamic FastCGI application instances allowed to run at any one time without being killed off by the process manager (due to lack of demand).
 
-  -multiThreshold _n_ (50)
+  **-multiThreshold _n_ (50)**
 
   An integer between 0 and 100 used to determine whether any one instance of a FastCGI application should be terminated. If the application has more than one instance currently running, this attribute will be used to decide whether one of them should be terminated. If only one instance remains, `singleThreshold` is used instead.  
 For historic reasons the mis-spelling `multiThreshhold` is also accepted.
 
-  -pass-header _header_ (none)
+  **-pass-header _header_ (none)**
 
   The name of an HTTP Request Header to be passed in the _request_ environment. This option makes available the contents of headers which are normally not available (e.g. Authorization) to a CGI environment.
 
-  -priority _n_ (0)
+  **-priority _n_ (0)**
 
   The process priority to be assigned to the application instances (using `setpriority()`).
 
-  -processSlack _n_ (5)
+  **-processSlack _n_ (5)**
 
   If the sum of the number of all currently running dynamic FastCGI applications and `processSlack` exceeds `maxProcesses`, the process manager invokes the killing policy. This is to improve performance at higher loads by killing some of the most inactive application instances before reaching `maxProcesses`.
 
-  -restart (none)
+  **-restart (none)**
 
   Causes the process manager to restart dynamic applications upon failure (similar to static applications).
 
-  -restart-delay _n_ (5 seconds)
+  **-restart-delay _n_ (5 seconds)**
 
   The minimum number of seconds between the respawning of failed instances of applications. This delay prevents a broken application from soaking up too much of the system.
 
-  -singleThreshold _n_ (0)
+  **-singleThreshold _n_ (0)**
 
   An integer between 0 and 100 used to determine whether the last instance of a FastCGI application can be terminated. If the process manager computed load factor for the application is lower than the specified threshold, the last instance is terminated. In order to make your executables run in the "idle" mode for the long time, you would specify a value closer to 1, however if memory or CPU time is of primary concern, a value closer to 100 would be more applicable. A value of 0 will prevent the last instance of an application from being terminated; this is the default value, changing it is not recommended (especially if `-appConnTimeout` is set).  
 For historic reasons the mis-spelling `singleThreshhold` is also accepted.
 
-  -startDelay _n_ (3 seconds)
+  **-startDelay _n_ (3 seconds)**
 
   The number of seconds the web server waits patiently while trying to connect to a dynamic FastCGI application. If the interval expires, the process manager is notified with hope it will start another instance of the application. The `startDelay` must be less than `appConnTimeout` to be effective.
 
-  -updateInterval _n_ (300 seconds)
+  **-updateInterval _n_ (300 seconds)**
 
   The updateInterval determines how often statistical analysis is performed to determine the fate of dynamic FastCGI applications.
 
@@ -298,48 +298,44 @@ External FastCGI applications are not started by the process manager, they are p
 
 _Option_ can be one of (case insensitive):
 
-
-
-  -appConnTimeout _n_ (0 seconds)
+  **-appConnTimeout _n_ (0 seconds)**
 
   **Unix:** The number of seconds to wait for a connection to the FastCGI application to complete or 0 to indicate a blocking `connect()` should be used. Blocking `connect()`s have an OS dependent internal timeout. If the timeout expires, a SERVER_ERROR results. For non-zero values, this is the amount of time used in a `select()` to write to the file descriptor returned by a non-blocking `connect()`. Non-blocking `connect()`s are troublesome on many platforms. See also `-idle-timeout`, it produces similar results but in a more portable manner.  
   **Windows NT:** TCP based applications work as above. Named pipe based applications (static applications configured without the `-port` option and dynamic applications) use this value successfully to limit the amount of time to wait for a connection (i.e. it's not "troublesome"). By default, this is 90 seconds (FCGI_NAMED_PIPE_CONNECT_TIMEOUT in mod_fastcgi.h).
 
-  -group _groupname|#gid_ (none)
+  **-group _groupname|#gid_ (none)**
 
   **Unix (only):** When [FastCgiWrapper](#FastCgiWrapper) is in use, the group is used to invoke the wrapper. The `-group` option must be used together with `-user`.
 
-  -idle-timeout _n_ (30 seconds)
+  **-idle-timeout _n_ (30 seconds)**
 
   The number of seconds of FastCGI application inactivity allowed before the request is aborted and the event is logged (at the `error` [`LogLevel`](http://httpd.apache.org/docs/mod/core.html#loglevel)). The inactivity timer applies only as long as a connection is pending with the FastCGI application. If a request is queued to an application, but the application doesn't respond (by writing and flushing) within this period, the request will be aborted. If communication is complete with the application but incomplete with the client (the response is buffered), the timeout does not apply.
 
-  -flush (none)
+  **-flush (none)**
 
   Force a write to the client as data is received from the application. By default, `mod_fastcgi` buffers data in order to free the application as quickly as possible.
 
-  -host _hostname:port_ (none)
+  **-host _hostname:port_ (none)**
 
   The hostname or IP address and TCP port number (1-65535) the application uses for communication with the web server. The `-socket` and `-host` options are mutually exclusive.
 
-  -nph
+  **-nph**
 
   Instructs mod_fastcgi not to parse the headers. See the Apache documentation for more information about _nph_ (non parse header) scripts.
 
-  -pass-header _header_ (none)
+  **-pass-header _header_ (none)**
 
   The name of an HTTP Request Header to be passed in the _request_ environment. This option makes available the contents of headers which are normally not available (e.g. Authorization) to a CGI environment.
 
-  -socket _filename_ (none)
+  **-socket _filename_ (none)**
 
   **Unix:** The filename of the Unix domain socket the application uses for communication with the web server. The filename is relative to the `[FastCgiIpcDir](#FastCgiIpcDir)`. The `-socket` and `-port` options are mutually exclusive.
 
   **Windows NT:** The name of the named pipe the application uses for communicating with the web server. the name is relative to the `[FastCgiIpcDir](#FastCgiIpcDir)`. The `-socket` and `-port` options are mutually exclusive.
 
-  -user _username|#uid_ (none)
+  **-user _username|#uid_ (none)**
 
   **Unix (only):** When [FastCgiWrapper](#FastCgiWrapper) is in use, the user is used to invoke the wrapper. The `-user` option must be used together with `-group`.
-
-
 
 * * *
 
