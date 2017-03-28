@@ -97,9 +97,7 @@ By default, the Process Manager will start one instance of the application with 
 
 **Note:** Using `FastCgiServer` within a [VirtualHost](http://httpd.apache.org/docs/mod/core.html#virtualhost) does not necessarily limited access to that host. If _filename_ is accessible via other virtual hosts, they too can leverage the same definition.
 
-_Option_ can be one of (case insensitive):
-
-
+### _Option_ can be one of (case insensitive):
 
   **-appConnTimeout _n_ (0 seconds)**
 
@@ -183,9 +181,7 @@ The `FastCgiConfig` directive defines the default parameters for _all_ dynamic F
 
 Dynamic applications are not started at server initialization, but upon demand. If the demand is heavy, additional application instances are started. As the demand fades, application instances are killed off. Many of the options govern this process.
 
-_Option_ can be one of (case insensitive):
-
-
+### _Option_ can be one of (case insensitive):
 
   **-appConnTimeout _n_ (0 seconds)**
 
@@ -278,8 +274,6 @@ For historic reasons the mis-spelling `singleThreshhold` is also accepted.
 
   The updateInterval determines how often statistical analysis is performed to determine the fate of dynamic FastCGI applications.
 
-
-
 * * *
 
 ## <a name="FastCgiExternalServer">FastCgiExternalServer</a>
@@ -296,7 +290,7 @@ External FastCGI applications are not started by the process manager, they are p
 
 **Note:** Using `FastCgiServer` within a [VirtualHost](http://httpd.apache.org/docs/mod/core.html#virtualhost) does not necessarily limited access to that host. If _filename_ is accessible via other virtual hosts, they too can leverage the same definition.
 
-_Option_ can be one of (case insensitive):
+### _Option_ can be one of (case insensitive):
 
   **-appConnTimeout _n_ (0 seconds)**
 
