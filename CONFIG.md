@@ -99,7 +99,7 @@ By default, the Process Manager will start one instance of the application with 
 
 _Option_ can be one of (case insensitive):
 
-<dl>
+
 
   -appConnTimeout _n_ (0 seconds)
 
@@ -168,7 +168,7 @@ _Option_ can be one of (case insensitive):
 
   **Unix (only):** When [FastCgiWrapper](#FastCgiWrapper) is in use, the user is used to invoke the wrapper. The `-user` option must be used together with `-group`.
 
-</dl>
+
 
 * * *
 
@@ -185,7 +185,7 @@ Dynamic applications are not started at server initialization, but upon demand. 
 
 _Option_ can be one of (case insensitive):
 
-<dl>
+
 
   -appConnTimeout _n_ (0 seconds)
 
@@ -278,7 +278,7 @@ For historic reasons the mis-spelling `singleThreshhold` is also accepted.
 
   The updateInterval determines how often statistical analysis is performed to determine the fate of dynamic FastCGI applications.
 
-</dl>
+
 
 * * *
 
@@ -298,7 +298,7 @@ External FastCGI applications are not started by the process manager, they are p
 
 _Option_ can be one of (case insensitive):
 
-<dl>
+
 
   -appConnTimeout _n_ (0 seconds)
 
@@ -339,7 +339,7 @@ _Option_ can be one of (case insensitive):
 
   **Unix (only):** When [FastCgiWrapper](#FastCgiWrapper) is in use, the user is used to invoke the wrapper. The `-user` option must be used together with `-group`.
 
-</dl>
+
 
 * * *
 
