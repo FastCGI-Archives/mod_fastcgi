@@ -12,7 +12,7 @@ FastCGI applications are portable to other web server platforms. FastCGI is supp
 
 FastCGI applications are fast because they're persistent. There is no per-request startup and initialization overhead. This makes possible the development of applications which would otherwise be impractical within the CGI paradigm (e.g. a huge Perl script, or an application which requires a connection to one or more databases).
 
-See the FastCGI [website](http://www.fastcgi.com/) for more information. To receive FastCGI related announcements and notifications of software updates, subscribe to [fastcgi-announce](http://fastcgi.com/fastcgi-announce). To participate in the discussion of `mod_fastcgi` and FastCGI application development, subscribe to [fastcgi-developers](http://fastcgi.com/fastcgi-developers).
+See the FastCGI [website](https://fastcgi-archives.github.io/) for more information.
 
 ## Summary
 
@@ -50,7 +50,7 @@ FastCGI application output is buffered by default. This is not the case for CGI 
 
 Redirects are handled similarly to CGI. Location headers with values that begin with "/" are treated as internal-redirects; otherwise, they are treated as external redirects (302).
 
-Session affinity (as well as distribution) should be achievable outside of `mod_fastcgi` using [`mod_rewrite`](http://httpd.apache.org/docs/mod/mod_rewrite.html). If you get this working, please post the details to [fastcgi-developers@fastcgi.com](mailto:fastcgi-developers@fastcgi.com) so they can be included here.
+Session affinity (as well as distribution) should be achievable outside of `mod_fastcgi` using [`mod_rewrite`](http://httpd.apache.org/docs/mod/mod_rewrite.html). 
 
 ## FastCGI Specification Compliance
 
