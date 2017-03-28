@@ -20,7 +20,7 @@ For information on **installing mod_fastcgi with Apache 2.x**, see the
 file [INSTALL.AP2](INSTALL.AP2.md).
 
 For information on **configuring an installed instance of mod_fastcgi**,
-see the file [CONFIG](CONFIG). 
+see the file [CONFIG](CONFIG.md). 
 
 For information on **programming FastCGI applications**, see on https://fastcgi-archives.github.io/
 
