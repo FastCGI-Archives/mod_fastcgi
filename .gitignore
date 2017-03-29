@@ -1,7 +1,11 @@
-.bak  *.bak
+.bak  
+*.bak
 .snprj
-*.o *.slo *.lo
-*.la *.so
+*.o 
+*.slo 
+*.lo
+*.la 
+*.so
 Makefile
 .libs
 .deps
