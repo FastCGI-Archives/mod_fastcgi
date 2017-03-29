@@ -153,6 +153,10 @@ array_header *dynamic_pass_headers = NULL;
 u_int dynamic_idle_timeout = FCGI_DEFAULT_IDLE_TIMEOUT;
 int dynamicMinServerLife = FCGI_DEFAULT_MIN_SERVER_LIFE;
 
+#ifdef APLOG_USE_MODULE
+APLOG_USE_MODULE(fastcgi);
+#endif
+
 /*******************************************************************************
  * Construct a message and write it to the pm_pipe.
  */
