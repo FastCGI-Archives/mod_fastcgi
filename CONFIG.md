@@ -18,7 +18,7 @@ See the FastCGI [website](https://fastcgi-archives.github.io/) for more informat
 
 For information about building and installing the module, see the INSTALL document that came with the distribution.
 
-FastCGI applications under `mod_fastcgi` are defined as one of three types: static, dynamic, or external. They're configured using the [FastCgiServer](#fastcgiserver), [FastCgiConfig](#FastCgiConfig), and [FastCgiExternalServer](#FastCgiExternalServer) [directives](#directives) respectively. Any URI that Apache identifies as a FastCGI application and which hasn't been explicitly configured using a [FastCgiServer](#fastcgiserver) or [FastCgiExternalServer](#FastCgiExternalServer) directive is handled as a dynamic application (see the [FastCgiConfig](#FastCgiConfig) directive for more information).
+FastCGI applications under `mod_fastcgi` are defined as one of three types: static, dynamic, or external. They're configured using the [FastCgiServer](#FastCgiServer), [FastCgiConfig](#FastCgiConfig), and [FastCgiExternalServer](#FastCgiExternalServer) [directives](#directives) respectively. Any URI that Apache identifies as a FastCGI application and which hasn't been explicitly configured using a [FastCgiServer](#FastCgiServer) or [FastCgiExternalServer](#FastCgiExternalServer) directive is handled as a dynamic application (see the [FastCgiConfig](#FastCgiConfig) directive for more information).
 
 FastCGI static and dynamic applications are spawned and managed by the FastCGI Process Manager, fcgi-pm. The process manager is spawned by Apache at server initialization. External applications are presumed to be started and managed independently.
 
