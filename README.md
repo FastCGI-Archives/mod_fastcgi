@@ -22,7 +22,7 @@ file [INSTALL.AP2](INSTALL.AP2.md).
 For information on **configuring an installed instance of mod_fastcgi**,
 see the file [CONFIG](CONFIG.md). 
 
-For information on **programming FastCGI applications**, see on https://fastcgi-archives.github.io/
+For information on **programming FastCGI applications**, see on https://fastcgi-archives.github.io/?#apilib
 
 Finally, if you get stuck - start with the [Frequently Asked Questions
 (FAQ)](https://fastcgi-archives.github.io/FastCGI_FAQ.html)
