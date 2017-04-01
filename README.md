@@ -25,10 +25,12 @@ see the file [CONFIG](CONFIG.md).
 For information on **programming FastCGI applications**, see on https://fastcgi-archives.github.io/
 
 Finally, if you get stuck - start with the [Frequently Asked Questions
-(FAQ)](https://github.com/FastCGI-Archives/FastCGI.com/blob/master/docs/FastCGI%20FAQ.md)
+(FAQ)](https://fastcgi-archives.github.io/FastCGI_FAQ.html)
 
-If you still can't find an answer, join the developer's mailing list
-at:
+If you still can't find an answer use github issues.
+
+For history the old mailing list are at:
 
 - http://blog.gmane.org/gmane.comp.web.fastcgi.devel
+- http://git.net/ml/web.fastcgi.devel
 - https://web.archive.org/web/20130914200635/http://mailman.chelsea.net/mailman/listinfo/fastcgi-developers
