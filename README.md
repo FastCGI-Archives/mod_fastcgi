@@ -27,7 +27,7 @@ For information on **programming FastCGI applications**, see on https://fastcgi-
 Finally, if you get stuck - start with the [Frequently Asked Questions
 (FAQ)](https://fastcgi-archives.github.io/FastCGI_FAQ.html)
 
-If you still can't find an answer use github issues.
+If you still can't find an answer use github [issues](https://github.com/FastCGI-Archives/mod_fastcgi/issues).
 
 For history the old mailing list are at:
 
